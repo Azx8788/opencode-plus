@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsService;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../diagnostics/app_log.dart';
 import '../../../domain/agent_auth_probe.dart';
 import '../../../domain/agent_endpoint.dart';
 import '../../../domain/agent_sign_in.dart';
@@ -178,7 +179,16 @@ class _AgentSheetState extends ConsumerState<AgentSheet> {
     // The step's own work is done below; entering it through [_enter] would
     // start a second read and clear a failure notice this one just set.
     setState(() => _step = AgentSheetStep.signIn);
-    if (!wasSignedIn && (_endpoint?.configured ?? false)) {
+    final gateway = _endpoint?.configured ?? false;
+    final row = _agents.agentRows.where((row) => row.id == id).firstOrNull;
+    AppLog.info('agents', 'endpoint saved', {
+      'agent': id,
+      'gateway': gateway,
+      'wasSignedIn': wasSignedIn,
+      'phase': _agents.agentSignInState(id)?.phase.name,
+      'selectable': row?.chatSelectable,
+    });
+    if (!wasSignedIn && gateway) {
       // The file the app just wrote names a gateway and its key: that is this
       // agent's sign-in (the status probe answers from the same file), so the
       // person goes on to the conversation they were setting the agent up

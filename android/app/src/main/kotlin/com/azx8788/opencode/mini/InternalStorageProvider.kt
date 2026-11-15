@@ -47,7 +47,7 @@ class InternalStorageProvider : DocumentsProvider() {
         val row = cursor.newRow()
         put(row, requested, Root.COLUMN_ROOT_ID, ROOT_ID)
         put(row, requested, Root.COLUMN_DOCUMENT_ID, ROOT_ID)
-        put(row, requested, Root.COLUMN_TITLE, "OpenCode Mini")
+        put(row, requested, Root.COLUMN_TITLE, "OpenCode Plus")
         put(row, requested, Root.COLUMN_SUMMARY, "The app's private files")
         // Directory pickers hide roots without parent/child checks. This flag
         // must be paired with isChildDocument() for granted tree URIs to work.
@@ -199,7 +199,7 @@ class InternalStorageProvider : DocumentsProvider() {
             row,
             requested,
             Document.COLUMN_DISPLAY_NAME,
-            if (documentId == ROOT_ID) "OpenCode Mini" else file.name,
+            if (documentId == ROOT_ID) "OpenCode Plus" else file.name,
         )
         put(row, requested, Document.COLUMN_SIZE, if (isDir) 0L else file.length())
         put(

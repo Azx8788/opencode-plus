@@ -97,6 +97,7 @@ import '../background/widget_snapshot.dart';
 import '../l10n/app_localizations.dart';
 import '../platform/platform_capabilities.dart';
 import '../diagnostics/app_diagnostics.dart';
+import '../diagnostics/app_log.dart';
 import '../diagnostics/perf_trace.dart';
 import '../termux/bridge.dart';
 // A plain value type (no widgets): the person's effect choices.
@@ -589,7 +590,7 @@ class ConnectionController extends ChangeNotifier
       store.profiles.any((profile) => profile.id == id);
 
   static const workspaceChoiceNotice =
-      'OpenCode Mini no longer works in the server\'s home folder. '
+      'OpenCode Plus no longer works in the server\'s home folder. '
       'Create a new folder or open a project folder to continue.';
 
   static const managedRuntimeMismatchMessage =

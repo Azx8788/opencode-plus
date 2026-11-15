@@ -382,15 +382,54 @@ mixin _ConnectionControllerPhoneAgents on ChangeNotifier
 
   @override
   Future<void> saveAgentEndpoint(String agentId, AgentEndpoint endpoint) async {
-    await _paEnsureHost().saveAgentEndpoint(agentId, endpoint);
-    // The row's sign-in truth comes from the agent's own settings file, so it
-    // changes the moment the write lands.
-    await refreshAgentRows();
+    final host = _paEnsureHost();
+    // From here on, a scan that began earlier holds the answer from before
+    // this write; the bump must land before the file does, so no publish can
+    // slip between the two.
+    _paAuthEpoch++;
+    await host.saveAgentEndpoint(agentId, endpoint);
+    // The file now names a gateway and a key. That is this agent's sign-in by
+    // the same rule its status probe applies, so the row must not keep the
+    // answer read before the write while a fresh scan runs: the person who
+    // just picked a provider goes on to the conversation, not back to the
+    // sign-in page because a probe was still reading the old file.
+    AgentEndpointStatus status = AgentEndpointStatus.absent;
+    try {
+      status = await host.readAgentEndpoint(agentId);
+    } catch (_) {
+      // The write succeeded; an unreadable read-back leaves the probe to say.
+    }
+    final signedIn = agentEndpointSignIn(status);
+    if (signedIn != null) {
+      _paAuthResults[agentId] = signedIn;
+      if (!_self._disposed) _self._notifyListeners();
+    }
+    await _paRescanAfterSettingsChange();
   }
 
   @override
   Future<void> clearAgentEndpoint(String agentId) async {
+    _paAuthEpoch++;
     await _paEnsureHost().clearAgentEndpoint(agentId);
+    // The gateway answer left with the file; the next scan reads the account
+    // (or its absence) again instead of reusing it.
+    _paAuthResults.remove(agentId);
+    await _paRescanAfterSettingsChange();
+  }
+
+  /// Waits out a scan that began before an agent's settings file changed and
+  /// then scans again: that older scan can only publish the pre-write answer.
+  Future<void> _paRescanAfterSettingsChange() async {
+    if (_paChecking) return;
+    final running = _paRefreshingRows;
+    if (running != null) {
+      try {
+        await running;
+      } catch (_) {
+        // The fresh scan below is what matters.
+      }
+    }
+    if (_self._disposed || _paChecking) return;
     await refreshAgentRows();
   }
 
@@ -578,6 +617,9 @@ mixin _ConnectionControllerPhoneAgents on ChangeNotifier
   }
 
   Future<void> _paRefreshRows({bool syncSources = true}) async {
+    // Read now, check before publishing: a scan that overlaps a write to an
+    // agent's settings file holds the answer from before that write.
+    final authEpoch = _paAuthEpoch;
     if (!phoneAgentsAvailable) {
       if (_paRows.isNotEmpty) {
         _paRows = const [];
@@ -626,11 +668,22 @@ mixin _ConnectionControllerPhoneAgents on ChangeNotifier
             // endpoint the person chose. The probe stays the answer when the
             // file names no gateway.
             final gateway = await _paGatewaySignIn(host, descriptor.id);
+            // A read that failed leaves the file's last answer standing. The
+            // probe may not turn "this file could not be read just now" into
+            // "signed out": that is the setter this whole path exists to
+            // stop, and it is the one a scan running right after a save hits.
+            final saved = _paEndpointStatus[descriptor.id];
             final auth =
-                gateway ?? await _paProbeSignIn(host, descriptor.id);
+                gateway ??
+                (saved != null && saved.configured
+                    ? agentEndpointSignIn(saved)!
+                    : await _paProbeSignIn(host, descriptor.id));
             if (_self._disposed || _paHost != host || _paHostProfile != owner) {
               return;
             }
+            // The file changed while this scan ran: drop the answer rather
+            // than put the pre-write one back (the caller scans again).
+            if (authEpoch != _paAuthEpoch) return;
             _paAuthResults[descriptor.id] = auth;
             runtime = PhoneAgentRuntime(
               agentId: runtime.agentId,
@@ -678,6 +731,9 @@ mixin _ConnectionControllerPhoneAgents on ChangeNotifier
         rows.any((row) => row.status == PhoneAgentStatus.stoppedInBackground) &&
         (_paAutoResumedAt == null ||
             now.difference(_paAutoResumedAt!) > const Duration(minutes: 1));
+    // Rows built from a scan that began before the settings write would put
+    // the old sign-out back on screen; the fresh scan publishes instead.
+    if (authEpoch != _paAuthEpoch) return;
     _paRows = List.unmodifiable(rows);
     _paSaveStatusLines();
     _paHostRunning = running || _paHelperAvailable;
@@ -721,6 +777,19 @@ mixin _ConnectionControllerPhoneAgents on ChangeNotifier
 
   final _paAuthResults = <String, AgentAuthProbeResult>{};
   final _paAuthRevisions = <String, int>{};
+
+  /// The last settings-file read per agent, kept for the sign-in log and for
+  /// the sheet's "which variable holds the key" line. Never the key itself.
+  final _paEndpointStatus = <String, AgentEndpointStatus>{};
+
+  /// The last line written per agent, so a rebuild is not a log entry.
+  final _paSignInLogKey = <String, String>{};
+
+  /// Bumped when an agent's own settings file changes. A row scan that began
+  /// earlier is reading the old file; its answer must not be published over
+  /// the one the write just made true (a gateway saved and then reported as
+  /// signed out is the sign-in page coming back).
+  int _paAuthEpoch = 0;
 
   /// A row still "Checking sign-in…" is read again a few seconds later, so
   /// it reaches a final state without the person reopening the sheet.
@@ -817,11 +886,63 @@ mixin _ConnectionControllerPhoneAgents on ChangeNotifier
       return interactive;
     }
     final result = _paAuthResults[agentId];
+    final endpoint = _paEndpointStatus[agentId];
+    final phase = result == null
+        ? AgentSignInPhase.signedOut
+        : _paAuthPhase(result);
+    _logSignInState(agentId, phase, result, endpoint);
     return AgentSignInState(
-      phase: result == null ? AgentSignInPhase.signedOut : _paAuthPhase(result),
+      phase: phase,
       method: descriptor.signInMethod,
       inspected: result != null,
+      gateway: endpoint?.configured ?? false,
     );
+  }
+
+  /// Every recomputation of the sign-in answer is a data point: the row scan
+  /// writes the probe's answer after the person has already saved, and a
+  /// write-side regression shows up here and nowhere else. Repeated identical
+  /// answers are dropped, so a rebuild cannot flood the log.
+  void _logSignInState(
+    String agentId,
+    AgentSignInPhase phase,
+    AgentAuthProbeResult? result,
+    AgentEndpointStatus? endpoint,
+  ) {
+    final key = [
+      phase.name,
+      result?.state.name ?? '-',
+      result?.error?.name ?? '-',
+      endpoint?.configured ?? false,
+      endpoint?.authVariable ?? '-',
+      endpoint?.facts.modifiedAt?.toIso8601String() ?? '-',
+    ].join('|');
+    if (_paSignInLogKey[agentId] == key) return;
+    _paSignInLogKey[agentId] = key;
+    final facts = endpoint?.facts.toLog() ?? const <String, Object?>{};
+    final data = <String, Object?>{
+      'agent': agentId,
+      'phase': phase.name,
+      'inspected': result != null,
+      'probe': result?.state.name,
+      'probeError': result?.error?.name,
+      'fileConfigured': endpoint?.configured,
+      'authVariable': endpoint?.authVariable,
+      // The guest script's own view of the same file, names only. A list
+      // that differs from `envKeys` above means the two readers are not
+      // looking at the same file — the split brain, printed.
+      if (result != null && result.scriptEnvKeys.isNotEmpty)
+        'scriptEnvKeys': result.scriptEnvKeys.join(','),
+      ...facts,
+    };
+    // The file says signed in and the screen says signed out: the one
+    // disagreement this log exists to catch.
+    if ((endpoint?.configured ?? false) &&
+        phase == AgentSignInPhase.signedOut) {
+      AppLog.warn('agents', 'sign-in state disagrees with the file', data);
+    } else {
+      AppLog.info('agents', 'sign-in state', data);
+    }
   }
 
   /// Explicit CLI status only; account labels are transient and never logged.
@@ -849,7 +970,12 @@ mixin _ConnectionControllerPhoneAgents on ChangeNotifier
     // A gateway already on disk answers this without the CLI: asking the
     // account command would call a working endpoint signed out.
     final gateway = await _paGatewaySignIn(host, agentId);
-    final result = gateway ?? await _paProbeSignIn(host, agentId);
+    final saved = _paEndpointStatus[agentId];
+    final result =
+        gateway ??
+        (saved != null && saved.configured
+            ? agentEndpointSignIn(saved)!
+            : await _paProbeSignIn(host, agentId));
     if (_self._disposed || _paHost != host || _paHostProfile != owner) return;
     _paAuthResults[agentId] = result;
     _self._notifyListeners();

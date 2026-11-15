@@ -10,11 +10,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../domain/agent_helper_status.dart';
 import '../../domain/agent_catalog.dart';
 import '../../domain/agent_endpoint.dart';
+import '../../domain/claude_settings.dart';
+import '../../domain/gateway_probe.dart';
 import '../../domain/phone_agent_host.dart';
 import '../../domain/phone_agents.dart';
 import '../../domain/server_gateway.dart';
 import '../../domain/agent_sign_in.dart';
 import '../../domain/agent_auth_probe.dart';
+import '../../diagnostics/app_log.dart';
 import '../../paseo/tested_versions.dart';
 import 'agent_scripts.dart';
 import '../../paseo/gateway.dart';
@@ -25,7 +28,6 @@ import '../builtin_folders.dart';
 import '../setup/setup_engine.dart';
 import '../setup/setup_contract.dart';
 import 'agent_components.dart';
-import 'agent_endpoint_scripts.dart';
 import 'agent_install_guard.dart';
 import 'agent_removal_scripts.dart';
 import 'paseo_scripts.dart';
@@ -144,10 +146,135 @@ final class BuiltinPhoneAgents implements PhoneAgentHost {
     if (!agentSupportsEndpoint(agentId)) {
       throw const ProductException('This agent has no endpoint setting');
     }
+    final settings = await _claudeFileStat(ClaudeSettings.settingsFile);
+    final onboarding = await _claudeFileStat(ClaudeSettings.onboardingFile);
+    final decoded = await _readClaudeFile(ClaudeSettings.settingsFile);
+    if (decoded == null) {
+      final absent = AgentEndpointStatus(
+        baseUrl: null,
+        model: null,
+        hasKey: false,
+        facts: _endpointFacts(settings, onboarding, const []),
+      );
+      _logEndpointRead(agentId, absent);
+      return absent;
+    }
+    final env = decoded['env'];
+    if (env is! Map) {
+      final absent = AgentEndpointStatus(
+        baseUrl: null,
+        model: null,
+        hasKey: false,
+        facts: _endpointFacts(settings, onboarding, const []),
+      );
+      _logEndpointRead(agentId, absent);
+      return absent;
+    }
+    final base = env['ANTHROPIC_BASE_URL'];
+    final authToken = env['ANTHROPIC_AUTH_TOKEN'];
+    final apiKey = env['ANTHROPIC_API_KEY'];
+    final model = env['ANTHROPIC_MODEL'];
+    final token = authToken ?? apiKey;
+    final status = AgentEndpointStatus(
+      baseUrl: base is String && base.trim().isNotEmpty ? base.trim() : null,
+      model: model is String && model.trim().isNotEmpty ? model.trim() : null,
+      hasKey: token is String && token.trim().isNotEmpty,
+      // Written exactly as found. The probe decides which one is written;
+      // this reports what the file has, not what it should have.
+      authVariable: token is String && token.trim().isNotEmpty
+          ? (authToken is String && authToken.trim().isNotEmpty
+                ? 'ANTHROPIC_AUTH_TOKEN'
+                : 'ANTHROPIC_API_KEY')
+          : null,
+      facts: _endpointFacts(settings, onboarding, [
+        for (final key in env.keys) '$key',
+      ]),
+    );
+    _logEndpointRead(agentId, status);
+    return status;
+  }
+
+  AgentEndpointFileFacts _endpointFacts(
+    ({String path, DateTime? modified, int? size})? settings,
+    ({String path, DateTime? modified, int? size})? onboarding,
+    List<String> envKeys,
+  ) {
+    final keys = [...envKeys]..sort();
+    return AgentEndpointFileFacts(
+      path: settings?.path,
+      modifiedAt: settings?.modified,
+      sizeBytes: settings?.size,
+      envKeys: keys,
+      onboardingPath: onboarding?.path,
+      onboardingModifiedAt: onboarding?.modified,
+    );
+  }
+
+  /// One line per read, never the key: which file, when it changed, which
+  /// variable holds the key, and whether the predicate calls it configured.
+  /// This is the line to compare against the writer's, and against the guest
+  /// script's own `env` view when a split brain is suspected.
+  void _logEndpointRead(String agentId, AgentEndpointStatus status) {
+    final host = Uri.tryParse(status.baseUrl ?? '')?.host;
+    AppLog.info('agents', 'endpoint read', <String, Object?>{
+      'agent': agentId,
+      'configured': status.configured,
+      'authVariable': status.authVariable,
+      if (host != null && host.isNotEmpty) 'host': host,
+      ...status.facts.toLog(),
+    });
+  }
+
+  /// The absolute path this read used, and the file's own timestamps. The
+  /// same string the writer resolves, so a mismatch is visible in one line.
+  Future<({String path, DateTime? modified, int? size})?> _claudeFileStat(
+    String relativePath,
+  ) async {
     final rootfs = await BuiltinRootfsFolders.locateRootfs();
-    if (rootfs == null) return AgentEndpointStatus.absent;
+    if (rootfs == null) return null;
     final file = File(
-      '${rootfs.path}/home/oc/.oc-profiles/$profileId/claude/settings.json',
+      '${rootfs.path}/home/oc/.oc-profiles/$profileId/$relativePath',
+    );
+    try {
+      final stat = await file.stat();
+      if (stat.type == FileSystemEntityType.notFound) {
+        return (path: file.path, modified: null, size: null);
+      }
+      return (path: file.path, modified: stat.modified, size: stat.size);
+    } on FileSystemException {
+      return (path: file.path, modified: null, size: null);
+    }
+  }
+
+  @override
+  Future<void> saveAgentEndpoint(String agentId, AgentEndpoint endpoint) async {
+    // One question, asked before the file is written: does this gateway want
+    // the key in `Authorization` or in `x-api-key`? Sending the wrong one is a
+    // 401 that reads like a bad key, and guessing it would mean writing the
+    // file twice — the second time after the sheet has already closed, which
+    // a session started in between would not see.
+    final useApiKeyHeader = await _gatewayHeader(endpoint);
+    await _writeAgentEndpoint(
+      agentId,
+      'write',
+      endpoint: endpoint,
+      useApiKeyHeader: useApiKeyHeader,
+    );
+  }
+
+  @override
+  Future<void> clearAgentEndpoint(String agentId) =>
+      _writeAgentEndpoint(agentId, 'clear');
+
+  /// One file under the profile's folder, decoded, or null when it is absent.
+  ///
+  /// The read is the app's own: the same folder [writeProfileFile] writes, so
+  /// a save and a status read can never disagree about which file they mean.
+  Future<Map<String, Object?>?> _readClaudeFile(String relativePath) async {
+    final rootfs = await BuiltinRootfsFolders.locateRootfs();
+    if (rootfs == null) return null;
+    final file = File(
+      '${rootfs.path}/home/oc/.oc-profiles/$profileId/$relativePath',
     );
     final FileSystemEntityType type;
     try {
@@ -155,9 +282,7 @@ final class BuiltinPhoneAgents implements PhoneAgentHost {
     } on FileSystemException {
       throw const ProductException('The endpoint setting could not be read');
     }
-    if (type == FileSystemEntityType.notFound) {
-      return AgentEndpointStatus.absent;
-    }
+    if (type == FileSystemEntityType.notFound) return null;
     // The file belongs to the agent; a link or a directory is not one.
     if (type != FileSystemEntityType.file) {
       throw const ProductException('The endpoint setting could not be read');
@@ -171,79 +296,119 @@ final class BuiltinPhoneAgents implements PhoneAgentHost {
     } on FileSystemException {
       throw const ProductException('The endpoint setting could not be read');
     }
-    final Object? decoded;
-    try {
-      decoded = jsonDecode(raw.isEmpty ? '{}' : raw);
-    } on FormatException {
-      throw const ProductException(
-        'Claude\u2019s settings file is not valid JSON',
-      );
-    }
-    if (decoded is! Map) {
-      throw const ProductException(
-        'Claude\u2019s settings file is not a JSON object',
-      );
-    }
-    final env = decoded['env'];
-    if (env is! Map) return AgentEndpointStatus.absent;
-    final base = env['ANTHROPIC_BASE_URL'];
-    final token = env['ANTHROPIC_AUTH_TOKEN'] ?? env['ANTHROPIC_API_KEY'];
-    final model = env['ANTHROPIC_MODEL'];
-    return AgentEndpointStatus(
-      baseUrl: base is String && base.trim().isNotEmpty ? base.trim() : null,
-      model: model is String && model.trim().isNotEmpty ? model.trim() : null,
-      hasKey: token is String && token.trim().isNotEmpty,
-    );
+    return ClaudeSettings.decode(raw, 'Claude\u2019s settings file');
   }
-
-  @override
-  Future<void> saveAgentEndpoint(String agentId, AgentEndpoint endpoint) async {
-    await _writeAgentEndpoint(agentId, 'write', endpoint: endpoint);
-  }
-
-  @override
-  Future<void> clearAgentEndpoint(String agentId) =>
-      _writeAgentEndpoint(agentId, 'clear');
 
   Future<void> _writeAgentEndpoint(
     String agentId,
     String action, {
     AgentEndpoint? endpoint,
+    bool useApiKeyHeader = false,
   }) async {
     if (!agentSupportsEndpoint(agentId)) {
       throw const ProductException('This agent has no endpoint setting');
     }
     // Only an installed agent has a home to write into.
     _agent(agentId);
-    final BuiltinLinuxRunResult result;
-    try {
-      result = await _linux.runAgentSetupCheck(
-        AgentEndpointScripts.claude(
-          profileId: profileId,
-          action: action,
-          endpoint: endpoint,
-        ),
-        timeout: const Duration(seconds: 30),
+    final current = await _readClaudeFile(ClaudeSettings.settingsFile);
+    if (action == 'write') {
+      final target = endpoint;
+      if (target == null) {
+        throw const ProductException('This endpoint cannot be saved');
+      }
+      // Onboarding first: it is the flag that decides between the first-run
+      // setup and the chat. A gateway written after a failed onboarding would
+      // be in the file and still land on the sign-in screen.
+      final onboarding =
+          await _readClaudeFile(ClaudeSettings.onboardingFile) ??
+          const <String, Object?>{};
+      await _writeClaudeFile(
+        ClaudeSettings.onboardingFile,
+        ClaudeSettings.onboarding(onboarding),
       );
-    } catch (_) {
-      throw const ProductException(
-        'The phone\u2019s Linux tools are not ready',
+      final written = ClaudeSettings.merge(
+        current ?? const {},
+        target,
+        // A key sent as `x-api-key` is written as `ANTHROPIC_API_KEY`, which
+        // is the only variable Claude Code sends that header for.
+        useApiKeyHeader: useApiKeyHeader,
       );
-    }
-    if (result.exitCode != 0) {
-      throw ProductException(switch (result.exitCode) {
-        20 => 'The phone\u2019s Linux tools are not ready',
-        21 => 'Claude\u2019s settings file is not valid JSON',
-        23 => 'This endpoint cannot be saved',
-        24 => 'This endpoint has no saved key yet',
-        _ => 'The endpoint could not be saved',
+      await _writeClaudeFile(ClaudeSettings.settingsFile, written);
+      // The writer's half of the diagnostic: what the address was, what the
+      // file got, and which variable the key went into. `stripped` is the
+      // `/v1` question asked directly instead of from memory.
+      final rawBase = target.baseUrl;
+      final writtenEnv = written['env'];
+      final writtenBase = writtenEnv is Map
+          ? '${writtenEnv['ANTHROPIC_BASE_URL'] ?? ''}'
+          : '';
+      AppLog.info('agents', 'endpoint write', <String, Object?>{
+        'agent': agentId,
+        'stripped': rawBase != writtenBase,
+        'authVariable': useApiKeyHeader
+            ? 'ANTHROPIC_API_KEY'
+            : 'ANTHROPIC_AUTH_TOKEN',
+        'model': target.model,
+        'rawHost': Uri.tryParse(rawBase)?.host,
+        'writtenHost': Uri.tryParse(writtenBase)?.host,
       });
+    } else {
+      final cleared = ClaudeSettings.clear(current ?? const {});
+      if (cleared.isEmpty) {
+        await _deleteClaudeFile(ClaudeSettings.settingsFile);
+      } else {
+        await _writeClaudeFile(ClaudeSettings.settingsFile, cleared);
+      }
     }
     // The settings file just changed. A status read already running was
     // started against the old file, so a new read must not share its answer
     // (the same reason [signOut] forgets one). The running read is left to
     // finish; the next one queues behind it and reads the new file.
     _probes.remove(agentId);
+  }
+
+  Future<void> _writeClaudeFile(
+    String relativePath,
+    Map<String, Object?> value,
+  ) => _linux.writeProfileFile(
+    profileId: profileId,
+    relativePath: relativePath,
+    content: ClaudeSettings.encode(value),
+  );
+
+  /// Removes the settings file once nothing of the app's is left in it.
+  ///
+  /// `File.delete` removes the name, never what a link points at, so this is
+  /// the one step that needs no native channel: there is nothing to write and
+  /// nothing to make atomic.
+  Future<void> _deleteClaudeFile(String relativePath) async {
+    final rootfs = await BuiltinRootfsFolders.locateRootfs();
+    if (rootfs == null) return;
+    final file = File(
+      '${rootfs.path}/home/oc/.oc-profiles/$profileId/$relativePath',
+    );
+    try {
+      if (await FileSystemEntity.isLink(file.path)) return;
+      if (await file.exists()) await file.delete();
+    } on FileSystemException {
+      // Nothing to remove is the same outcome as removing it.
+    }
+  }
+
+  /// Asks the gateway which header its key belongs in, and records the answer.
+  ///
+  /// Never throws and never blocks for longer than the probe's own budget: a
+  /// gateway that is slow or absent still gets its settings written, and the
+  /// default header is the one the Anthropic protocol documents.
+  Future<bool> _gatewayHeader(AgentEndpoint endpoint) async {
+    final probe = await GatewayProbeClient.probe(endpoint);
+    AppLog.info('agents', 'gateway probed', {
+      'status': probe.status,
+      'messages': probe.answersMessages,
+      'apiKeyHeader': probe.usesApiKeyHeader,
+      'detail': probe.detail,
+    });
+    return probe.usesApiKeyHeader;
   }
 
   /// Android runs one status check per profile at a time and refuses a
@@ -556,19 +721,23 @@ final class BuiltinPhoneAgents implements PhoneAgentHost {
       // Read and clean our exclusive numeric receipt even if the owner was
       // disposed during deletion. Only then apply the generation fence; no
       // stale result reaches callers and no private receipt is left behind.
-      final receipt = await _linux.run(
-        AgentRemovalScripts.readReceipt(receiptId),
-        timeout: const Duration(seconds: 10),
-      );
+      //
+      // Read on the native side: the receipt is one small file the removal
+      // wrote, and asking for a second guest process to print it put this
+      // behind the same lock the removal had just used.
+      String receiptText;
+      try {
+        receiptText = await _linux.readRemovalReceipt(receiptId);
+      } on BuiltinLinuxException {
+        _checkGeneration(generation);
+        throw const AgentHostException(AgentHostFailure.unavailable);
+      }
       _checkGeneration(generation);
       final value = RegExp(
         r'^([0-9]{1,19}) ([01])\n?$',
-      ).firstMatch(receipt.output);
+      ).firstMatch(receiptText);
       final bytes = value == null ? null : int.tryParse(value[1]!);
-      if (!receipt.ok ||
-          bytes == null ||
-          bytes < 0 ||
-          (value![2] == '1' && bytes != 0)) {
+      if (bytes == null || bytes < 0 || (value![2] == '1' && bytes != 0)) {
         throw const AgentHostException(AgentHostFailure.unavailable);
       }
       final removal = AgentRemovalResult(

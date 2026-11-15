@@ -93,6 +93,40 @@ the same question, so the sheet could send a person back to Sign in forever.
   * **A row that lags one scan behind the file still lets the agent be
     chosen**, and the sheet says "Checking sign-in…" whenever that read is
     running instead of offering Sign in over an answer still being read.
+## 0.3.13+21 — 2026-11-13
+
+A saved gateway is a sign-in on every screen, and a gateway's own rules about
+its address, its key and its model names are followed instead of one
+gateway's.
+
+  * **Saving a gateway goes to the chat.** A settings file with a base URL
+    and a key is this agent's sign-in, by the same rule its status probe
+    applies. The sign-in page, the row and the phone check all read that one
+    answer; none of them sends a person back to the account page on top of a
+    working endpoint.
+  * **The saved address loses its version segment.** Claude Code appends
+    `/v1/messages` itself, so `https://host/v1` became `…/v1/v1/messages`.
+    The strip is in the merge rule and is idempotent, and the probe asks the
+    same URL Claude Code will.
+  * **The key goes into the variable the gateway accepts.** A gateway that
+    refuses `Authorization: Bearer` and accepts `x-api-key` gets
+    `ANTHROPIC_API_KEY`; one that accepts Bearer gets `ANTHROPIC_AUTH_TOKEN`.
+    Only one is written, and the names are never normalized.
+  * **Every model tier points at the gateway's own name.** `claude-opus-4-7`
+    starts with `claude-` and is not a name this build knows; leaving a tier
+    at a built-in name asked the gateway for a model it never listed.
+  * **A refused turn offers the endpoint, not the account page.** A 401 or a
+    404 from a gateway ends in "Reconfigure gateway", which opens the
+    provider sheet the person configured it in.
+  * **Three log lines instead of a guess.** `endpoint read` (path, mtime,
+    size, `env` key names, which variable holds the key), `endpoint write`
+    (whether the address was stripped, which variable was written) and
+    `sign-in state` (every recomputation, with a warning when the file says
+    configured and the screen says signed out). Key values never appear.
+  * **Reports, advisories and release pages name this repository.** The
+    problem-report form opened the upstream project's issues, and the release
+    check trusted the old slug; both point at `Azx8788/opencode-plus` now, and
+    `test/repository_links_test.dart` fails if any of them drifts again.
 
 ## 0.3.13+17 — 2026-11-10
 
