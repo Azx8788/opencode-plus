@@ -1,150 +1,179 @@
-// Bumps the one version the app has: `version:` in pubspec.yaml.
+// Moves the one version this app carries, in `pubspec.yaml`.
 //
-// `flutter build apk` reads that line and nothing else, so a build made
-// without touching it carries the same versionCode as the previous one and
-// an installer has no reason to treat it as an upgrade. This script is the
-// missing step: run it before a build, or let `tool/build_apk.sh` run it.
+// README's "Versioning" section has always described this command
+// (`dart run tool/bump_version.dart`, `--patch`, `--minor`, `--major`), but
+// the file itself was never committed with the trimmed tree, so the
+// documented workflow failed on its first step and a build made the plain
+// `flutter build apk` way kept the previous versionCode. Android compares
+// that number first, so the phone treats the new APK as the same build and
+// installs nothing.
 //
-//   dart run tool/bump_version.dart              # 0.3.13+17 -> 0.3.13+18
-//   dart run tool/bump_version.dart --patch      # 0.3.13+17 -> 0.3.14+18
-//   dart run tool/bump_version.dart --minor      # 0.3.13+17 -> 0.4.0+18
-//   dart run tool/bump_version.dart --major      # 0.3.13+17 -> 1.0.0+18
-//   dart run tool/bump_version.dart --set 0.5.0+40
-//   dart run tool/bump_version.dart --dry-run    # print, write nothing
+// The build number always moves, including on `--patch`, `--minor` and
+// `--major`: a version that calls itself newer while carrying a smaller code
+// would never replace the older install.
 //
-// The build number always moves forward, including on --patch/--minor/
-// --major: Android compares versionCode first, and a version that claims to
-// be newer while carrying a smaller code is an install that silently does
-// nothing.
+// Only the pubspec's `version:` line is rewritten; its other fields stay
+// byte-for-byte. The newest changelog heading moves with it.
+
 import 'dart:io';
 
-final _versionLine = RegExp(r'^version:\s*(\d+)\.(\d+)\.(\d+)\+(\d+)\s*$');
+const _usage = 'usage: dart run tool/bump_version.dart '
+    '[--build|--patch|--minor|--major|--set x.y.z+n] [--dry-run]';
 
-void main(List<String> args) {
-  final file = File('pubspec.yaml');
-  if (!file.existsSync()) {
-    stderr.writeln('pubspec.yaml not found; run this from the project root.');
-    exit(2);
-  }
+/// Which part of `major.minor.patch` moves. [build] keeps all three and only
+/// advances the `+N` build number.
+enum VersionBump { build, patch, minor, major }
 
-  var dryRun = false;
-  var bump = 'build';
-  String? explicit;
-  for (var i = 0; i < args.length; i++) {
-    switch (args[i]) {
-      case '--dry-run':
-        dryRun = true;
-      case '--patch':
-        bump = 'patch';
-      case '--minor':
-        bump = 'minor';
-      case '--major':
-        bump = 'major';
-      case '--build':
-        bump = 'build';
-      case '--set':
-        if (i + 1 >= args.length) {
-          stderr.writeln('--set needs a value, e.g. --set 0.3.14+18');
-          exit(2);
-        }
-        explicit = args[++i];
-      case '--help' || '-h':
-        stdout.writeln(
-          'usage: dart run tool/bump_version.dart '
-          '[--build|--patch|--minor|--major|--set x.y.z+n] [--dry-run]',
-        );
-        return;
-      default:
-        stderr.writeln('unknown argument: ${args[i]}');
-        exit(2);
-    }
-  }
+/// A strict `major.minor.patch+build` version.
+class AppVersion {
+  const AppVersion(this.major, this.minor, this.patch, this.build);
 
-  final lines = file.readAsLinesSync();
-  final index = lines.indexWhere((line) => line.startsWith('version:'));
-  if (index < 0) {
-    stderr.writeln('pubspec.yaml has no version: line');
-    exit(1);
-  }
-  final match = _versionLine.firstMatch(lines[index]);
-  if (match == null) {
-    stderr.writeln(
-      'version line is not x.y.z+n: ${lines[index].trim()}',
+  final int major;
+  final int minor;
+  final int patch;
+  final int build;
+
+  static final _pattern = RegExp(r'^(\d+)\.(\d+)\.(\d+)\+(\d+)$');
+
+  /// Parses the exact shape this repository uses. Returns null for anything
+  /// else (`0.3`, `0.3.14`, `0.3.14+18-dev`): a bump must never guess.
+  static AppVersion? tryParse(String text) {
+    final match = _pattern.firstMatch(text.trim());
+    if (match == null) return null;
+    return AppVersion(
+      int.parse(match.group(1)!),
+      int.parse(match.group(2)!),
+      int.parse(match.group(3)!),
+      int.parse(match.group(4)!),
     );
-    exit(1);
   }
 
-  final major = int.parse(match[1]!);
-  final minor = int.parse(match[2]!);
-  final patch = int.parse(match[3]!);
-  final build = int.parse(match[4]!);
-  final previous = '$major.$minor.$patch+$build';
-
-  late int nextMajor;
-  late int nextMinor;
-  late int nextPatch;
-  late int nextBuild;
-  if (explicit != null) {
-    final target = _versionLine.firstMatch('version: $explicit');
-    if (target == null) {
-      stderr.writeln('--set needs x.y.z+n, got: $explicit');
-      exit(2);
-    }
-    nextMajor = int.parse(target[1]!);
-    nextMinor = int.parse(target[2]!);
-    nextPatch = int.parse(target[3]!);
-    nextBuild = int.parse(target[4]!);
-    if (nextBuild < build) {
-      stderr.writeln(
-        'refusing to move versionCode backwards: $previous -> $explicit',
-      );
-      exit(1);
-    }
-  } else {
-    nextMajor = major;
-    nextMinor = minor;
-    nextPatch = patch;
-    nextBuild = build + 1;
-    switch (bump) {
-      case 'patch':
-        nextPatch = patch + 1;
-      case 'minor':
-        nextMinor = minor + 1;
-        nextPatch = 0;
-      case 'major':
-        nextMajor = major + 1;
-        nextMinor = 0;
-        nextPatch = 0;
+  /// The next version after this one. The build number moves in every case.
+  AppVersion bumped(VersionBump kind) {
+    final nextBuild = build + 1;
+    switch (kind) {
+      case VersionBump.build:
+        return AppVersion(major, minor, patch, nextBuild);
+      case VersionBump.patch:
+        return AppVersion(major, minor, patch + 1, nextBuild);
+      case VersionBump.minor:
+        return AppVersion(major, minor + 1, 0, nextBuild);
+      case VersionBump.major:
+        return AppVersion(major + 1, 0, 0, nextBuild);
     }
   }
 
-  final next = '$nextMajor.$nextMinor.$nextPatch+$nextBuild';
-  if (dryRun) {
-    stdout.writeln('$previous -> $next (dry run)');
-    return;
-  }
-  lines[index] = 'version: $next';
-  file.writeAsStringSync('${lines.join('\n')}\n');
-  _syncChangelog(next);
-  stdout.writeln('$previous -> $next');
+  @override
+  String toString() => '$major.$minor.$patch+$build';
 }
 
-/// Keeps CHANGELOG.md's newest entry naming the version this build reports.
-///
-/// `test/mini_package_test.dart` refuses a pubspec version with no matching
-/// heading, and a preview that moves only the build number would otherwise
-/// leave the changelog pointing at the build before it. The entry's words
-/// stay: a build-only bump is the same version's next upload, not a new set
-/// of changes to describe.
-void _syncChangelog(String next) {
-  final file = File('CHANGELOG.md');
-  if (!file.existsSync()) return;
-  final text = file.readAsStringSync();
+/// The `version:` line of a pubspec, replaced with [next] when this returns
+/// a different string. A pubspec without exactly one uncommented `version:`
+/// line is an error, not a silent no-op.
+String bumpPubspecVersion(String pubspec, AppVersion next) {
+  final lines = pubspec.split('\n');
+  var seen = 0;
+  for (var i = 0; i < lines.length; i++) {
+    final line = lines[i];
+    if (!line.startsWith('version:')) continue;
+    seen++;
+    lines[i] = 'version: $next';
+  }
+  if (seen != 1) {
+    throw const FormatException(
+      'pubspec.yaml must carry exactly one top-level "version:" line',
+    );
+  }
+  return lines.join('\n');
+}
+
+void main(List<String> args) {
+  var kind = VersionBump.build;
+  var dryRun = false;
+  AppVersion? explicit;
+  for (var i = 0; i < args.length; i++) {
+    final arg = args[i];
+    switch (arg) {
+      case '--build':
+        kind = VersionBump.build;
+      case '--patch':
+        kind = VersionBump.patch;
+      case '--minor':
+        kind = VersionBump.minor;
+      case '--major':
+        kind = VersionBump.major;
+      case '--dry-run':
+        dryRun = true;
+      case '--set':
+        if (i + 1 >= args.length) {
+          stderr.writeln('--set needs x.y.z+n');
+          exitCode = 64;
+          return;
+        }
+        explicit = AppVersion.tryParse(args[++i]);
+        if (explicit == null) {
+          stderr.writeln('--set needs x.y.z+n');
+          exitCode = 64;
+          return;
+        }
+      case '--help' || '-h':
+        stdout.writeln(_usage);
+        return;
+      default:
+        stderr.writeln('unknown argument: $arg');
+        stderr.writeln(_usage);
+        exitCode = 64;
+        return;
+    }
+  }
+
+  final file = File('pubspec.yaml');
+  if (!file.existsSync()) {
+    stderr.writeln('pubspec.yaml not found; run this from the repository root.');
+    exitCode = 66;
+    return;
+  }
+  final source = file.readAsStringSync();
+  final match = RegExp(
+    r'^version:\s*(\S+)\s*$',
+    multiLine: true,
+  ).firstMatch(source);
+  final current = match == null ? null : AppVersion.tryParse(match.group(1)!);
+  if (current == null) {
+    stderr.writeln(
+      'pubspec.yaml needs a "major.minor.patch+build" version line '
+      '(for example 0.3.13+18).',
+    );
+    exitCode = 65;
+    return;
+  }
+  final next = explicit ?? current.bumped(kind);
+  if (next.build < current.build) {
+    stderr.writeln('refusing to move versionCode backwards: $current -> $next');
+    exitCode = 65;
+    return;
+  }
+  final updated = bumpPubspecVersion(source, next);
+  if (dryRun) {
+    stdout.writeln('$current -> $next (dry run)');
+    return;
+  }
+  file.writeAsStringSync(updated);
+  final changelog = File('CHANGELOG.md');
+  if (changelog.existsSync()) {
+    final text = changelog.readAsStringSync();
+    final synced = syncChangelogVersion(text, next);
+    if (synced != text) changelog.writeAsStringSync(synced);
+  }
+  stdout.writeln('$current -> $next');
+}
+
+/// Keep the newest entry in step without changing its release notes.
+String syncChangelogVersion(String text, AppVersion next) {
   final head = RegExp(
     r'^## \d+\.\d+\.\d+\+\d+ — ',
     multiLine: true,
   ).firstMatch(text);
-  if (head == null) return;
-  final updated = text.replaceRange(head.start, head.end, '## $next — ');
-  if (updated != text) file.writeAsStringSync(updated);
+  if (head == null) return text;
+  return text.replaceRange(head.start, head.end, '## $next — ');
 }

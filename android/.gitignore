@@ -6,6 +6,11 @@ gradle-wrapper.jar
 /local.properties
 GeneratedPluginRegistrant.java
 .cxx/
+# Gradle writes these on every build. The root .gitignore only covers the
+# Flutter output (/build/), so a plain `flutter build apk` used to leave
+# android/build and android/app/build as untracked noise in every worktree.
+/build/
+/app/build/
 
 # Remember to never publicly share your keystore.
 # See https://flutter.dev/to/reference-keystore

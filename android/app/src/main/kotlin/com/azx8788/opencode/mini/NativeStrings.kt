@@ -12,10 +12,14 @@ import java.util.Locale
 object NativeStrings {
     private const val PREFERENCES = "FlutterSharedPreferences"
     private const val LANGUAGE_KEY = "flutter.oc.appLocale"
-    private val supported = setOf("en", "ar")
+    // Keep in step with values/strings.xml, values-zh/strings.xml and with
+    // AppLocaleStore.supportedLanguages. A language listed here without a
+    // values-<code> folder silently falls back to English, which is how a
+    // Chinese interface ended up with English approval notifications.
+    private val supported = setOf("en", "zh")
     // Keep in step with AppLocaleStore: untranslated app choices fall back to
     // English rather than accidentally reverting to a different system language.
-    private val appLanguages = setOf("en", "ar", "es", "ja", "pt", "ru", "zh")
+    private val appLanguages = supported
 
     fun get(context: Context, id: Int, vararg args: Any): String =
         localized(context).getString(id, *args)

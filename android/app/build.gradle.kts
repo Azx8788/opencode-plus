@@ -47,7 +47,7 @@ android {
         // as an upgrade over each other; a local build uses the pubspec value,
         // which `tool/bump_version.dart` moves forward.
         versionCode =
-            System.getenv("OC_VERSION_CODE")?.toIntOrNull() ?: flutter.versionCode
+            System.getenv("OC_VERSION_CODE")?.trim()?.toIntOrNull() ?: flutter.versionCode
         versionName = System.getenv("OC_VERSION_NAME") ?: flutter.versionName
         // Native acceptance checkpoint hooks are inactive in normal releases.
         buildConfigField("boolean", "BUILTIN_RUNTIME_QA", "false")

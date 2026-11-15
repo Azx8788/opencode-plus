@@ -47,7 +47,7 @@ class InternalStorageProvider : DocumentsProvider() {
         val row = cursor.newRow()
         put(row, requested, Root.COLUMN_ROOT_ID, ROOT_ID)
         put(row, requested, Root.COLUMN_DOCUMENT_ID, ROOT_ID)
-        put(row, requested, Root.COLUMN_TITLE, "OpenCode Plus")
+        put(row, requested, Root.COLUMN_TITLE, rootTitle())
         put(row, requested, Root.COLUMN_SUMMARY, "The app's private files")
         // Directory pickers hide roots without parent/child checks. This flag
         // must be paired with isChildDocument() for granted tree URIs to work.
@@ -77,6 +77,9 @@ class InternalStorageProvider : DocumentsProvider() {
             resolve(documentId)
         } catch (_: IOException) {
             // A path that leaves filesDir, or one the file system refuses.
+            null
+        } catch (_: SecurityException) {
+            // Tree discovery must fail closed if the filesystem denies access.
             null
         } catch (_: IllegalArgumentException) {
             // A document id the platform cannot even spell as a path.
@@ -156,6 +159,11 @@ class InternalStorageProvider : DocumentsProvider() {
 
     private fun root(): File = requireNotNull(context).filesDir.canonicalFile
 
+    private fun rootTitle(): String {
+        val ctx = requireNotNull(context)
+        return ctx.applicationInfo.loadLabel(ctx.packageManager).toString()
+    }
+
     private fun resolve(documentId: String): File {
         val base = root()
         if (documentId == ROOT_ID) return base
@@ -175,8 +183,8 @@ class InternalStorageProvider : DocumentsProvider() {
         return if (cut <= 0) ROOT_ID else documentId.substring(0, cut)
     }
 
-    /// A row may only carry the columns the cursor was built with; unknown
-    /// requested columns stay null.
+    // A row may only carry the columns the cursor was built with; unknown
+    // requested columns stay null.
     private fun put(
         row: MatrixCursor.RowBuilder,
         requested: Set<String>,
@@ -199,7 +207,7 @@ class InternalStorageProvider : DocumentsProvider() {
             row,
             requested,
             Document.COLUMN_DISPLAY_NAME,
-            if (documentId == ROOT_ID) "OpenCode Plus" else file.name,
+            if (documentId == ROOT_ID) rootTitle() else file.name,
         )
         put(row, requested, Document.COLUMN_SIZE, if (isDir) 0L else file.length())
         put(

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Simplified Chinese copy of values/widget_v2_strings.xml: the home-screen
+  widgets' own buttons, states and relative times (SessionWidgetCardBinder,
+  ConversationsWidgetBinder, UsageWidget*, StatusWidget*). Same names and the
+  same format arguments as the English original; %1$s holds a conversation or
+  project name, %1$d a count or percentage.
+-->
+<resources>
+    <string name="widget_label_short">OpenCode</string>
+    <string name="widget_v2_allow">允许一次</string>
+    <string name="widget_v2_allow_short">允许</string>
+    <string name="widget_v2_new_in">在 %1$s 新建对话</string>
+    <string name="widget_v2_new">新建对话</string>
+    <string name="widget_v2_short_write">写入 %1$s？</string>
+    <string name="widget_v2_short_read">读取 %1$s？</string>
+    <string name="widget_v2_short_run">运行 %1$s？</string>
+    <string name="widget_v2_ago_now">刚刚</string>
+    <string name="widget_v2_ago_min">%1$d 分钟前</string>
+    <string name="widget_v2_ago_hour">%1$d 小时前</string>
+    <string name="widget_v2_ago_yesterday">昨天</string>
+    <string name="widget_v2_offline_seen">离线 · 最后在线 %1$s</string>
+    <string name="widget_v2_offline_plain">离线</string>
+    <string name="widget_v2_background_settings">后台设置</string>
+    <string name="widget_v2_open">打开</string>
+    <string name="widget_v2_ready">就绪</string>
+    <string name="widget_v2_failed">操作不可用</string>
+    <string name="widget_v2_pending">发送中…</string>
+    <string name="widget_v2_uncertain">请查看对话</string>
+    <string name="widget_v2_needs_you">待你处理</string>
+    <string name="widget_v2_working_now">工作中</string>
+    <string name="widget_v2_approve">批准计划</string>
+    <string name="widget_v2_resume">继续</string>
+    <string name="widget_v2_empty">打开应用以连接</string>
+    <string name="widget_v2_voice">语音</string>
+    <string name="widget_v2_span_min">%1$d 分钟</string>
+    <string name="widget_v2_span_hour">%1$d 小时</string>
+    <!-- Picker previews: sample numbers, kept short enough for the preview card. -->
+    <string name="widget_preview_usage_p1">Codex</string>
+    <string name="widget_preview_usage_p2">Claude</string>
+    <string name="widget_preview_usage_5h">5 小时  剩 62%</string>
+    <string name="widget_preview_usage_wk">本周  剩 18%</string>
+    <string name="widget_preview_usage_detail1">3 小时后重置</string>
+    <string name="widget_preview_usage_detail2">4 天后重置</string>
+    <string name="widget_preview_usage_wk_short">本周  剩 18%</string>
+    <string name="widget_preview_usage_5h_p2">5 小时  剩 34%</string>
+    <string name="widget_preview_usage_wk_p2">本周  剩 71%</string>
+    <string name="widget_preview_usage_wk_short_p2">本周  剩 71%</string>
+    <string name="widget_v2_steer_hint">运行中可随时转向…</string>
+    <string name="widget_v2_open_chat">打开对话</string>
+    <!-- The two widgets (Conversations 4x2, Status 2x2). -->
+    <string name="widget_conversations_title">对话</string>
+    <string name="widget_reply">回复</string>
+    <string name="widget_conversations_empty">还没有对话</string>
+    <string name="widget_conversations_empty_in">%1$s 中还没有对话</string>
+    <string name="widget_status_title">状态</string>
+    <string name="widget_status_server">服务器</string>
+    <string name="widget_status_online">在线</string>
+    <string name="widget_status_offline">离线</string>
+    <string name="widget_status_offline_for">已离线 %1$s</string>
+    <string name="widget_status_connecting">连接中</string>
+    <string name="widget_status_linux">Linux</string>
+    <string name="widget_status_running">运行中</string>
+    <string name="widget_status_stopped">已停止</string>
+    <string name="widget_status_tasks">任务</string>
+    <string name="widget_status_tasks_none">无</string>
+    <string name="widget_status_tasks_running">%1$d 个运行中</string>
+    <string name="widget_status_span_day">%1$d 天</string>
+    <string name="widget_status_plan">%1$s · %2$s</string>
+    <string name="widget_status_left">剩 %1$d%%</string>
+    <string name="widget_status_replace">请替换此小组件：添加「对话」或「状态」</string>
+    <!-- Spoken names of the widget's answer buttons; they say which conversation they act on. -->
+    <string name="widget_allow_for">允许一次：%1$s</string>
+    <string name="widget_reply_for">回复 %1$s</string>
+    <string name="widget_step_for">%1$s：%2$s</string>
+</resources>

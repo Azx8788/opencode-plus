@@ -2,6 +2,20 @@
 
 This project is in public alpha. Only the newest preview is supported.
 
+## 0.3.18+26 — 2026-11-15
+
+  * **Consolidate all development branches without dropping their history.**
+    Keep native AI Team startup and safe credential writes, Claude gateway
+    configuration and model selection, current agent pins, SAF directory
+    grants and cursor projections, Chinese native copy and release tooling.
+  * **The manifest test uses XML 7's current namespace API.** `namespaceUri`
+    replaces the deprecated `namespace` argument that stopped static analysis.
+  * **CI checks all native regression tests before building the release APK.**
+    Storage, guest-file writes, server-password writes and engine traces are
+    tested together, while Flutter analysis and tests remain mandatory.
+  * **Version tooling retains both branches' features.** Strict pubspec parsing,
+    build/patch/minor/major bumps, `--set`, `--dry-run` and changelog syncing.
+
 ## 0.3.17+25 — 2026-11-14
 
 Selective ports from upstream 2.1.1–2.1.5, keeping this tree's Termux phone
@@ -73,6 +87,54 @@ which provider served it.
     Android 12 regression tests cover the root flags and framework tree-URI
     queries, reads and writes. The package id and storage permissions are unchanged.
 
+## 0.3.14+19 — 2026-11-15
+
+A Chinese interface had English notifications, the documented way to build
+and to raise the version did not exist, and the product still called itself
+OpenCode Mini on the launcher and in its own texts.
+
+  * **A Chinese phone now gets Chinese notifications.** Every notification,
+    widget, Quick Settings tile and launcher shortcut draws its words from
+    `res/values*/strings.xml`, not from the Flutter catalogues, and the
+    native side shipped English and Arabic while the app shipped English and
+    Chinese. The approval sheet in the shade — "Allow once", "Reject", "Run
+    …?" — was English on a Chinese phone. `values-zh` now carries all 148
+    native strings, `NativeStrings` selects only languages that ship copy,
+    and a test fails if the two lists or the format arguments ever drift.
+  * **The version moves the way README says it does.** `tool/bump_version.dart`
+    (and `tool/build_apk.sh`) were described in README but never committed;
+    `OC_VERSION_CODE`, which README says CI sets, was read by nothing. The
+    scripts exist, Gradle honours the variable, CI sets it from the run
+    number, and a test holds that contract — two CI builds of one commit can
+    once again install over each other.
+  * **The name matches the product.** The launcher label, the task switcher,
+    About, crash reports, MCP authorization pages inside the Linux and the
+    generated `AGENTS.md` say OpenCode Plus. The application id stays
+    `com.azx8788.opencode.mini`, so this upgrades in place. Start-a-run
+    markers written by earlier builds are still recognised, so a rename does
+    not orphan pending planning requests.
+  * **CI runs the whole test suite**, not a hand-picked list that had stopped
+    covering what was added after it was written.
+  * **MT Manager can add the app's private storage.** Restore the SAF fixes
+    from `fix/saf-storage-tree-access` and `fix/storage-provider-projection`,
+    which were absent from the quality-audit snapshot. The root advertises
+    directory grants, validates descendants, and preserves requested cursor
+    columns. Both the picker root and its folder use the app's current label.
+    Manifest discovery and Android tree-URI regression tests guard the fix;
+    the native suite must pass before CI builds the downloadable APK.
+  * **The widgets and scheduled prompts speak Chinese too.** The first pass
+    translated `strings.xml` (148 names) and stopped there, while
+    `widget_v2_strings.xml` (63), `scheduled_prompts.xml` (7) and the two
+    one-line files stayed English, so a Chinese home screen still showed
+    "Allow once" and "Needs you". All 220 native names now have a
+    `values-zh/` counterpart, and the pairing test walks every copy file in
+    the folder instead of just `strings.xml`.
+  * **`tool/build_apk.sh --patch` no longer fails after bumping.** It passed
+    its own flags on to `flutter build`, which rejects `--patch`; the version
+    had already moved by then. A test now holds that line still.
+  * **A long-form guide to the repository ships with it**:
+    `docs/PROJECT_OVERVIEW.md`.
+
 ## 0.3.13+18 — 2026-11-13
 
 Choosing a provider for Claude Code wrote its address and key into the agent's
@@ -93,6 +155,7 @@ the same question, so the sheet could send a person back to Sign in forever.
   * **A row that lags one scan behind the file still lets the agent be
     chosen**, and the sheet says "Checking sign-in…" whenever that read is
     running instead of offering Sign in over an answer still being read.
+
 ## 0.3.13+21 — 2026-11-13
 
 A saved gateway is a sign-in on every screen, and a gateway's own rules about

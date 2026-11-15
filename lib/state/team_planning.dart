@@ -64,6 +64,19 @@ const teamPlanningMarker = '[OpenCode Plus · Start a run]';
 /// earlier still carry it, and a restart must keep recognising them.
 const legacyTeamPlanningMarker = '[OpenCode Mini · Start a run]';
 
+/// Markers written by builds that still called the app OpenCode Mini.
+/// Requests are persisted as message records and parsed again after a
+/// restart, so the rename must not orphan the ones already on the phone.
+const _legacyTeamPlanningMarkers = {legacyTeamPlanningMarker};
+
+/// Whether [line] opens a Start-a-run request, in this build or an earlier
+/// one.
+bool isTeamPlanningMarker(String line) {
+  final trimmed = line.trim();
+  return trimmed == teamPlanningMarker ||
+      _legacyTeamPlanningMarkers.contains(trimmed);
+}
+
 /// Characters of the objective a run title must carry to count as the
 /// run the request produced.
 const teamPlanningTitleMatch = 40;
@@ -145,8 +158,7 @@ class TeamPlanningRequest {
     final text = record.request.text;
     if (text == null) return null;
     final lines = text.split('\n');
-    final first = lines.isEmpty ? '' : lines.first.trim();
-    if (first != teamPlanningMarker && first != legacyTeamPlanningMarker) {
+    if (lines.isEmpty || !isTeamPlanningMarker(lines.first)) {
       return null;
     }
     String? objective;

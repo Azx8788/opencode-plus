@@ -2,7 +2,7 @@ name: Android arm64 build
 
 on:
   push:
-    branches: [main, master, fix/storage-provider-projection]
+    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -15,11 +15,22 @@ concurrency:
 
 jobs:
   build:
+    needs: storage-provider
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+
+      # README "Versioning": CI never commits a bump back to the branch, so it
+      # raises versionCode here instead. Android compares versionCode before
+      # anything else — without this, every run of the same commit shipped the
+      # same code and the newer APK would not install over the older one. The
+      # 100000 base keeps CI builds above local ones, because Releases is the
+      # channel people install from. Computed in the shell because a workflow
+      # `env:` value only accepts a single expression, not arithmetic.
+      - name: Raise the versionCode
+        run: echo "OC_VERSION_CODE=$((100000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
 
       # The version lives in pubspec.yaml. Everything downstream (artifact
       # name, APK name, tag check) derives from this one place so a build can
@@ -65,10 +76,10 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Flutter 3.47.1
+      - name: Set up Flutter 3.47.9
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.47.1"
+          flutter-version: "3.47.9"
           channel: stable
           cache: true
 
@@ -104,19 +115,11 @@ jobs:
         run: flutter analyze
 
       - name: Smoke and sanity tests
-        run: |
-          flutter test \
-            test/mini_agents_test.dart \
-            test/mini_package_test.dart \
-            test/mini_l10n_test.dart \
-            test/token_count_format_test.dart \
-            test/kit_field_secret_mask_test.dart \
-            test/provider_server_test.dart \
-            test/provider_parameter_test.dart \
-            test/model_switch_fit_test.dart \
-            test/mini_l10n_catalogue_test.dart \
-            test/agent_endpoint_test.dart \
-            test/app_log_test.dart
+        # The whole suite: it takes well under a minute and the hand-picked
+        # list this replaced silently skipped every test added after it was
+        # written (the native-string pairing and the release-tooling checks
+        # among them).
+        run: flutter test
 
       - name: Build arm64 release APK
         run: flutter build apk --release --target-platform android-arm64
@@ -178,10 +181,10 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Flutter 3.47.1
+      - name: Set up Flutter 3.47.9
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.47.1"
+          flutter-version: "3.47.9"
           channel: stable
           cache: true
 
@@ -192,21 +195,22 @@ jobs:
       - name: Resolve packages
         run: flutter pub get
 
-      # The Gradle wrapper is not committed; the Flutter tool writes it.
-      - name: Storage provider regression tests
+      - name: Storage provider manifest test
+        run: flutter test test/android_manifest_provider_test.dart
+
+      # Flutter generates the untracked Gradle wrapper and local.properties.
+      - name: Prepare Android unit tests
+        run: flutter build apk --debug --target-platform android-arm64 --no-pub
+
+      - name: Native storage, engine and credential regression tests
         working-directory: android
         run: |
-          flutter build apk --debug --target-platform android-arm64 --no-pub
-          # AGP names the unit test task after the variant it tests, and the
-          # name has changed between versions. Ask the build which task exists
-          # instead of guessing one and failing with "task not found".
+          set -euo pipefail
           task=$(./gradlew --no-daemon -q :app:tasks --all --console=plain \
-            | sed -n 's/^\(test[A-Za-z]*UnitTest\) .*/\1/p' | sort -u | head -1)
+            | sed -n 's/^\(testDebug[A-Za-z]*UnitTest\) .*/\1/p' | sort -u | sed -n '1p')
           if [ -z "$task" ]; then
-            echo "::error::No AGP unit test task was found in :app"
-            ./gradlew --no-daemon -q :app:tasks --all --console=plain | grep -i unittest || true
+            echo "::error::No debug unit test task was found in :app"
             exit 1
           fi
-          echo "Running :app:$task"
           ./gradlew --no-daemon ":app:$task" \
-            --tests 'com.azx8788.opencode.mini.InternalStorageProviderTest'
+            --tests 'com.azx8788.opencode.mini.*'

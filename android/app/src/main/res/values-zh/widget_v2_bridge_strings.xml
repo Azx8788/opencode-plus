@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Chinese copy of values/widget_v2_bridge_strings.xml (widget overlay toast). -->
+<resources>
+    <string name="widget_overlay_unavailable">小组件控制尚未就绪</string>
+</resources>

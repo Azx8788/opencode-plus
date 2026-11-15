@@ -47,6 +47,10 @@ class AppLog {
   /// is on. Lets the person read the log from any file manager without
   /// `adb pull` or the share sheet. The private log in the app support
   /// directory is always written; this is an extra sink, not a replacement.
+  ///
+  /// Older builds used `OpenCodeMini/logs`. Those files are not migrated:
+  /// they stay where they were and remain readable from a file manager, but
+  /// the app only reports and appends to the current folder.
   static const String _publicLogDir = '$_sharedRoot/OpenCodePlus/logs';
 
   static Directory? _directory;

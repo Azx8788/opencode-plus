@@ -33,13 +33,14 @@ of losing its servers and its Ubuntu.
 ## Versioning
 
 `version:` in `pubspec.yaml` is the only version the APK carries
-(`0.3.14+18` is name 0.3.14, code 18). **A plain `flutter build apk` does not
+(`0.3.18+26` is name 0.3.18, code 26). **A plain `flutter build apk` does not
 move it**, so two builds of the same tree install as the same version and the
-phone has no reason to treat the second one as an upgrade. Use one of these:
+phone has no reason to treat the second one as an upgrade. Use one of these
+(the numbers below are the current version and what each command makes of it):
 
 ```sh
-dart run tool/bump_version.dart              # 0.3.14+18 -> 0.3.14+19
-dart run tool/bump_version.dart --patch      # 0.3.14+18 -> 0.3.15+19
+dart run tool/bump_version.dart              # 0.3.18+26 -> 0.3.18+27
+dart run tool/bump_version.dart --patch      # 0.3.18+26 -> 0.3.19+27
 tool/build_apk.sh                            # bump, then build a release APK
 ```
 
@@ -47,11 +48,23 @@ The build number always increases, including on `--patch`, `--minor` and
 `--major`: Android compares `versionCode` first, and a version that calls
 itself newer while carrying a smaller code installs nothing.
 
-CI does not commit a bump back to the branch. It sets `OC_VERSION_CODE` from
-`GITHUB_RUN_NUMBER` (`base + run number`), which the Gradle build prefers over
-the pubspec value, so every CI run is a higher code than the last. A local
+CI does not commit a bump back to the branch. It sets `OC_VERSION_CODE` to
+`100000 + GITHUB_RUN_NUMBER`, which the Gradle build prefers over the pubspec
+value, so every CI run is a higher code than the last — and higher than a
+local bump, because Releases is the channel people install from. A local
 build that needs a new code must run the bump itself — or use
 `tool/build_apk.sh`.
+
+## Architecture and internals
+
+[docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) is the long-form guide: every
+`lib/` directory and what it owns, the 169 Kotlin files grouped by job, the Rust
+engine's modules and tests, the full test and dependency lists, common change
+recipes and a troubleshooting table. Read it before changing anything that
+crosses the Flutter/native boundary.
+
+[docs/BRANCH_INTEGRATION.md](docs/BRANCH_INTEGRATION.md) records the consolidated
+branches, conflict decisions and the validation gate before branch cleanup.
 
 ## Differences from upstream
 
@@ -110,13 +123,20 @@ endorsed by, or affiliated with the official OpenCode team, nor with Anthropic.
 
 OpenCode Plus 是 OpenCode Mobile 的精简衍生版，只面向 Android 64 位
 （arm64-v8a）设备：保留手机内置 Linux、Agent 会话、对话/终端/审批/diff/预览
-等全部功能，去掉 iOS 与桌面工程、多语言（仅中英）、Shorebird 热更新、文档站
-与测试工程。0.3.13 及以前叫 OpenCode Mini；现在应用名、桌面图标名与文档统一为
+等全部功能；通知栏、桌面小组件与快捷开关的原生文案同样跟随中英双语。去掉
+iOS 与桌面工程、多语言（仅中英）、Shorebird 热更新、文档站与测试工程。
+
+想详细了解仓库，读 [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md)：
+逐目录职责、Kotlin 169 个文件的分组、Rust 引擎模块与测试、依赖与测试清单、
+常见改动步骤和故障排查表。
+
+0.3.13 及以前叫 OpenCode Mini；现在应用名、桌面图标名与文档统一为
 OpenCode Plus，包名仍为 `com.azx8788.opencode.mini`，因此可以直接覆盖升级，
 不会丢服务器配置和内置 Ubuntu。
 
 版本号只有 `pubspec.yaml` 里的一处。直接 `flutter build apk` **不会**自动加
 版本号，构建前请运行 `dart run tool/bump_version.dart`（或直接用
-`tool/build_apk.sh`）；CI 用 `GITHUB_RUN_NUMBER` 注入 `versionCode`，保证每次
-产出的包都能覆盖上一次。许可证仍为 MIT，原始版权与第三方声明完整保留（见
-`LICENSE`、`NOTICE`、`THIRD_PARTY_NOTICES.md` 和 `UPSTREAM.md`）。
+`tool/build_apk.sh`）；CI 把 `versionCode` 设为 `100000 + GITHUB_RUN_NUMBER`，
+保证每次产出的包都能覆盖上一次，且高于本地构建的包。许可证仍为 MIT，原始版权与
+第三方声明完整保留（见 `LICENSE`、`NOTICE`、`THIRD_PARTY_NOTICES.md` 和
+`UPSTREAM.md`）。

@@ -29,18 +29,14 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowContentResolver
 
-// The Storage Access Framework root the app offers to the system file picker.
+// Ported from fix/storage-provider-projection @ c992b4e, whose Android 12
+// regression job passed. Drive framework entry points, not only provider
+// methods: DocumentsProvider.enforceTree() calls isChildDocument(), so a root
+// that only declares FLAG_SUPPORTS_IS_CHILD still fails here.
 //
-// The tests drive the framework entry points, not only the provider methods:
-// DocumentsProvider.enforceTree() compares the granted tree id with the
-// requested document id and calls isChildDocument(), so a root that only
-// declares FLAG_SUPPORTS_IS_CHILD still fails here. sdk 31 is the Android
-// version the picker in the reported bug runs on.
-//
-// The provider is attached the way the platform attaches it: exported, with
-// URI grants, behind MANAGE_DOCUMENTS. The manifest itself is checked by the
-// Dart test (test/android_manifest_provider_test.dart), which keeps this
-// suite free of the merged resources a Robolectric manifest would need.
+// Attach the provider as Android does: exported, with URI grants, behind
+// MANAGE_DOCUMENTS. test/android_manifest_provider_test.dart checks the real
+// manifest registration separately, avoiding an application/server startup.
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [31], manifest = Config.NONE, application = Application::class)
 class InternalStorageProviderTest {
@@ -86,7 +82,7 @@ class InternalStorageProviderTest {
             )
             .get()
         // buildContentProvider attaches it but does not put it in the
-        // resolver's provider map, which DocumentFile queries through.
+        // resolver's provider map, which client queries use.
         ShadowContentResolver.registerProviderInternal(authority, provider)
     }
 
@@ -117,6 +113,30 @@ class InternalStorageProviderTest {
             assertTrue(flags and Root.FLAG_SUPPORTS_CREATE != 0)
             assertTrue(flags and Root.FLAG_LOCAL_ONLY != 0)
             assertFalse(cursor.moveToNext())
+        }
+    }
+
+    @Test
+    fun rootAndDirectoryUseTheInstalledAppLabel() {
+        val appInfo = RuntimeEnvironment.getApplication().applicationInfo
+        val previous = appInfo.nonLocalizedLabel
+        try {
+            for (label in listOf("OpenCode Plus", "OpenCode Plus Preview")) {
+                appInfo.nonLocalizedLabel = label
+                provider.queryRoots(arrayOf(Root.COLUMN_TITLE)).use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    assertEquals(label, cursor.getString(0))
+                }
+                provider.queryDocument(
+                    InternalStorageProvider.ROOT_ID,
+                    arrayOf(Document.COLUMN_DISPLAY_NAME),
+                ).use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    assertEquals(label, cursor.getString(0))
+                }
+            }
+        } finally {
+            appInfo.nonLocalizedLabel = previous
         }
     }
 
@@ -329,6 +349,8 @@ class InternalStorageProviderTest {
 
     @Test
     fun filesAndMissingDocumentsCannotGrantChildren() {
+        assertFalse(provider.isChildDocument(null, id(note)))
+        assertFalse(provider.isChildDocument(id(workspace), null))
         assertFalse(provider.isChildDocument(id(note), id(nested)))
         assertFalse(provider.isChildDocument(id(workspace), id(File(workspace, "missing"))))
         assertFalse(provider.isChildDocument(id(File(testRoot, "missing")), id(note)))
