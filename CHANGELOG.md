@@ -30,6 +30,13 @@ OpenCode Mini on the launcher and in its own texts.
     not orphan pending planning requests.
   * **CI runs the whole test suite**, not a hand-picked list that had stopped
     covering what was added after it was written.
+  * **MT Manager can add the app's private storage.** Restore the SAF fixes
+    from `fix/saf-storage-tree-access` and `fix/storage-provider-projection`,
+    which were absent from the quality-audit snapshot. The root advertises
+    directory grants, validates descendants, and preserves requested cursor
+    columns. Both the picker root and its folder use the app's current label.
+    Manifest discovery and Android tree-URI regression tests guard the fix;
+    the native suite must pass before CI builds the downloadable APK.
   * **The widgets and scheduled prompts speak Chinese too.** The first pass
     translated `strings.xml` (148 names) and stopped there, while
     `widget_v2_strings.xml` (63), `scheduled_prompts.xml` (7) and the two

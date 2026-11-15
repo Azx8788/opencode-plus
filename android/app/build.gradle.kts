@@ -101,6 +101,12 @@ android {
             if (ocPreview) proguardFiles("phone-engine-instrumentation.pro")
         }
     }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 kotlin {

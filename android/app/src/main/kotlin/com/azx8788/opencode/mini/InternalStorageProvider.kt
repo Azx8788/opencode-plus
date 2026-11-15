@@ -13,6 +13,7 @@ import android.system.OsConstants
 import android.webkit.MimeTypeMap
 import java.io.File
 import java.io.FileNotFoundException
+import java.io.IOException
 
 /**
  * The Storage Access Framework root the app offers to the system file picker.
@@ -31,26 +32,64 @@ import java.io.FileNotFoundException
  * android:permission="android.permission.MANAGE_DOCUMENTS": only the system
  * documents UI can query it directly, and a file manager reaches it through
  * the standard picker, which is the system asking the person to grant access.
+ *
+ * Query cursors preserve the requested columns and their order. DocumentFile
+ * queries metadata one column at a time and reads column zero; returning the
+ * default projection instead makes ids look like MIME types and file sizes.
  */
 class InternalStorageProvider : DocumentsProvider() {
 
     override fun onCreate(): Boolean = true
 
     override fun queryRoots(projection: Array<out String>?): Cursor {
-        val cursor = MatrixCursor(DEFAULT_ROOT_PROJECTION)
+        val cursor = MatrixCursor(projection ?: DEFAULT_ROOT_PROJECTION)
+        val requested = cursor.columnNames.toSet()
         val row = cursor.newRow()
-        row.add(Root.COLUMN_ROOT_ID, ROOT_ID)
-        row.add(Root.COLUMN_DOCUMENT_ID, ROOT_ID)
-        row.add(Root.COLUMN_TITLE, "OpenCode Mini")
-        row.add(Root.COLUMN_SUMMARY, "The app's private files")
-        row.add(Root.COLUMN_FLAGS, Root.FLAG_LOCAL_ONLY or Root.FLAG_SUPPORTS_CREATE)
-        row.add(Root.COLUMN_ICON, R.mipmap.ic_launcher)
+        put(row, requested, Root.COLUMN_ROOT_ID, ROOT_ID)
+        put(row, requested, Root.COLUMN_DOCUMENT_ID, ROOT_ID)
+        put(row, requested, Root.COLUMN_TITLE, rootTitle())
+        put(row, requested, Root.COLUMN_SUMMARY, "The app's private files")
+        // Directory pickers hide roots without parent/child checks. This flag
+        // must be paired with isChildDocument() for granted tree URIs to work.
+        put(
+            row,
+            requested,
+            Root.COLUMN_FLAGS,
+            Root.FLAG_LOCAL_ONLY or Root.FLAG_SUPPORTS_CREATE or Root.FLAG_SUPPORTS_IS_CHILD,
+        )
+        put(row, requested, Root.COLUMN_ICON, R.mipmap.ic_launcher)
         return cursor
     }
 
+    override fun isChildDocument(parentDocumentId: String?, documentId: String?): Boolean {
+        val parent = resolveOrNull(parentDocumentId) ?: return false
+        val child = resolveOrNull(documentId) ?: return false
+        // Compare real paths, not the ids: a nested tree grant must not reach a
+        // sibling through '..' or a symlink, and a sibling whose name merely
+        // starts with the granted directory's name is not inside it either.
+        return parent.isDirectory && child.exists() &&
+            child.path.startsWith(parent.path + File.separator)
+    }
+
+    private fun resolveOrNull(documentId: String?): File? {
+        if (documentId == null) return null
+        return try {
+            resolve(documentId)
+        } catch (_: IOException) {
+            // A path that leaves filesDir, or one the file system refuses.
+            null
+        } catch (_: SecurityException) {
+            // Tree discovery must fail closed if the filesystem denies access.
+            null
+        } catch (_: IllegalArgumentException) {
+            // A document id the platform cannot even spell as a path.
+            null
+        }
+    }
+
     override fun queryDocument(documentId: String, projection: Array<out String>?): Cursor {
-        val cursor = MatrixCursor(DEFAULT_DOCUMENT_PROJECTION)
-        includeFile(cursor, documentId, resolve(documentId))
+        val cursor = MatrixCursor(projection ?: DEFAULT_DOCUMENT_PROJECTION)
+        includeFile(cursor, cursor.columnNames.toSet(), documentId, resolve(documentId))
         return cursor
     }
 
@@ -59,7 +98,8 @@ class InternalStorageProvider : DocumentsProvider() {
         projection: Array<out String>?,
         sortOrder: String?,
     ): Cursor {
-        val cursor = MatrixCursor(DEFAULT_DOCUMENT_PROJECTION)
+        val cursor = MatrixCursor(projection ?: DEFAULT_DOCUMENT_PROJECTION)
+        val requested = cursor.columnNames.toSet()
         val parent = resolve(parentDocumentId)
         val children = parent.listFiles()
         if (children != null) {
@@ -68,7 +108,7 @@ class InternalStorageProvider : DocumentsProvider() {
                 // name, so it cannot climb out; symlink targets are checked
                 // when a document is opened or created.
                 val childId = childIdOf(parentDocumentId, child.name)
-                includeFile(cursor, childId, child)
+                includeFile(cursor, requested, childId, child)
             }
         }
         return cursor
@@ -119,6 +159,11 @@ class InternalStorageProvider : DocumentsProvider() {
 
     private fun root(): File = requireNotNull(context).filesDir.canonicalFile
 
+    private fun rootTitle(): String {
+        val ctx = requireNotNull(context)
+        return ctx.applicationInfo.loadLabel(ctx.packageManager).toString()
+    }
+
     private fun resolve(documentId: String): File {
         val base = root()
         if (documentId == ROOT_ID) return base
@@ -138,21 +183,43 @@ class InternalStorageProvider : DocumentsProvider() {
         return if (cut <= 0) ROOT_ID else documentId.substring(0, cut)
     }
 
-    private fun includeFile(cursor: MatrixCursor, documentId: String, file: File) {
+    // A row may only carry the columns the cursor was built with; unknown
+    // requested columns stay null.
+    private fun put(
+        row: MatrixCursor.RowBuilder,
+        requested: Set<String>,
+        column: String,
+        value: Any?,
+    ) {
+        if (column in requested) row.add(column, value)
+    }
+
+    private fun includeFile(
+        cursor: MatrixCursor,
+        requested: Set<String>,
+        documentId: String,
+        file: File,
+    ) {
         val isDir = file.isDirectory
         val row = cursor.newRow()
-        row.add(Document.COLUMN_DOCUMENT_ID, documentId)
-        row.add(
+        put(row, requested, Document.COLUMN_DOCUMENT_ID, documentId)
+        put(
+            row,
+            requested,
             Document.COLUMN_DISPLAY_NAME,
-            if (documentId == ROOT_ID) "OpenCode Mini" else file.name,
+            if (documentId == ROOT_ID) rootTitle() else file.name,
         )
-        row.add(Document.COLUMN_SIZE, if (isDir) 0L else file.length())
-        row.add(
+        put(row, requested, Document.COLUMN_SIZE, if (isDir) 0L else file.length())
+        put(
+            row,
+            requested,
             Document.COLUMN_MIME_TYPE,
             if (isDir) Document.MIME_TYPE_DIR else mimeTypeOf(file),
         )
-        row.add(Document.COLUMN_LAST_MODIFIED, file.lastModified())
-        row.add(
+        put(row, requested, Document.COLUMN_LAST_MODIFIED, file.lastModified())
+        put(
+            row,
+            requested,
             Document.COLUMN_FLAGS,
             when {
                 // The root can gain children but cannot itself be removed or
