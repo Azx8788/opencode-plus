@@ -14,10 +14,104 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    needs: storage-provider
+  # The three verification jobs run side by side: none needs another's output,
+  # and serialising them (the native tests used to gate the APK build) made a
+  # run wait ~9 minutes for work that can happen at the same time. A tag's
+  # release is still refused unless every one of them passed (see `release`).
+  native:
+    # The Storage Access Framework root is the app's own directory, and the
+    # rules that decide whether a file manager may enter it are the platform's,
+    # not this app's: the picker hides a root without FLAG_SUPPORTS_IS_CHILD,
+    # and DocumentsProvider.enforceTree() refuses a tree URI whose document is
+    # not a descendant of the granted one. Those checks are exercised here on
+    # Android 12, the version the picker in the reported bug runs on.
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter 3.47.9
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.9"
+          channel: stable
+          cache: true
+
+      # Dependency downloads, compiled Kotlin and the wrapper survive between
+      # runs; nothing in this job depends on its own checkout surviving.
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Accept Android SDK licenses
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - name: Resolve packages
+        run: flutter pub get
+
+      - name: Storage provider manifest test
+        run: flutter test test/android_manifest_provider_test.dart
+
+      # Flutter generates the untracked Gradle wrapper and local.properties.
+      # `--config-only` writes them without assembling, dexing or packaging a
+      # debug APK: the release APK step proves the app assembles, and the test
+      # task compiles what it needs on its own. The missing debug build was
+      # ~6 minutes of the old run's critical path.
+      - name: Prepare Android unit tests
+        run: flutter build apk --debug --target-platform android-arm64 --no-pub --config-only
+
+      - name: Native storage, engine and credential regression tests
+        working-directory: android
+        run: |
+          set -euo pipefail
+          task=$(./gradlew -q :app:tasks --all --console=plain \
+            | sed -n 's/^\(testDebug[A-Za-z]*UnitTest\) .*/\1/p' | sort -u | sed -n '1p')
+          if [ -z "$task" ]; then
+            echo "::error::No debug unit test task was found in :app"
+            exit 1
+          fi
+          ./gradlew ":app:$task" --tests 'com.azx8788.opencode.mini.*'
+
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter 3.47.9
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.9"
+          channel: stable
+          cache: true
+
+      - name: Resolve packages
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Smoke and sanity tests
+        # The whole suite: it takes well under a minute and the hand-picked
+        # list this replaced silently skipped every test added after it was
+        # written (the native-string pairing and the release-tooling checks
+        # among them).
+        run: flutter test
+
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.app.outputs.version }}
+      artifact: ${{ steps.app.outputs.artifact }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -58,8 +152,8 @@ jobs:
           echo "Building ${ARTIFACT} (app version ${VERSION})"
 
       # A tag is a promise about which build is being published. Refuse the
-      # release when the tag and pubspec disagree, before spending 20 minutes
-      # on a build that would ship under the wrong number.
+      # release when the tag and pubspec disagree, before spending any time on
+      # a build that would ship under the wrong number.
       - name: Check the tag matches pubspec
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
@@ -82,6 +176,9 @@ jobs:
           flutter-version: "3.47.9"
           channel: stable
           cache: true
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Accept Android SDK licenses
         run: |
@@ -111,18 +208,8 @@ jobs:
       - name: Resolve packages
         run: flutter pub get
 
-      - name: Analyze
-        run: flutter analyze
-
-      - name: Smoke and sanity tests
-        # The whole suite: it takes well under a minute and the hand-picked
-        # list this replaced silently skipped every test added after it was
-        # written (the native-string pairing and the release-tooling checks
-        # among them).
-        run: flutter test
-
       - name: Build arm64 release APK
-        run: flutter build apk --release --target-platform android-arm64
+        run: flutter build apk --release --target-platform android-arm64 --no-pub
 
       - name: Verify and package the APK
         run: |
@@ -149,11 +236,25 @@ jobs:
           name: ${{ steps.app.outputs.artifact }}
           path: dist/
 
+  # A published build is still gated on every check: the three jobs above run
+  # in parallel for speed, and this one only runs for a tag, after all of them
+  # passed. A red test therefore never reaches the Releases page.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [native, verify, package]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download the packaged APK
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.package.outputs.artifact }}
+          path: dist/
+
       - name: Attach the APK to a release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          name: OpenCode Plus ${{ steps.app.outputs.version }}
+          name: OpenCode Plus ${{ needs.package.outputs.version }}
           body: |
             Built from ${{ github.sha }}.
             Verify the download against `SHA256SUMS`.
@@ -161,56 +262,3 @@ jobs:
             dist/*.apk
             dist/SHA256SUMS
           draft: true
-
-  # The Storage Access Framework root is the app's own directory, and the
-  # rules that decide whether a file manager may enter it are the platform's,
-  # not this app's: the picker hides a root without FLAG_SUPPORTS_IS_CHILD,
-  # and DocumentsProvider.enforceTree() refuses a tree URI whose document is
-  # not a descendant of the granted one. Those checks are exercised here on
-  # Android 12, the version the picker in the reported bug runs on.
-  storage-provider:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - name: Check out source
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Set up Flutter 3.47.9
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: "3.47.9"
-          channel: stable
-          cache: true
-
-      - name: Accept Android SDK licenses
-        run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-
-      - name: Resolve packages
-        run: flutter pub get
-
-      - name: Storage provider manifest test
-        run: flutter test test/android_manifest_provider_test.dart
-
-      # Flutter generates the untracked Gradle wrapper and local.properties.
-      - name: Prepare Android unit tests
-        run: flutter build apk --debug --target-platform android-arm64 --no-pub
-
-      - name: Native storage, engine and credential regression tests
-        working-directory: android
-        run: |
-          set -euo pipefail
-          task=$(./gradlew --no-daemon -q :app:tasks --all --console=plain \
-            | sed -n 's/^\(testDebug[A-Za-z]*UnitTest\) .*/\1/p' | sort -u | sed -n '1p')
-          if [ -z "$task" ]; then
-            echo "::error::No debug unit test task was found in :app"
-            exit 1
-          fi
-          ./gradlew --no-daemon ":app:$task" \
-            --tests 'com.azx8788.opencode.mini.*'
