@@ -17,17 +17,19 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    env:
-      # README "Versioning": CI never commits a bump back to the branch, so
-      # it raises versionCode here instead. Android compares versionCode
-      # before anything else — without this, every run of the same commit
-      # shipped the same code and the newer APK would not install over the
-      # older one. The 100000 base keeps CI builds above local ones, because
-      # the Releases page is the channel people install from.
-      OC_VERSION_CODE: ${{ github.run_number + 100000 }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+
+      # README "Versioning": CI never commits a bump back to the branch, so it
+      # raises versionCode here instead. Android compares versionCode before
+      # anything else — without this, every run of the same commit shipped the
+      # same code and the newer APK would not install over the older one. The
+      # 100000 base keeps CI builds above local ones, because Releases is the
+      # channel people install from. Computed in the shell because a workflow
+      # `env:` value only accepts a single expression, not arithmetic.
+      - name: Raise the versionCode
+        run: echo "OC_VERSION_CODE=$((100000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
 
       # The version lives in pubspec.yaml. Everything downstream (artifact
       # name, APK name, tag check) derives from this one place so a build can
