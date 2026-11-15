@@ -24,7 +24,7 @@ jobs:
       # shipped the same code and the newer APK would not install over the
       # older one. The 100000 base keeps CI builds above local ones, because
       # the Releases page is the channel people install from.
-      OC_VERSION_CODE: ${{ 100000 + github.run_number }}
+      OC_VERSION_CODE: ${{ github.run_number + 100000 }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
