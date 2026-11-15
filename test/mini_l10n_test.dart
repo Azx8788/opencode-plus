@@ -1,4 +1,4 @@
-// Mini smoke tests for the two shipped locales.
+// Package smoke tests for the two shipped locales.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:opencode_mobile/l10n/app_localizations.dart';
@@ -7,23 +7,15 @@ import 'package:opencode_mobile/l10n/app_localizations_zh.dart';
 
 void main() {
   test('supported locales are English and Chinese', () {
-    expect(
-          AppLocalizations.delegate.isSupported(const Locale('ar')),
-          isFalse,
-        );
-        expect(
-          AppLocalizations.delegate.isSupported(const Locale('zh')),
-          isTrue,
-        );
-    expect(
-      AppLocalizations.delegate.isSupported(const Locale('zh')),
-      isTrue,
-    );
+    expect(AppLocalizations.delegate.isSupported(const Locale('en')), isTrue);
+    expect(AppLocalizations.delegate.isSupported(const Locale('zh')), isTrue);
+    expect(AppLocalizations.delegate.isSupported(const Locale('ar')), isFalse);
+    expect(AppLocalizations.delegate.isSupported(const Locale('es')), isFalse);
   });
 
-  test('both locales carry the Mini product name', () {
-    expect(AppLocalizationsEn().appTitle, 'OpenCode Mini');
-    expect(AppLocalizationsZh().appTitle, 'OpenCode Mini');
+  test('both locales carry the Plus product name', () {
+    expect(AppLocalizationsEn().appTitle, 'OpenCode Plus');
+    expect(AppLocalizationsZh().appTitle, 'OpenCode Plus');
   });
 
   testWidgets('localizations wire into a MaterialApp', (tester) async {
@@ -39,7 +31,7 @@ void main() {
           ),
         ),
       );
-      expect(find.text('OpenCode Mini'), findsOneWidget);
+      expect(find.text('OpenCode Plus'), findsOneWidget);
     }
   });
 }

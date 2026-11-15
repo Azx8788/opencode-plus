@@ -85,11 +85,11 @@ void main() {
     }
   });
 
-  test('application id and label are the Mini identity', () {
+  test('application id is the legacy Mini id and the label is Plus', () {
     final gradle = File('android/app/build.gradle.kts').readAsStringSync();
     expect(gradle, contains('applicationId = "com.azx8788.opencode.mini"'));
     expect(gradle, contains('namespace = "com.azx8788.opencode.mini"'));
-    expect(gradle, contains('"OpenCode Mini"'));
+    expect(gradle, contains('"OpenCode Plus"'));
   });
 
   // The version used to be asserted as a constant here, which failed on the

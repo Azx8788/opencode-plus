@@ -2,6 +2,35 @@
 
 This project is in public alpha. Only the newest preview is supported.
 
+## 0.3.14+19 — 2026-11-15
+
+A Chinese interface had English notifications, the documented way to build
+and to raise the version did not exist, and the product still called itself
+OpenCode Mini on the launcher and in its own texts.
+
+  * **A Chinese phone now gets Chinese notifications.** Every notification,
+    widget, Quick Settings tile and launcher shortcut draws its words from
+    `res/values*/strings.xml`, not from the Flutter catalogues, and the
+    native side shipped English and Arabic while the app shipped English and
+    Chinese. The approval sheet in the shade — "Allow once", "Reject", "Run
+    …?" — was English on a Chinese phone. `values-zh` now carries all 148
+    native strings, `NativeStrings` selects only languages that ship copy,
+    and a test fails if the two lists or the format arguments ever drift.
+  * **The version moves the way README says it does.** `tool/bump_version.dart`
+    (and `tool/build_apk.sh`) were described in README but never committed;
+    `OC_VERSION_CODE`, which README says CI sets, was read by nothing. The
+    scripts exist, Gradle honours the variable, CI sets it from the run
+    number, and a test holds that contract — two CI builds of one commit can
+    once again install over each other.
+  * **The name matches the product.** The launcher label, the task switcher,
+    About, crash reports, MCP authorization pages inside the Linux and the
+    generated `AGENTS.md` say OpenCode Plus. The application id stays
+    `com.azx8788.opencode.mini`, so this upgrades in place. Start-a-run
+    markers written by earlier builds are still recognised, so a rename does
+    not orphan pending planning requests.
+  * **CI runs the whole test suite**, not a hand-picked list that had stopped
+    covering what was added after it was written.
+
 ## 0.3.13+18 — 2026-11-13
 
 Choosing a provider for Claude Code wrote its address and key into the agent's

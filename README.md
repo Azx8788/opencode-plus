@@ -33,13 +33,14 @@ of losing its servers and its Ubuntu.
 ## Versioning
 
 `version:` in `pubspec.yaml` is the only version the APK carries
-(`0.3.14+18` is name 0.3.14, code 18). **A plain `flutter build apk` does not
+(`0.3.14+19` is name 0.3.14, code 19). **A plain `flutter build apk` does not
 move it**, so two builds of the same tree install as the same version and the
-phone has no reason to treat the second one as an upgrade. Use one of these:
+phone has no reason to treat the second one as an upgrade. Use one of these
+(the numbers below are the current version and what each command makes of it):
 
 ```sh
-dart run tool/bump_version.dart              # 0.3.14+18 -> 0.3.14+19
-dart run tool/bump_version.dart --patch      # 0.3.14+18 -> 0.3.15+19
+dart run tool/bump_version.dart              # 0.3.14+19 -> 0.3.14+20
+dart run tool/bump_version.dart --patch      # 0.3.14+19 -> 0.3.15+20
 tool/build_apk.sh                            # bump, then build a release APK
 ```
 
@@ -47,9 +48,10 @@ The build number always increases, including on `--patch`, `--minor` and
 `--major`: Android compares `versionCode` first, and a version that calls
 itself newer while carrying a smaller code installs nothing.
 
-CI does not commit a bump back to the branch. It sets `OC_VERSION_CODE` from
-`GITHUB_RUN_NUMBER` (`base + run number`), which the Gradle build prefers over
-the pubspec value, so every CI run is a higher code than the last. A local
+CI does not commit a bump back to the branch. It sets `OC_VERSION_CODE` to
+`100000 + GITHUB_RUN_NUMBER`, which the Gradle build prefers over the pubspec
+value, so every CI run is a higher code than the last — and higher than a
+local bump, because Releases is the channel people install from. A local
 build that needs a new code must run the bump itself — or use
 `tool/build_apk.sh`.
 

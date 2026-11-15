@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-OpenCode Mobile is an independent community project. It is not built,
+OpenCode Plus is an independent community project. It is not built,
 maintained, endorsed by, or affiliated with the official OpenCode team.
 
 This file covers everything the application ships: the fonts and native

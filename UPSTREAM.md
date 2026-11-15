@@ -1,6 +1,6 @@
 # Upstream and modifications
 
-OpenCode Mini is a derivative work of **OpenCode Mobile**, distributed under
+OpenCode Plus is a derivative work of **OpenCode Mobile**, distributed under
 the MIT License.
 
 | | |
@@ -9,7 +9,7 @@ the MIT License.
 | Upstream commit | `16170653d961e4c9232d285638bbef3b09b3a1e0` (master, 2026-10-31) |
 | Upstream version at that commit | `2.1.0+57` |
 | License | MIT, Copyright (c) 2026 Eslam Sabry (`LICENSE`) |
-| This repository | https://github.com/Azx8788/opencode-mobile-mini |
+| This repository | https://github.com/Azx8788/opencode-plus |
 
 The upstream license requires the copyright notice and permission notice to be
 included in all copies or substantial portions of the software. `LICENSE` is
@@ -42,14 +42,18 @@ Imported from upstream at the commit above:
    `--target-platform android-arm64`.
 3. **Two locales.** `ar`, `es`, `ja`, `pt`, `ru` ARB files and their generated
    Dart files removed; `AppLocalizations.supportedLocales` and lookups reduced
-   to `en` and `zh`.
+   to `en` and `zh`. The native surfaces (notifications, widgets, tiles)
+   follow the same two languages through `res/values/` and `res/values-zh/`.
+   `res/values-ar/` is still in the tree but unreachable: `NativeStrings`
+   only selects languages the app offers.
 4. **No code push.** `shorebird_code_push` dependency, `shorebird.yaml` and the
    updater implementation were removed. `ShorebirdAppUpdateService` is now a
    no-op that reports updates unavailable, so no third party can deliver code
    to this build. Release checks point at this repository, not upstream.
-5. **Branding.** Application id and namespace `com.azx8788.opencode.mini`,
-   label `OpenCode Mini`, title strings updated in `app_en.arb` / `app_zh.arb`
-   and in code paths that print the product name.
+5. **Branding.** Application id and namespace `com.azx8788.opencode.mini`
+   (kept so an existing install upgrades in place), label and title strings
+   `OpenCode Plus` in `android/app/build.gradle.kts`, `app_en.arb` /
+   `app_zh.arb` and in code paths that print the product name.
 6. **Trimmed test and QA surface.** `test/`, `androidTest/`, `androidTest`
    sources, the QA/capture/demo tooling and their Gradle hooks were removed.
    The APK hash verification against `aiteam-engine-manifest.json` is kept.

@@ -44,6 +44,16 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // CI cannot commit a bump back to the branch, so it passes a
+        // monotonically increasing code in this variable (README
+        // "Versioning"). Android compares versionCode before anything else:
+        // without an override every CI run of the same commit carries the
+        // same code and a later APK will not install over an earlier one.
+        // CI codes sit above local ones (100000 + run number) because the
+        // Releases page is the only update channel people install from.
+        (System.getenv("OC_VERSION_CODE")?.trim()?.toIntOrNull())?.let {
+            versionCode = it
+        }
         // Native acceptance checkpoint hooks are inactive in normal releases.
         buildConfigField("boolean", "BUILTIN_RUNTIME_QA", "false")
         // Mini ships one ABI: 64-bit ARM. The in-app Linux runs 64-bit Ubuntu
@@ -62,7 +72,7 @@ android {
         // Projects in Termux are shared by both, since neither owns them.
         if (ocPreview) applicationIdSuffix = ".preview"
         manifestPlaceholders["appLabel"] =
-            if (ocPreview) "OpenCode Mini Preview" else "OpenCode Mini"
+            if (ocPreview) "OpenCode Plus Preview" else "OpenCode Plus"
         manifestPlaceholders["appShortcuts"] =
             if (ocPreview) "@xml/shortcuts_preview" else "@xml/shortcuts"
     }
