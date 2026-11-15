@@ -4,11 +4,11 @@ import android.Manifest
 import android.app.Application
 import android.content.pm.ProviderInfo
 import android.net.Uri
+import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
 import android.provider.DocumentsContract.Root
-import androidx.documentfile.provider.DocumentFile
 import java.io.File
 import java.nio.file.Files
 import java.util.UUID
@@ -265,25 +265,41 @@ class InternalStorageProviderTest {
     }
 
     @Test
-    fun documentFileCanBrowseTreeAndReadFileMetadata() {
-        val context = RuntimeEnvironment.getApplication()
-        val directory = requireNotNull(DocumentFile.fromTreeUri(context, treeUri(workspace)))
-        assertTrue(directory.isDirectory)
-        assertEquals(workspace.name, directory.name)
-        assertEquals(workspace.lastModified(), directory.lastModified())
+    fun treeGrantServesDocumentFileStyleMetadata() {
+        // DocumentFile reads metadata one column at a time and always reads
+        // column zero. It calls ContentResolver.query() with the pre-Android-O
+        // five-argument form; Robolectric passes that straight to
+        // ContentProvider.query(), which DocumentsProvider rejects with
+        // UnsupportedOperationException, and DocumentFile swallows it into a
+        // null cursor. The platform instead converts the call to the Bundle
+        // form, so these queries take the transport production uses.
+        val directoryUri = documentUri(workspace, workspace)
+        assertEquals(Document.MIME_TYPE_DIR, column(directoryUri, Document.COLUMN_MIME_TYPE))
+        assertEquals(workspace.name, column(directoryUri, Document.COLUMN_DISPLAY_NAME))
+        assertEquals(
+            workspace.lastModified().toString(),
+            column(directoryUri, Document.COLUMN_LAST_MODIFIED),
+        )
 
-        val child = directory.listFiles().single()
-        assertEquals(nested.name, child.name)
-        assertTrue(child.isDirectory)
-        assertFalse(child.isFile)
+        val childrenUri =
+            DocumentsContract.buildChildDocumentsUriUsingTree(treeUri(workspace), id(workspace))
+        val names = mutableListOf<String>()
+        requireNotNull(
+            RuntimeEnvironment.getApplication().contentResolver
+                .query(childrenUri, arrayOf(Document.COLUMN_DISPLAY_NAME), Bundle.EMPTY, null),
+        ).use { cursor ->
+            while (cursor.moveToNext()) names += cursor.getString(0)
+        }
+        assertEquals(listOf(nested.name), names)
 
-        val file = child.listFiles().single()
-        assertEquals(note.name, file.name)
-        assertTrue(file.isFile)
-        assertFalse(file.isDirectory)
-        assertEquals("text/plain", file.type)
-        assertEquals(note.length(), file.length())
-        assertEquals(note.lastModified(), file.lastModified())
+        val fileUri = documentUri(workspace, note)
+        assertEquals("text/plain", column(fileUri, Document.COLUMN_MIME_TYPE))
+        assertEquals(note.name, column(fileUri, Document.COLUMN_DISPLAY_NAME))
+        assertEquals(note.length().toString(), column(fileUri, Document.COLUMN_SIZE))
+        assertEquals(
+            note.lastModified().toString(),
+            column(fileUri, Document.COLUMN_LAST_MODIFIED),
+        )
     }
 
     @Test
@@ -418,6 +434,15 @@ class InternalStorageProviderTest {
     private fun id(file: File): String =
         if (file == privateRoot) InternalStorageProvider.ROOT_ID
         else file.relativeTo(privateRoot).invariantSeparatorsPath
+
+    private fun column(uri: Uri, name: String): String? =
+        requireNotNull(
+            RuntimeEnvironment.getApplication().contentResolver
+                .query(uri, arrayOf(name), Bundle.EMPTY, null),
+        ).use { cursor ->
+            assertArrayEquals(arrayOf(name), cursor.columnNames)
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        }
 
     private fun treeUri(parent: File): Uri = DocumentsContract.buildTreeDocumentUri(authority, id(parent))
 
