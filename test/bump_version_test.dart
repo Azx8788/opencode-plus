@@ -28,7 +28,8 @@ void main() {
     tearDown(() => temporary.deleteSync(recursive: true));
 
     Future<ProcessResult> run(List<String> args) => Process.run(
-      Platform.resolvedExecutable,
+      // Flutter widget tests run inside flutter_tester, not the Dart CLI.
+      'dart',
       [script, ...args],
       workingDirectory: temporary.path,
     );
