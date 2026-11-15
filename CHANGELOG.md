@@ -2,6 +2,15 @@
 
 This project is in public alpha. Only the newest preview is supported.
 
+## 0.3.19+27 — 2026-11-15
+
+  * **A thought can stay in the transcript.** The transcript's "Reasoning"
+    switch (`/thinking` in the chat, or the display switches) no longer only
+    expands a thought while its turn runs: with it on, a finished turn keeps
+    each thought as a block of its own, expanded, instead of folding it into
+    the work line the moment the turn ends. Tool calls still fold; with the
+    switch off nothing changes.
+
 ## 0.3.18+26 — 2026-11-15
 
   * **Consolidate all development branches without dropping their history.**

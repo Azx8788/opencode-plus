@@ -347,7 +347,14 @@ bool _foldableNotice(MessageWithParts message) {
 /// running ([liveTail]) keeps everything in view: what the agent says while it
 /// works is how the reader follows along. Every mark is written each time,
 /// so a turn that is continued is unfolded again.
-void _markFoldedWork(List<MessageWithParts> messages, {bool liveTail = false}) {
+///
+/// [keepReasoning] is the transcript's "Reasoning" switch: a thought is not
+/// work then, so it neither folds nor keeps passing words folded with it.
+void _markFoldedWork(
+  List<MessageWithParts> messages, {
+  bool liveTail = false,
+  bool keepReasoning = false,
+}) {
   var start = 0;
   void closeTurn(int end, {required bool live}) {
     // The turn in reading order: each entry is a part, or a notice message.
@@ -368,7 +375,9 @@ void _markFoldedWork(List<MessageWithParts> messages, {bool liveTail = false}) {
     }
     if (live) return;
     bool isWork(Object entry) =>
-        entry is Part && (entry.type == 'tool' || entry.type == 'reasoning');
+        entry is Part &&
+        (entry.type == 'tool' ||
+            (!keepReasoning && entry.type == 'reasoning'));
     bool isText(Object entry) => entry is Part && entry.type == 'text';
     final lastWork = entries.lastIndexWhere(isWork);
     if (lastWork < 0) return;
@@ -407,8 +416,9 @@ void _markFoldedWork(List<MessageWithParts> messages, {bool liveTail = false}) {
 List<List<Part>> _timelineDisplayParts(
   List<MessageWithParts> messages, {
   bool liveTail = false,
+  bool keepReasoning = false,
 }) {
-  _markFoldedWork(messages, liveTail: liveTail);
+  _markFoldedWork(messages, liveTail: liveTail, keepReasoning: keepReasoning);
   final display = List.generate(messages.length, (_) => <Part>[]);
   final pendingParts = <Part>[];
   String? pendingType;
@@ -513,6 +523,24 @@ List<List<Part>> _timelineDisplayParts(
 @visibleForTesting
 Part debugMergeTextParts(List<Part> parts) => _mergeTextParts(parts);
 
+/// The display pass for tests: which row each part lands in, and (with
+/// [keepReasoning], the transcript's "Reasoning" switch) whether a turn's
+/// thoughts stay blocks of their own.
+@visibleForTesting
+List<List<Part>> debugTimelineDisplayParts(
+  List<MessageWithParts> messages, {
+  bool liveTail = false,
+  bool keepReasoning = false,
+}) => _timelineDisplayParts(
+  messages,
+  liveTail: liveTail,
+  keepReasoning: keepReasoning,
+);
+
+/// Whether the display pass folded [item] into a turn's work line.
+@visibleForTesting
+bool debugIsFoldedIntoWork(Object item) => _isFoldedIntoWork(item);
+
 Part _mergeTextParts(List<Part> parts) {
   assert(parts.isNotEmpty);
   if (parts.length == 1) return parts.single;
@@ -602,7 +630,10 @@ bool _isPlaceholderThought(String text) => RegExp(
   caseSensitive: false,
 ).hasMatch(text.trim());
 
-List<_AssistantPartRun> _groupAssistantParts(List<Part> parts) {
+List<_AssistantPartRun> _groupAssistantParts(
+  List<Part> parts, {
+  bool keepReasoning = false,
+}) {
   final runs = <_AssistantPartRun>[];
   var index = 0;
   while (index < parts.length) {
@@ -638,9 +669,10 @@ List<_AssistantPartRun> _groupAssistantParts(List<Part> parts) {
       next += 1;
     }
     // A one-line thought right before the call or the run is its title, not
-    // a row of its own.
+    // a row of its own — unless the transcript keeps reasoning in view, when
+    // the thought stays a block of its own above the work line.
     ({String heading, String? note})? title;
-    if (runs.isNotEmpty && !runs.last.grouped) {
+    if (!keepReasoning && runs.isNotEmpty && !runs.last.grouped) {
       title = _stepHeading(runs.last.parts.single);
       if (title != null) runs.removeLast();
     }
@@ -656,6 +688,26 @@ List<_AssistantPartRun> _groupAssistantParts(List<Part> parts) {
   }
   return runs;
 }
+
+/// Whether this run is drawn inside a turn's work line: tool calls, folded
+/// passing words, and (unless the transcript keeps reasoning in view) a
+/// thought. Shared by [_stretches] and its test.
+bool _runIsWork(_AssistantPartRun run, {required bool keepReasoning}) =>
+    run.card == null &&
+    (_isFoldedIntoWork(run.parts.first) ||
+        run.parts.first.type == 'tool' ||
+        (!keepReasoning && run.parts.first.type == 'reasoning'));
+
+/// Whether each run of [parts] folds into the work line, for the
+/// transcript's "Reasoning" switch parity test.
+@visibleForTesting
+List<bool> debugRunsAreWork(
+  List<Part> parts, {
+  bool keepReasoning = false,
+}) => [
+  for (final run in _groupAssistantParts(parts, keepReasoning: keepReasoning))
+    _runIsWork(run, keepReasoning: keepReasoning),
+];
 
 class _MessageMeta {
   const _MessageMeta({this.modelLabel, this.turnTokens, this.turnCost});

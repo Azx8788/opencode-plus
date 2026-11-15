@@ -20,6 +20,7 @@ class _DerivedStretch {
     required this.busy,
     required this.metaAlways,
     required this.ignore,
+    required this.keepReasoning,
     required this.settled,
     required this.changed,
     required this.display,
@@ -33,6 +34,9 @@ class _DerivedStretch {
   final bool busy;
   final bool metaAlways;
   final Set<String> ignore;
+
+  /// The transcript's "Reasoning" switch this stretch was worked out under.
+  final bool keepReasoning;
   final List<MessageWithParts> settled;
 
   /// Whether [settleStaleLive] changed anything in this stretch.
@@ -47,9 +51,11 @@ class _DerivedStretch {
     required bool busy,
     required bool metaAlways,
     required Set<String> ignore,
+    required bool keepReasoning,
   }) =>
       busy == this.busy &&
       metaAlways == this.metaAlways &&
+      keepReasoning == this.keepReasoning &&
       setEquals(ignore, this.ignore) &&
       _sameIdentities(identities, messages, from, to);
 }
@@ -295,6 +301,9 @@ extension _ChatPageCache on _ChatScreenState {
     required Set<String> ignore,
   }) {
     final raw = _messages;
+    // The transcript's "Reasoning" switch decides whether a thought keeps a
+    // block of its own after its turn ends (see `_markFoldedWork`).
+    final keepReasoning = _conn.transcriptReasoningExpanded;
     // The newest prompt that starts a turn: every turn before it is over,
     // whatever runs now. A prompt still waiting in the inbox is not drawn
     // and does not start one.
@@ -317,6 +326,7 @@ extension _ChatPageCache on _ChatScreenState {
           busy: busy,
           metaAlways: metaAlways,
           ignore: ignore,
+          keepReasoning: keepReasoning,
         );
     final sameTail =
         samePrefix &&
@@ -328,6 +338,7 @@ extension _ChatPageCache on _ChatScreenState {
           busy: busy,
           metaAlways: metaAlways,
           ignore: ignore,
+          keepReasoning: keepReasoning,
         );
     final known = _derived;
     if (sameTail && known != null) return known;
@@ -341,12 +352,16 @@ extension _ChatPageCache on _ChatScreenState {
         busy: busy,
         moreFollows: boundary < raw.length,
       );
-      final display = _timelineDisplayParts(settled);
+      final display = _timelineDisplayParts(
+        settled,
+        keepReasoning: keepReasoning,
+      );
       prefix = _DerivedStretch(
         identities: _transcriptIdentities(raw, 0, boundary),
         busy: busy,
         metaAlways: metaAlways,
         ignore: ignore,
+        keepReasoning: keepReasoning,
         settled: settled,
         changed: !identical(settled, before),
         display: display,
@@ -363,7 +378,11 @@ extension _ChatPageCache on _ChatScreenState {
     final after = raw.sublist(boundary);
     debugChatDisplayPassMessages += after.length;
     final settledTail = settleStaleLive(after, busy: busy);
-    final displayTail = _timelineDisplayParts(settledTail, liveTail: busy);
+    final displayTail = _timelineDisplayParts(
+      settledTail,
+      liveTail: busy,
+      keepReasoning: keepReasoning,
+    );
     // Nothing settled: the page reads the transcript itself, as before.
     final messages = !prefix.changed && identical(settledTail, after)
         ? raw
@@ -385,6 +404,7 @@ extension _ChatPageCache on _ChatScreenState {
       busy: busy,
       metaAlways: metaAlways,
       ignore: ignore,
+      keepReasoning: keepReasoning,
       settled: settledTail,
       changed: !identical(settledTail, after),
       display: displayTail,

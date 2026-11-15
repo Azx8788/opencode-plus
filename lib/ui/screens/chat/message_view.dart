@@ -539,7 +539,10 @@ class _MessageView extends StatelessWidget {
               if (!(chat?._toolWaitsForYou(part) ?? false)) part,
           ])
         : visibleParts;
-    final runs = _withCards(_groupAssistantParts(shown), chat);
+    final runs = _withCards(
+      _groupAssistantParts(shown, keepReasoning: reasoningExpanded),
+      chat,
+    );
     // While the turn's live line names the step in hand, that step is not a
     // second line above it; once the turn ends it folds into the one work
     // line (owner decision 5, 20 Oct 2026).
@@ -557,7 +560,7 @@ class _MessageView extends StatelessWidget {
                   part.toolState.status == 'pending'),
         );
     final blocks = <Widget>[
-      for (final stretch in _stretches(runs))
+      for (final stretch in _stretches(runs, keepReasoning: reasoningExpanded))
         if (stretch.length > 1 || stretch.single.grouped)
           _WorkGroup(
             key: ValueKey(
@@ -698,18 +701,17 @@ class _MessageView extends StatelessWidget {
 
   /// Splits a message's runs into what is said and what is done: each text
   /// block (or attachment) stands alone, and each unbroken stretch of
-  /// thoughts and tool calls between them is one list.
+  /// thoughts and tool calls between them is one list. A thought the
+  /// transcript keeps in view ([keepReasoning]) is said-block material
+  /// instead, so it never joins that stretch.
   static List<List<_AssistantPartRun>> _stretches(
-    List<_AssistantPartRun> runs,
-  ) {
+    List<_AssistantPartRun> runs, {
+    bool keepReasoning = false,
+  }) {
     final stretches = <List<_AssistantPartRun>>[];
     var work = <_AssistantPartRun>[];
     for (final run in runs) {
-      final type = run.parts.first.type;
-      if (run.card == null &&
-          (type == 'tool' ||
-              type == 'reasoning' ||
-              _isFoldedIntoWork(run.parts.first))) {
+      if (_runIsWork(run, keepReasoning: keepReasoning)) {
         work.add(run);
         continue;
       }
