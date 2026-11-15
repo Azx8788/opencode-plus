@@ -2,7 +2,7 @@ name: Android arm64 build
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, fix/storage-provider-projection]
     tags: ["v*"]
   workflow_dispatch:
 

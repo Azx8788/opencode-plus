@@ -8,10 +8,12 @@ import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
 import android.provider.DocumentsContract.Root
+import androidx.documentfile.provider.DocumentFile
 import java.io.File
 import java.nio.file.Files
 import java.util.UUID
 import org.junit.After
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -21,6 +23,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
@@ -65,19 +68,22 @@ class InternalStorageProviderTest {
         sibling = File(testRoot, "workspace-other").apply { check(mkdir()) }
         siblingNote = File(sibling, "note.txt").apply { writeText("private sibling") }
 
-        provider = InternalStorageProvider()
-        provider.attachInfo(
-            context,
-            ProviderInfo().apply {
-                name = InternalStorageProvider::class.java.name
-                packageName = context.packageName
-                this.authority = this@InternalStorageProviderTest.authority
-                exported = true
-                grantUriPermissions = true
-                readPermission = Manifest.permission.MANAGE_DOCUMENTS
-                writePermission = Manifest.permission.MANAGE_DOCUMENTS
-            },
-        )
+        // Register the attached provider with ContentResolver as well, so the
+        // DocumentFile tests exercise a real client instead of calling the
+        // provider's methods directly.
+        provider = Robolectric.buildContentProvider(InternalStorageProvider::class.java)
+            .create(
+                ProviderInfo().apply {
+                    name = InternalStorageProvider::class.java.name
+                    packageName = context.packageName
+                    this.authority = this@InternalStorageProviderTest.authority
+                    exported = true
+                    grantUriPermissions = true
+                    readPermission = Manifest.permission.MANAGE_DOCUMENTS
+                    writePermission = Manifest.permission.MANAGE_DOCUMENTS
+                },
+            )
+            .get()
     }
 
     @After
@@ -108,6 +114,170 @@ class InternalStorageProviderTest {
             assertTrue(flags and Root.FLAG_LOCAL_ONLY != 0)
             assertFalse(cursor.moveToNext())
         }
+    }
+
+    @Test
+    fun rootQueryHonorsSingleColumnProjection() {
+        val projection = arrayOf(Root.COLUMN_FLAGS)
+        provider.queryRoots(projection).use { cursor ->
+            assertArrayEquals(projection, cursor.columnNames)
+            assertTrue(cursor.moveToFirst())
+            assertTrue(cursor.getInt(0) and Root.FLAG_SUPPORTS_IS_CHILD != 0)
+            assertFalse(cursor.moveToNext())
+        }
+    }
+
+    @Test
+    fun rootQueryHonorsReorderedProjection() {
+        val projection = arrayOf(Root.COLUMN_FLAGS, Root.COLUMN_DOCUMENT_ID, Root.COLUMN_ROOT_ID)
+        provider.queryRoots(projection).use { cursor ->
+            assertArrayEquals(projection, cursor.columnNames)
+            assertTrue(cursor.moveToFirst())
+            assertTrue(cursor.getInt(0) and Root.FLAG_SUPPORTS_CREATE != 0)
+            assertEquals(InternalStorageProvider.ROOT_ID, cursor.getString(1))
+            assertEquals(InternalStorageProvider.ROOT_ID, cursor.getString(2))
+        }
+    }
+
+    @Test
+    fun documentQueryHonorsSingleColumnProjections() {
+        for (directory in listOf(privateRoot, workspace, nested)) {
+            val projection = arrayOf(Document.COLUMN_MIME_TYPE)
+            provider.queryDocument(id(directory), projection).use { cursor ->
+                assertArrayEquals(projection, cursor.columnNames)
+                assertTrue(cursor.moveToFirst())
+                assertEquals(Document.MIME_TYPE_DIR, cursor.getString(0))
+            }
+        }
+        val projection = arrayOf(Document.COLUMN_SIZE)
+        provider.queryDocument(id(note), projection).use { cursor ->
+            assertArrayEquals(projection, cursor.columnNames)
+            assertTrue(cursor.moveToFirst())
+            assertEquals(note.length(), cursor.getLong(0))
+        }
+    }
+
+    @Test
+    fun frameworkDocumentQueryHonorsReorderedProjection() {
+        val projection = arrayOf(
+            Document.COLUMN_SIZE,
+            Document.COLUMN_MIME_TYPE,
+            Document.COLUMN_DISPLAY_NAME,
+            Document.COLUMN_DOCUMENT_ID,
+            Document.COLUMN_LAST_MODIFIED,
+        )
+        requireNotNull(provider.query(documentUri(workspace, note), projection, null, null)).use {
+            cursor ->
+            assertArrayEquals(projection, cursor.columnNames)
+            assertTrue(cursor.moveToFirst())
+            assertEquals(note.length(), cursor.getLong(0))
+            assertEquals("text/plain", cursor.getString(1))
+            assertEquals(note.name, cursor.getString(2))
+            assertEquals(id(note), cursor.getString(3))
+            assertEquals(note.lastModified(), cursor.getLong(4))
+            assertFalse(cursor.moveToNext())
+        }
+    }
+
+    @Test
+    fun childQueryHonorsSingleColumnProjections() {
+        val mimeProjection = arrayOf(Document.COLUMN_MIME_TYPE)
+        provider.queryChildDocuments(id(workspace), mimeProjection, null).use { cursor ->
+            assertArrayEquals(mimeProjection, cursor.columnNames)
+            assertTrue(cursor.moveToFirst())
+            assertEquals(Document.MIME_TYPE_DIR, cursor.getString(0))
+            assertFalse(cursor.moveToNext())
+        }
+        val sizeProjection = arrayOf(Document.COLUMN_SIZE)
+        provider.queryChildDocuments(id(nested), sizeProjection, null).use { cursor ->
+            assertArrayEquals(sizeProjection, cursor.columnNames)
+            assertTrue(cursor.moveToFirst())
+            assertEquals(note.length(), cursor.getLong(0))
+            assertFalse(cursor.moveToNext())
+        }
+    }
+
+    @Test
+    fun frameworkChildQueryHonorsReorderedProjection() {
+        val projection = arrayOf(
+            Document.COLUMN_DISPLAY_NAME,
+            Document.COLUMN_SIZE,
+            Document.COLUMN_MIME_TYPE,
+            Document.COLUMN_DOCUMENT_ID,
+        )
+        val uri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri(workspace), id(nested))
+        requireNotNull(provider.query(uri, projection, null, null)).use { cursor ->
+            assertArrayEquals(projection, cursor.columnNames)
+            assertTrue(cursor.moveToFirst())
+            assertEquals(note.name, cursor.getString(0))
+            assertEquals(note.length(), cursor.getLong(1))
+            assertEquals("text/plain", cursor.getString(2))
+            assertEquals(id(note), cursor.getString(3))
+            assertFalse(cursor.moveToNext())
+        }
+    }
+
+    @Test
+    fun unknownProjectionColumnsRemainNull() {
+        val projection = arrayOf("unsupported_column", Document.COLUMN_MIME_TYPE)
+        provider.queryDocument(id(nested), projection).use { cursor ->
+            assertArrayEquals(projection, cursor.columnNames)
+            assertTrue(cursor.moveToFirst())
+            assertTrue(cursor.isNull(0))
+            assertEquals(Document.MIME_TYPE_DIR, cursor.getString(1))
+        }
+    }
+
+    @Test
+    fun emptyProjectionDoesNotFallBackToDefaultColumns() {
+        provider.queryDocument(id(note), emptyArray()).use { cursor ->
+            assertEquals(0, cursor.columnCount)
+            assertEquals(1, cursor.count)
+        }
+    }
+
+    @Test
+    fun nullProjectionStillReturnsDefaultDocumentMetadata() {
+        val defaultColumns = arrayOf(
+            Document.COLUMN_DOCUMENT_ID,
+            Document.COLUMN_DISPLAY_NAME,
+            Document.COLUMN_SIZE,
+            Document.COLUMN_MIME_TYPE,
+            Document.COLUMN_LAST_MODIFIED,
+            Document.COLUMN_FLAGS,
+        )
+        provider.queryDocument(id(note), null).use { cursor ->
+            assertArrayEquals(defaultColumns, cursor.columnNames)
+            assertTrue(cursor.moveToFirst())
+            assertEquals(id(note), cursor.getString(0))
+            assertEquals(note.name, cursor.getString(1))
+            assertEquals(note.length(), cursor.getLong(2))
+            assertEquals("text/plain", cursor.getString(3))
+            assertEquals(note.lastModified(), cursor.getLong(4))
+            assertTrue(cursor.getInt(5) and Document.FLAG_SUPPORTS_WRITE != 0)
+        }
+    }
+
+    @Test
+    fun documentFileCanBrowseTreeAndReadFileMetadata() {
+        val context = RuntimeEnvironment.getApplication()
+        val directory = requireNotNull(DocumentFile.fromTreeUri(context, treeUri(workspace)))
+        assertTrue(directory.isDirectory)
+        assertEquals(workspace.name, directory.name)
+        assertEquals(workspace.lastModified(), directory.lastModified())
+
+        val child = directory.listFiles().single()
+        assertEquals(nested.name, child.name)
+        assertTrue(child.isDirectory)
+        assertFalse(child.isFile)
+
+        val file = child.listFiles().single()
+        assertEquals(note.name, file.name)
+        assertTrue(file.isFile)
+        assertFalse(file.isDirectory)
+        assertEquals("text/plain", file.type)
+        assertEquals(note.length(), file.length())
+        assertEquals(note.lastModified(), file.lastModified())
     }
 
     @Test

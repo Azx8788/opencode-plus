@@ -32,13 +32,17 @@ import java.io.IOException
  * android:permission="android.permission.MANAGE_DOCUMENTS": only the system
  * documents UI can query it directly, and a file manager reaches it through
  * the standard picker, which is the system asking the person to grant access.
+ *
+ * Query cursors preserve the requested columns and their order. DocumentFile
+ * queries metadata one column at a time and reads column zero; returning the
+ * default projection instead makes ids look like MIME types and file sizes.
  */
 class InternalStorageProvider : DocumentsProvider() {
 
     override fun onCreate(): Boolean = true
 
     override fun queryRoots(projection: Array<out String>?): Cursor {
-        val cursor = MatrixCursor(DEFAULT_ROOT_PROJECTION)
+        val cursor = MatrixCursor(projection ?: DEFAULT_ROOT_PROJECTION)
         val row = cursor.newRow()
         row.add(Root.COLUMN_ROOT_ID, ROOT_ID)
         row.add(Root.COLUMN_DOCUMENT_ID, ROOT_ID)
@@ -78,7 +82,7 @@ class InternalStorageProvider : DocumentsProvider() {
     }
 
     override fun queryDocument(documentId: String, projection: Array<out String>?): Cursor {
-        val cursor = MatrixCursor(DEFAULT_DOCUMENT_PROJECTION)
+        val cursor = MatrixCursor(projection ?: DEFAULT_DOCUMENT_PROJECTION)
         includeFile(cursor, documentId, resolve(documentId))
         return cursor
     }
@@ -88,7 +92,7 @@ class InternalStorageProvider : DocumentsProvider() {
         projection: Array<out String>?,
         sortOrder: String?,
     ): Cursor {
-        val cursor = MatrixCursor(DEFAULT_DOCUMENT_PROJECTION)
+        val cursor = MatrixCursor(projection ?: DEFAULT_DOCUMENT_PROJECTION)
         val parent = resolve(parentDocumentId)
         val children = parent.listFiles()
         if (children != null) {

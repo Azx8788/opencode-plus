@@ -168,6 +168,8 @@ dependencies {
     implementation("androidx.work:work-runtime:2.10.5")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20180813")
+    // Exercise the single-column SAF queries third-party file managers use.
+    testImplementation("androidx.documentfile:documentfile:1.1.0")
     // Renders the home-screen widget's real RemoteViews layouts to images on the JVM
     // (WidgetCardRenderTest): the picker previews and the QA renders come from the card itself.
     testImplementation("org.robolectric:robolectric:4.17")
