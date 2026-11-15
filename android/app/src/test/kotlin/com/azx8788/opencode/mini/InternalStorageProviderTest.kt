@@ -27,6 +27,7 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowContentResolver
 
 // The Storage Access Framework root the app offers to the system file picker.
 //
@@ -84,6 +85,9 @@ class InternalStorageProviderTest {
                 },
             )
             .get()
+        // buildContentProvider attaches it but does not put it in the
+        // resolver's provider map, which DocumentFile queries through.
+        ShadowContentResolver.registerProviderInternal(authority, provider)
     }
 
     @After
