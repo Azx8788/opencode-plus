@@ -19,6 +19,12 @@ engine and two-locale/branding cuts.
     redirect back to a port on this phone; the sign-in screen keeps that page
     in memory so "Open sign-in page" reopens it. Paste remains only for a
     printed fallback page that shows a code.
+  * **A file manager reads real names, sizes and types.** The SAF provider now
+    answers exactly the columns a client asks for, in that order. It used to
+    return its default columns instead, so a client that reads one column at a
+    time (Android's DocumentFile) read the document id as the MIME type and
+    every directory as a file. Tests cover roots, documents and children,
+    including a folder tree opened through a granted tree URI.
 
 ## 0.3.16+24 — 2026-11-14
 
