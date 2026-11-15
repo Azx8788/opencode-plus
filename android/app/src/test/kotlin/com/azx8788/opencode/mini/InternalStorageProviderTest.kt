@@ -182,19 +182,21 @@ class InternalStorageProviderTest {
     @Test
     fun childQueryHonorsSingleColumnProjections() {
         val mimeProjection = arrayOf(Document.COLUMN_MIME_TYPE)
-        provider.queryChildDocuments(id(workspace), mimeProjection, null).use { cursor ->
-            assertArrayEquals(mimeProjection, cursor.columnNames)
-            assertTrue(cursor.moveToFirst())
-            assertEquals(Document.MIME_TYPE_DIR, cursor.getString(0))
-            assertFalse(cursor.moveToNext())
-        }
+        provider.queryChildDocuments(id(workspace), mimeProjection, sortOrder = null)
+            .use { cursor ->
+                assertArrayEquals(mimeProjection, cursor.columnNames)
+                assertTrue(cursor.moveToFirst())
+                assertEquals(Document.MIME_TYPE_DIR, cursor.getString(0))
+                assertFalse(cursor.moveToNext())
+            }
         val sizeProjection = arrayOf(Document.COLUMN_SIZE)
-        provider.queryChildDocuments(id(nested), sizeProjection, null).use { cursor ->
-            assertArrayEquals(sizeProjection, cursor.columnNames)
-            assertTrue(cursor.moveToFirst())
-            assertEquals(note.length(), cursor.getLong(0))
-            assertFalse(cursor.moveToNext())
-        }
+        provider.queryChildDocuments(id(nested), sizeProjection, sortOrder = null)
+            .use { cursor ->
+                assertArrayEquals(sizeProjection, cursor.columnNames)
+                assertTrue(cursor.moveToFirst())
+                assertEquals(note.length(), cursor.getLong(0))
+                assertFalse(cursor.moveToNext())
+            }
     }
 
     @Test
