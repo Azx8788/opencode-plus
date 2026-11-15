@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Simplified Chinese copy for the scheduled-prompt notifications
+  (ScheduledPromptNotifications.kt). Kept beside values/scheduled_prompts.xml:
+  same names, same format arguments, only the "other" plural quantity.
+-->
+<resources>
+    <string name="native_schedule_channel">定时提示</string>
+    <string name="native_schedule_title">定时提示</string>
+    <string name="native_schedule_ran">定时提示已开始运行。点按打开对话。</string>
+    <string name="native_schedule_failed">有条定时提示需要你处理。点按查看记录。</string>
+    <string name="native_schedule_skipped">有条定时提示被跳过。点按查看记录。</string>
+    <string name="native_schedule_digest_title">早间摘要</string>
+    <string name="native_schedule_digest_body">%1$d 已开始 · %2$d 失败 · %3$d 跳过</string>
+</resources>

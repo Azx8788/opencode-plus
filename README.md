@@ -55,6 +55,14 @@ local bump, because Releases is the channel people install from. A local
 build that needs a new code must run the bump itself — or use
 `tool/build_apk.sh`.
 
+## Architecture and internals
+
+[docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) is the long-form guide: every
+`lib/` directory and what it owns, the 169 Kotlin files grouped by job, the Rust
+engine's modules and tests, the full test and dependency lists, common change
+recipes and a troubleshooting table. Read it before changing anything that
+crosses the Flutter/native boundary.
+
 ## Differences from upstream
 
 Full list in [UPSTREAM.md](UPSTREAM.md). In short:
@@ -114,6 +122,10 @@ OpenCode Plus 是 OpenCode Mobile 的精简衍生版，只面向 Android 64 位
 （arm64-v8a）设备：保留手机内置 Linux、Agent 会话、对话/终端/审批/diff/预览
 等全部功能；通知栏、桌面小组件与快捷开关的原生文案同样跟随中英双语。去掉
 iOS 与桌面工程、多语言（仅中英）、Shorebird 热更新、文档站与测试工程。
+
+想详细了解仓库，读 [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md)：
+逐目录职责、Kotlin 169 个文件的分组、Rust 引擎模块与测试、依赖与测试清单、
+常见改动步骤和故障排查表。
 
 0.3.13 及以前叫 OpenCode Mini；现在应用名、桌面图标名与文档统一为
 OpenCode Plus，包名仍为 `com.azx8788.opencode.mini`，因此可以直接覆盖升级，

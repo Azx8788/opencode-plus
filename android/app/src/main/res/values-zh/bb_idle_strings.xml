@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Chinese copy of values/bb_idle_strings.xml (idle-stop notification). -->
+<resources>
+    <string name="native_phone_server_idle_body">手机服务器空闲已暂停。点按打开 OpenCode。</string>
+</resources>

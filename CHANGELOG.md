@@ -30,6 +30,18 @@ OpenCode Mini on the launcher and in its own texts.
     not orphan pending planning requests.
   * **CI runs the whole test suite**, not a hand-picked list that had stopped
     covering what was added after it was written.
+  * **The widgets and scheduled prompts speak Chinese too.** The first pass
+    translated `strings.xml` (148 names) and stopped there, while
+    `widget_v2_strings.xml` (63), `scheduled_prompts.xml` (7) and the two
+    one-line files stayed English, so a Chinese home screen still showed
+    "Allow once" and "Needs you". All 220 native names now have a
+    `values-zh/` counterpart, and the pairing test walks every copy file in
+    the folder instead of just `strings.xml`.
+  * **`tool/build_apk.sh --patch` no longer fails after bumping.** It passed
+    its own flags on to `flutter build`, which rejects `--patch`; the version
+    had already moved by then. A test now holds that line still.
+  * **A long-form guide to the repository ships with it**:
+    `docs/PROJECT_OVERVIEW.md`.
 
 ## 0.3.13+18 — 2026-11-13
 

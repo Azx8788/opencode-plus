@@ -94,6 +94,20 @@ void main() {
       );
     });
 
+    test('the build script keeps its own flags away from flutter', () {
+      final lines = File(
+        'tool/build_apk.sh',
+      ).readAsStringSync().split('\n').where((line) =>
+          line.trimLeft().startsWith('flutter build apk'));
+      expect(lines, hasLength(1));
+      expect(
+        lines.single,
+        isNot(contains(r'"$@"')),
+        reason: '--patch and --no-bump are this script\'s flags; '
+            'flutter build rejects them after the version already moved',
+      );
+    });
+
     test('Gradle honours the CI version code and the workflow sets it', () {
       final gradle = File('android/app/build.gradle.kts').readAsStringSync();
       expect(gradle, contains('OC_VERSION_CODE'));

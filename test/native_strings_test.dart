@@ -1,8 +1,13 @@
 // The native surfaces (notifications, widgets, tiles, shortcuts) are not
-// part of the Flutter ARB catalogues: Android reads res/values*/strings.xml
-// through NativeStrings.kt. Those two halves drifted once already — the app
-// shipped English notifications to a Chinese interface — so the pairing is
-// checked here rather than by reading the folder contents by hand.
+// part of the Flutter ARB catalogues: Android reads res/values*/ through
+// NativeStrings.kt. Those two halves drifted once already — the app shipped
+// English notifications to a Chinese interface — so the pairing is checked
+// here rather than by reading the folder contents by hand.
+//
+// Every copy file counts, not just strings.xml: the widgets keep their own
+// widget_v2_strings.xml, the scheduled prompts their own
+// scheduled_prompts.xml, and a translation missing from either shipped
+// English to a Chinese home screen.
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -25,10 +30,27 @@ Map<String, XmlElement> _resources(String path) {
   final document = XmlDocument.parse(File(path).readAsStringSync());
   final byName = <String, XmlElement>{};
   for (final element in document.rootElement.childElements) {
+    final kind = element.name.local;
+    if (kind != 'string' && kind != 'plurals') continue;
     final name = element.getAttribute('name');
     if (name != null) byName[name] = element;
   }
   return byName;
+}
+
+/// Every file under `values/` or `values-<lang>/` that carries copy, keyed by
+/// file name. Colours and styles carry no copy and drop out here.
+Map<String, Map<String, XmlElement>> _copyFiles(String directory) {
+  final files = <String, Map<String, XmlElement>>{};
+  final dir = Directory(directory);
+  if (!dir.existsSync()) return files;
+  for (final file in dir.listSync().whereType<File>()) {
+    if (!file.path.endsWith('.xml')) continue;
+    final resources = _resources(file.path);
+    if (resources.isEmpty) continue;
+    files[file.uri.pathSegments.last] = resources;
+  }
+  return files;
 }
 
 Set<String> _appLanguages() {
@@ -50,42 +72,56 @@ Set<String> _appLanguages() {
 }
 
 void main() {
-  final english = _resources('$_resDir/values/strings.xml');
-  final chinese = _resources('$_resDir/values-zh/strings.xml');
+  final english = _copyFiles('$_resDir/values');
+  final chinese = _copyFiles('$_resDir/values-zh');
 
-  test('every English native string has a Chinese one', () {
+  test('every English copy file has a Chinese one', () {
     expect(
       chinese.keys.toSet(),
       equals(english.keys.toSet()),
-      reason: 'values-zh/strings.xml must list exactly the names in values/',
+      reason: 'values-zh/ must hold a translation for every copy file in values/',
     );
   });
 
-  test('translations keep every format argument', () {
-    for (final entry in english.entries) {
-      final translated = chinese[entry.key];
-      expect(translated, isNotNull, reason: entry.key);
+  test('every English native string has a Chinese one', () {
+    for (final file in english.keys) {
       expect(
-        _placeholders(translated!.innerText),
-        equals(_placeholders(entry.value.innerText)),
-        reason:
-            '${entry.key}: a notification built with these arguments would '
-            'throw or print a literal %s in Chinese',
+        chinese[file]!.keys.toSet(),
+        equals(english[file]!.keys.toSet()),
+        reason: '$file must list exactly the names in values/$file',
       );
     }
   });
 
+  test('translations keep every format argument', () {
+    for (final file in english.keys) {
+      for (final entry in english[file]!.entries) {
+        final translated = chinese[file]![entry.key];
+        expect(translated, isNotNull, reason: '$file: ${entry.key}');
+        expect(
+          _placeholders(translated!.innerText),
+          equals(_placeholders(entry.value.innerText)),
+          reason:
+              '$file: ${entry.key}: a notification built with these arguments '
+              'would throw or print a literal %s in Chinese',
+        );
+      }
+    }
+  });
+
   test('Chinese plurals use the only quantity Chinese reads', () {
-    for (final entry in chinese.entries) {
-      if (entry.value.name.local != 'plurals') continue;
-      final quantities = entry.value.childElements
-          .map((item) => item.getAttribute('quantity'))
-          .toSet();
-      expect(
-        quantities,
-        {'other'},
-        reason: '${entry.key} needs only <item quantity="other">',
-      );
+    for (final file in chinese.keys) {
+      for (final entry in chinese[file]!.entries) {
+        if (entry.value.name.local != 'plurals') continue;
+        final quantities = entry.value.childElements
+            .map((item) => item.getAttribute('quantity'))
+            .toSet();
+        expect(
+          quantities,
+          {'other'},
+          reason: '$file: ${entry.key} needs only <item quantity="other">',
+        );
+      }
     }
   });
 

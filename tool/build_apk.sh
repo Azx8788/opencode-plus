@@ -8,8 +8,8 @@
 # the same version and the second one is refused.
 #
 # Usage:
-#   tool/build_apk.sh                 # 0.3.13+18 -> 0.3.13+19, then build
-#   tool/build_apk.sh --patch         # 0.3.13+18 -> 0.3.14+19, then build
+#   tool/build_apk.sh                 # 0.3.14+19 -> 0.3.14+20, then build
+#   tool/build_apk.sh --patch         # 0.3.14+19 -> 0.3.15+20, then build
 #   tool/build_apk.sh --no-bump       # build the version as it stands
 set -euo pipefail
 
@@ -33,7 +33,10 @@ if [ "$bump" -eq 1 ]; then
   dart run tool/bump_version.dart "${bump_args[@]}"
 fi
 
-flutter build apk --release --target-platform android-arm64 "$@"
+# The bump flags above belong to this script, not to Flutter: forwarding them
+# made `tool/build_apk.sh --patch` fail with "Could not find an option named
+# patch" right after it had already moved the version.
+flutter build apk --release --target-platform android-arm64
 
 apk="build/app/outputs/flutter-apk/app-release.apk"
 if [ ! -f "$apk" ]; then
