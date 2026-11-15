@@ -16,32 +16,32 @@ void main() {
     final application = manifest.rootElement.getElement('application')!;
     final provider = application.findElements('provider').singleWhere(
       (element) =>
-          element.getAttribute('name', namespace: _android) ==
+          element.getAttribute('name', namespaceUri: _android) ==
           '.InternalStorageProvider',
     );
 
     expect(
-      provider.getAttribute('authorities', namespace: _android),
+      provider.getAttribute('authorities', namespaceUri: _android),
       r'${applicationId}.internalstorage',
     );
-    expect(provider.getAttribute('exported', namespace: _android), 'true');
+    expect(provider.getAttribute('exported', namespaceUri: _android), 'true');
     expect(
-      provider.getAttribute('grantUriPermissions', namespace: _android),
+      provider.getAttribute('grantUriPermissions', namespaceUri: _android),
       'true',
     );
     expect(
-      provider.getAttribute('permission', namespace: _android),
+      provider.getAttribute('permission', namespaceUri: _android),
       'android.permission.MANAGE_DOCUMENTS',
     );
     expect(
-      provider.getAttribute('enabled', namespace: _android),
+      provider.getAttribute('enabled', namespaceUri: _android),
       anyOf(isNull, 'true'),
     );
     expect(
       provider
           .findElements('intent-filter')
           .expand((filter) => filter.findElements('action'))
-          .map((action) => action.getAttribute('name', namespace: _android)),
+          .map((action) => action.getAttribute('name', namespaceUri: _android)),
       contains('android.content.action.DOCUMENTS_PROVIDER'),
     );
   });
