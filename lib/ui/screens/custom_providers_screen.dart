@@ -236,7 +236,7 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
       await _store.remove(id, resolved: _resolved);
       await _store.removeProviderKeyFiles(id, [
         for (final key in keyRing?.keys ?? const []) key.filePath,
-        if (currentPath case final path?) path,
+        ?currentPath,
       ]);
       if (profileID != null) {
         try {

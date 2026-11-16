@@ -553,7 +553,7 @@ fi
       settingsKey: settings,
     };
     final nextProviders = <String, Object?>{
-      for (final item in (providers as Map).entries) '${item.key}': item.value,
+      for (final item in providers.entries) '${item.key}': item.value,
       providerID: entry,
     };
     final next = <String, Object?>{...document, root: nextProviders};
