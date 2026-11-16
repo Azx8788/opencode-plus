@@ -30,6 +30,8 @@ class CustomProviderRecord {
     this.keyPlaceholder,
     this.models = const [],
     this.disabledModels = const [],
+    this.keyRing = const [],
+    this.activeKeyID,
     this.headers = const [],
   });
 
@@ -65,6 +67,11 @@ class CustomProviderRecord {
   /// Extra headers the entry sends with every request.
   final List<CustomProviderHeader> headers;
 
+  /// Named keys known by the app for this provider. The secret bytes are not
+  /// carried in this record; each entry points at a private server-side file.
+  final List<ProviderKeyRecord> keyRing;
+  final String? activeKeyID;
+
   /// The draft the form starts from. The key is not resolved here — a
   /// missing key file must not block editing the rest of the entry — so the
   /// caller passes what it read, if anything.
@@ -75,11 +82,33 @@ class CustomProviderRecord {
     baseUrl: baseUrl,
     apiKey: withKey ?? apiKey,
     keyMode: keyMode,
-    keyFile: secretPath,
     keyPlaceholder: keyPlaceholder,
     models: models,
     disabledModelIDs: disabledModels,
     headers: headers,
+    keyFile: secretPath,
+    keyRing: keyRing,
+    activeKeyID: activeKeyID,
+  );
+
+  CustomProviderRecord withKeyRing(
+    List<ProviderKeyRecord> keys, {
+    String? active,
+  }) => CustomProviderRecord(
+    id: id,
+    name: name,
+    protocol: protocol,
+    baseUrl: baseUrl,
+    keyMode: keyMode,
+    format: format,
+    apiKey: apiKey,
+    secretPath: secretPath,
+    keyPlaceholder: keyPlaceholder,
+    models: models,
+    disabledModels: disabledModels,
+    headers: headers,
+    keyRing: List.unmodifiable(keys),
+    activeKeyID: active,
   );
 
   /// The protocol a package name implies. OpenCode picks the wire format by
@@ -208,6 +237,12 @@ CustomProviderRecord? _recordFrom(
     apiKey: key.plaintext,
     secretPath: key.path,
     keyPlaceholder: key.placeholder,
+    keyRing: key.mode == ProviderKeyMode.secretFile && key.path != null
+        ? [ProviderKeyRecord(id: 'legacy', name: 'Default', filePath: key.path!)]
+        : const [],
+    activeKeyID: key.mode == ProviderKeyMode.secretFile && key.path != null
+        ? 'legacy'
+        : null,
     models: models.models,
     disabledModels: disabled,
     headers: readProviderHeaders(settings['headers']),

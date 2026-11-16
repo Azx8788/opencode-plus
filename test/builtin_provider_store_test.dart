@@ -25,6 +25,9 @@ class _FakeServer {
   /// Every file the store wrote, by path inside `/root`.
   final Map<String, String> files = {};
 
+  /// Every file the store deleted, by the same path shape.
+  final List<String> deleted = [];
+
   String? get configFile =>
       files['.oc-opencode2/config/opencode/opencode.json'];
 
@@ -42,6 +45,14 @@ class _FakeServer {
     files[relativePath] = content;
     if (relativePath == '.oc-opencode2/config/opencode/opencode.json') {
       fileBody = base64Encode(utf8.encode(content));
+    }
+  }
+
+  Future<void> delete(String relativePath) async {
+    deleted.add(relativePath);
+    files.remove(relativePath);
+    if (relativePath == '.oc-opencode2/config/opencode/opencode.json') {
+      fileBody = null;
     }
   }
 
@@ -72,8 +83,11 @@ CustomProviderDraft _draft({
   models: const [CustomProviderModel(id: 'deepseek-v3.2')],
 );
 
-BuiltinProviderStore _store(_FakeServer fake) =>
-    BuiltinProviderStore(run: fake.run, writeFile: fake.write);
+BuiltinProviderStore _store(_FakeServer fake) => BuiltinProviderStore(
+  run: fake.run,
+  writeFile: fake.write,
+  deleteFile: fake.delete,
+);
 
 /// `sh -n` on a generated script: a quoting mistake is a syntax error here
 /// rather than a save that half-worked on someone's phone.
@@ -288,6 +302,149 @@ void main() {
       await _store(fake).save(_draft());
       final document = jsonDecode(fake.configFile!) as Map;
       expect((document['providers'] as Map).keys, ['my-gateway']);
+    });
+
+    test('a named key gets its own owner-only path, never the config body', () async {
+      final fake = _FakeServer()
+        ..fileBody = base64Encode(
+          utf8.encode(jsonEncode(_draft().toDocument(ProviderConfigFormat.v2))),
+        );
+      final store = _store(fake);
+      final resolved = await store.resolve();
+      final receipt = await store.saveNamedKey(
+        providerID: 'my-gateway',
+        keyID: 'work',
+        name: 'Work',
+        secret: 'sk-work',
+        activeKeyID: null,
+        keys: const [],
+        resolved: resolved,
+      );
+      expect(receipt.keyFileWritten, true);
+      expect(
+        fake.files['.secrets/opencode-plus/my-gateway/work.key'],
+        'sk-work',
+      );
+      final document = jsonDecode(fake.configFile!) as Map;
+      final settings =
+          (((document['providers'] as Map)['my-gateway'] as Map)['settings']
+              as Map);
+      expect(
+        settings['apiKey'],
+        '{file:/root/.secrets/opencode-plus/my-gateway/work.key}',
+      );
+      expect(fake.configFile!.contains('sk-work'), false);
+      expect(settings.containsKey('appKeyRing'), false);
+    });
+
+    test('two named keys keep separate files and switching changes the reference', () async {
+      final fake = _FakeServer()
+        ..fileBody = base64Encode(
+          utf8.encode(jsonEncode(_draft().toDocument(ProviderConfigFormat.v2))),
+        );
+      final store = _store(fake);
+      final resolved = await store.resolve();
+      await store.saveNamedKey(
+        providerID: 'my-gateway',
+        keyID: 'work',
+        name: 'Work',
+        secret: 'sk-work',
+        activeKeyID: null,
+        keys: const [],
+        resolved: resolved,
+      );
+      const work = ProviderKeyRecord(
+        id: 'work',
+        name: 'Work',
+        filePath: '/root/.secrets/opencode-plus/my-gateway/work.key',
+      );
+      await store.saveNamedKey(
+        providerID: 'my-gateway',
+        keyID: 'backup',
+        name: 'Backup',
+        secret: 'sk-backup',
+        activeKeyID: null,
+        keys: const [work],
+        resolved: resolved,
+      );
+      expect(fake.files['.secrets/opencode-plus/my-gateway/work.key'], 'sk-work');
+      expect(fake.files['.secrets/opencode-plus/my-gateway/backup.key'], 'sk-backup');
+      await store.updateNamedKeys(
+        providerID: 'my-gateway',
+        keys: const [
+          work,
+          ProviderKeyRecord(
+            id: 'backup',
+            name: 'Backup',
+            filePath: '/root/.secrets/opencode-plus/my-gateway/backup.key',
+          ),
+        ],
+        activeKeyID: 'work',
+        resolved: resolved,
+      );
+      final document = jsonDecode(fake.configFile!) as Map;
+      final settings =
+          (((document['providers'] as Map)['my-gateway'] as Map)['settings']
+              as Map);
+      expect(
+        settings['apiKey'],
+        '{file:/root/.secrets/opencode-plus/my-gateway/work.key}',
+      );
+      expect(fake.files['.secrets/opencode-plus/my-gateway/backup.key'], 'sk-backup');
+    });
+
+    test('removing a named key deletes only that managed file', () async {
+      final fake = _FakeServer()
+        ..fileBody = base64Encode(
+          utf8.encode(jsonEncode(_draft().toDocument(ProviderConfigFormat.v2))),
+        );
+      final store = _store(fake);
+      final resolved = await store.resolve();
+      await store.saveNamedKey(
+        providerID: 'my-gateway',
+        keyID: 'work',
+        name: 'Work',
+        secret: 'sk-work',
+        activeKeyID: null,
+        keys: const [],
+        resolved: resolved,
+      );
+      const work = ProviderKeyRecord(
+        id: 'work',
+        name: 'Work',
+        filePath: '/root/.secrets/opencode-plus/my-gateway/work.key',
+      );
+      await store.saveNamedKey(
+        providerID: 'my-gateway',
+        keyID: 'backup',
+        name: 'Backup',
+        secret: 'sk-backup',
+        activeKeyID: null,
+        keys: const [work],
+        resolved: resolved,
+      );
+      await store.removeNamedKey(
+        providerID: 'my-gateway',
+        keyID: 'backup',
+        remaining: const [work],
+        activeKeyID: 'work',
+        removedPath: '/root/.secrets/opencode-plus/my-gateway/backup.key',
+        resolved: resolved,
+      );
+      expect(
+        fake.deleted,
+        ['.secrets/opencode-plus/my-gateway/backup.key'],
+      );
+      expect(fake.files['.secrets/opencode-plus/my-gateway/work.key'], 'sk-work');
+    });
+
+    test('provider removal never touches a legacy key path', () async {
+      final fake = _FakeServer();
+      await _store(fake).removeProviderKeyFiles('my-gateway', [
+        '/root/.secrets/my-gateway.key',
+        '/root/.secrets/opencode-plus/my-gateway/work.key',
+      ]);
+      expect(fake.deleted, ['.secrets/opencode-plus/my-gateway/work.key']);
     });
   });
 }

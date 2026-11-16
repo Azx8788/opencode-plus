@@ -354,6 +354,11 @@ class MainActivity : FlutterFragmentActivity() {
                 }
                 linux.writeServerFile(relativePath, content)
             }
+            "deleteServerProviderKey" -> inBackground {
+                linux.deleteServerProviderKey(
+                    call.argument<String>("relativePath") ?: "",
+                )
+            }
             "readRemovalReceipt" -> inBackground {
                 linux.readRemovalReceipt(call.argument<String>("receiptId") ?: "")
             }

@@ -8721,6 +8721,43 @@
   "providerAddModels": "模型",
   "providerAddApiKey": "API 密钥",
   "providerAddApiKeyHelper": "直接写入服务端配置，只有服务端自己的账号能读。",
+  "providerKeysTitle": "命名 API 密钥",
+  "providerKeysHint": "同一个供应商可以保存多个密钥，只有当前选中的密钥会被使用。",
+  "providerKeyAdd": "添加密钥",
+  "providerKeyRename": "重命名密钥",
+  "providerKeyUse": "使用此密钥",
+  "providerKeyName": "密钥名称",
+  "providerKeyNameHint": "个人、工作、备用……",
+  "providerKeyDefaultName": "默认",
+  "providerKeyNameRequired": "请为密钥填写名称。",
+  "providerKeySecret": "API 密钥",
+  "providerKeySecretHint": "保存在服务端私有文件中，不会保存到应用偏好设置。",
+  "providerKeySecretRequired": "请输入 API 密钥。",
+  "providerKeyCurrent": "当前使用中",
+  "providerKeyAvailable": "已保存的密钥",
+  "providerKeyActions": "密钥“{name}”的操作",
+  "@providerKeyActions": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "providerKeyAdded": "已添加并选中密钥“{name}”",
+  "@providerKeyAdded": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "providerKeyRenamed": "密钥已重命名为“{name}”",
+  "@providerKeyRenamed": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "providerKeyDeleted": "已从列表移除密钥“{name}”",
+  "@providerKeyDeleted": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "providerKeyDeleteTitle": "移除密钥“{name}”？",
+  "@providerKeyDeleteTitle": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "providerKeyDeleteBody": "密钥文件会安全保留，但此供应商将不再使用它。之后可以再次添加。",
+  "providerKeyCannotDeleteLast": "请至少为此供应商保留一个命名密钥。",
+  "providerKeyCannotDeleteActive": "请先切换到其他密钥，再移除当前密钥。",
   "providerAddFetch": "获取模型",
   "providerAddFetching": "服务端正在读取列表…",
   "providerAddFetchFailed": "无法读取模型列表",
@@ -9478,9 +9515,9 @@
   "@providerManageTitle": {
     "description": "供应商"
   },
-  "providerManageIntro": "服务器配置里的自定义供应商。点一行编辑，长按可以测试或删除。",
+  "providerManageIntro": "服务器配置里的供应商。点一行编辑，长按可以测试、隐藏或删除。",
   "@providerManageIntro": {
-    "description": "服务器配置里的自定义供应商。点一行编辑，长按可以测试或删除。"
+    "description": "服务器配置里的供应商。点一行编辑，长按可以测试、隐藏或删除。"
   },
   "providerManageRefresh": "重新读取",
   "@providerManageRefresh": {
@@ -9849,6 +9886,17 @@
   "@providerManageSetup": {
     "description": "未配置条目的菜单项"
   },
+  "providerHide": "从此列表隐藏",
+  "providerHiddenDone": "已隐藏“{name}”",
+  "@providerHiddenDone": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "providerShowHidden": "显示 {count} 个已隐藏的供应商",
+  "@providerShowHidden": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "providerShowHiddenHint": "隐藏只影响此列表，不会改动服务器配置。",
+  "providerShowHiddenDone": "已重新显示隐藏的供应商",
   "providerManageSubtitle": "内置的和自己加的在一张表里：点开填密钥、选协议、勾模型。",
   "@providerManageSubtitle": {
     "description": "Integrations 里进入供应商窗口的那一行"

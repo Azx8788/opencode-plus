@@ -1485,6 +1485,13 @@ fi
     });
   }
 
+  /// Removes one app-managed provider key after native path and mode checks.
+  Future<void> deleteServerProviderKey({required String relativePath}) async {
+    await _invoke<void>('deleteServerProviderKey', {
+      'relativePath': relativePath,
+    });
+  }
+
   /// Reads and removes one agent-removal receipt on the native side.
   ///
   /// The receipt is written by the removal as root; reading it used to be a

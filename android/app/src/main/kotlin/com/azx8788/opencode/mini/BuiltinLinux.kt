@@ -337,6 +337,27 @@ class BuiltinLinux(private val context: Context) {
         return trace.result()
     }
 
+    /** Removes one exact app-managed provider key, never an arbitrary file. */
+    @Synchronized
+    fun deleteServerProviderKey(relativePath: String): Map<String, Any?> {
+        val trace = FileTrace("server_key_delete")
+        trace.mark("validate")
+        if (!installed) trace.fail("state")
+        if (!Regex("\\.secrets/opencode-plus/[a-zA-Z0-9._-]{1,48}/[a-zA-Z0-9_-]{1,48}\\.key")
+                .matches(relativePath)) trace.fail("path")
+        val root = File(rootfs, "root")
+        if (!root.isDirectory) trace.fail("home")
+        try {
+            GuestFileWriter.removeOwned(root, relativePath)
+        } catch (_: GuestFileWriter.Refused) {
+            trace.fail("refused")
+        } catch (_: Throwable) {
+            trace.fail("io")
+        }
+        trace.mark("done")
+        return trace.result()
+    }
+
     /**
      * Reads and removes one agent-removal receipt, or fails with a code.
      *

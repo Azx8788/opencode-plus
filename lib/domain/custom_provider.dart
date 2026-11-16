@@ -99,6 +99,20 @@ enum ProviderKeyMode {
   external,
 }
 
+/// A named key as shown in the provider editor. Only its private file path and
+/// display name are retained; secret bytes are never stored in app settings.
+class ProviderKeyRecord {
+  const ProviderKeyRecord({
+    required this.id,
+    required this.name,
+    required this.filePath,
+  });
+
+  final String id;
+  final String name;
+  final String filePath;
+}
+
 /// Which config dialect to write.
 enum ProviderConfigFormat {
   /// `provider` / `npm` / `options` / `tool_call`.
@@ -248,13 +262,15 @@ class CustomProviderDraft {
     List<String> disabledModelIDs = const [],
     this.timeoutMs = 600000,
     String? keyFile,
+    this.keyRing = const [],
+    this.activeKeyID,
     this.keyPlaceholder,
   }) : id = normalizeProviderId(id),
        baseUrl = normalizeBaseUrl(baseUrl, protocol),
        models = normalizeModels(models),
        headers = normalizeHeaders(headers),
        disabledModelIDs = List.unmodifiable(disabledModelIDs),
-       _keyFile = keyFile;
+        _keyFile = keyFile;
 
   final String name;
   final String id;
@@ -282,6 +298,8 @@ class CustomProviderDraft {
   /// uses the standard location. An entry read back from the config may
   /// point anywhere, and moving it on edit would leave the key behind.
   final String? _keyFile;
+  final List<ProviderKeyRecord> keyRing;
+  final String? activeKeyID;
 
   /// The original `{env:…}`-style reference an entry used instead of a key
   /// of its own. Kept so editing an entry does not silently drop it.
@@ -464,6 +482,8 @@ class CustomProviderDraft {
       disabledModelIDs: disabledModelIDs,
       timeoutMs: timeoutMs,
       keyFile: _keyFile,
+      keyRing: keyRing,
+      activeKeyID: activeKeyID,
       keyPlaceholder: keyPlaceholder,
     );
   }
@@ -589,8 +609,8 @@ class CustomProviderDraft {
             'limit': {
               'context': model.contextLimit,
               'output': model.effectiveOutputLimit,
-            },
         },
+      },
     },
   };
 

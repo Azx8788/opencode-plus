@@ -9,6 +9,7 @@ import '../../builtin/builtin_linux.dart';
 import '../../builtin/builtin_provider_store.dart';
 import '../../builtin/builtin_provider_templates.dart';
 import '../../builtin/builtin_server.dart' show looksLikeInAppServer;
+import '../../builtin/provider_key_ring_store.dart';
 import '../../builtin/provider_server_models.dart';
 import '../../builtin/provider_server_scripts.dart';
 import '../../domain/custom_provider.dart';
@@ -96,8 +97,15 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
   /// itself, so the key has to be somewhere the server can read: in the
   /// config, which only the server's own account can open. `secretFile` is
   /// kept for entries written that way before this rule.
-  late final ProviderKeyMode _keyMode =
+  ProviderKeyMode _keyMode =
       widget.editing?.keyMode ?? ProviderKeyMode.plaintext;
+
+  late final ProviderKeyRingStore _keyRingStore = ProviderKeyRingStore(
+    widget.controller.store.prefs,
+  );
+  List<ProviderKeyRecord> _keyRing = const [];
+  String? _activeKeyID;
+  bool _keyRingLoading = false;
 
   /// True once this entry is in the config, whichever action put it there.
   /// The write before a model read happens on a new provider, and from then
@@ -265,6 +273,30 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
       );
     });
     _prepare();
+    unawaited(_loadKeyRing());
+  }
+
+  Future<void> _loadKeyRing() async {
+    final editing = widget.editing;
+    final profileID = widget.controller.profile?.id;
+    if (editing == null || profileID == null || !_writable) return;
+    if (mounted) setState(() => _keyRingLoading = true);
+    try {
+      final loaded = await _keyRingStore.load(
+        profileID: profileID,
+        providerID: editing.id,
+        currentPath: editing.secretPath,
+      );
+      if (!mounted) return;
+      setState(() {
+        _keyRing = loaded.keys;
+        _activeKeyID = loaded.activeID;
+        _keyRingLoading = false;
+        if (_activeKeyID != null) _keyMode = ProviderKeyMode.secretFile;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _keyRingLoading = false);
+    }
   }
 
   Future<void> _prepare() async {
@@ -300,13 +332,24 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
 
   CustomProviderDraft _draft() {
     final typedKey = _apiKey.text.trim();
-    final editing = widget.editing;
     final id = CustomProviderDraft.normalizeProviderId(
       _id.text.isEmpty ? _name.text : _id.text,
     );
-    // A key typed here is written into the config: the server is the one that
-    // has to read it, for the model list and for every real request.
-    final keyMode = typedKey.isNotEmpty ? ProviderKeyMode.plaintext : _keyMode;
+    final activePath = _activeKeyPath;
+    // A newly typed key becomes a named, owner-only file rather than a
+    // plaintext value in the config. The same path also serves a legacy entry
+    // whose key still sits in the config: writing it once replaces that value
+    // with a file reference.
+    final bootstrap = _keyRing.isEmpty && typedKey.isNotEmpty && _writable;
+    final bootstrapPath = bootstrap
+        ? _managedKeyPath(id, _defaultKeyID)
+        : null;
+    final editing = widget.editing;
+    final keyMode = activePath != null || bootstrapPath != null
+        ? ProviderKeyMode.secretFile
+        : typedKey.isNotEmpty
+        ? ProviderKeyMode.plaintext
+        : _keyMode;
     // What the server currently serves for this id, plus whatever this form
     // has listed. The ticked set alone is not enough: a provider saved
     // before this rule existed has two entries in its config and eighty
@@ -329,7 +372,7 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
           : null,
       keyMode: keyMode,
       keyPlaceholder: editing?.keyPlaceholder,
-      keyFile: editing?.secretPath,
+      keyFile: activePath ?? bootstrapPath ?? editing?.secretPath,
       models: [
         for (final modelID in _selected)
           _withWindow(
@@ -366,13 +409,68 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
     if (typed.isNotEmpty) return typed;
     final editing = widget.editing;
     if (editing == null) return '';
-    if (editing.apiKey case final key? when key.isNotEmpty) return key;
-    final path = editing.secretPath;
+    final path = _activeKeyPath ?? editing.secretPath;
     if (path != null) {
       final key = await _store.readSecret(path);
       if (key != null) return key;
     }
     return '';
+  }
+
+  String? get _activeKeyPath {
+    final id = _activeKeyID;
+    if (id == null) return null;
+    for (final key in _keyRing) {
+      if (key.id == id) return key.filePath;
+    }
+    return null;
+  }
+
+  static const _defaultKeyID = 'default';
+
+  static String _managedKeyPath(String providerID, String keyID) =>
+      '/root/.secrets/opencode-plus/$providerID/$keyID.key';
+
+  /// Records the first key this form wrote. The key bytes are already on disk;
+  /// only its display name and path are kept here.
+  Future<void> _rememberBootstrapKey(String providerID) async {
+    final profileID = widget.controller.profile?.id;
+    if (profileID == null) return;
+    final key = ProviderKeyRecord(
+      id: _defaultKeyID,
+      name: _l10nOf(context).providerKeyDefaultName,
+      filePath: _managedKeyPath(providerID, _defaultKeyID),
+    );
+    try {
+      // Merge with anything already stored: a slow preferences read must not
+      // replace the names of keys this provider already has.
+      final existing = await _keyRingStore.load(
+        profileID: profileID,
+        providerID: providerID,
+        currentPath: key.filePath,
+      );
+      final keys = [
+        for (final item in existing.keys)
+          if (item.filePath != key.filePath) item,
+        key,
+      ];
+      await _keyRingStore.save(
+        profileID: profileID,
+        providerID: providerID,
+        keys: keys,
+        activeID: key.id,
+      );
+      if (!mounted) return;
+      setState(() {
+        _keyRing = List.unmodifiable(keys);
+        _activeKeyID = key.id;
+        _keyMode = ProviderKeyMode.secretFile;
+        _apiKey.clear();
+      });
+    } catch (_) {
+      // The provider itself was saved; a missing display name is not a reason
+      // to report the save as failed. The config still points at the file.
+    }
   }
 
   /// The snippet to show and to copy. Null until the form says enough to
@@ -609,6 +707,14 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
         replace: _editing || _existsOnServer,
         requireModels: requireModels,
       );
+      // A typed key was written to a managed, owner-only file. Remember its
+      // name now so the entry opens with a named key rather than a plaintext
+      // value in its settings.
+      final bootstrap =
+          _keyRing.isEmpty &&
+          draft.hasKey &&
+          draft.keyMode == ProviderKeyMode.secretFile;
+      if (bootstrap) await _rememberBootstrapKey(draft.id);
       final reloaded = await _tryReload();
       if (!mounted) return false;
       setState(() {
@@ -690,6 +796,24 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
     try {
       final resolved = _resolved ?? await _store.resolve();
       await _store.remove(editing.id, resolved: resolved);
+      await _store.removeProviderKeyFiles(editing.id, [
+        for (final key in _keyRing) key.filePath,
+        if (editing.secretPath case final path?) path,
+      ]);
+      final profileID = widget.controller.profile?.id;
+      if (profileID != null) {
+        try {
+          await _keyRingStore.save(
+            profileID: profileID,
+            providerID: editing.id,
+            keys: const [],
+            activeID: null,
+          );
+        } catch (_) {
+          // The provider is gone; stale display names cannot point at a key
+          // the provider does not have.
+        }
+      }
       await widget.controller.setProviderHidden(editing.id, false);
       await widget.controller.setBalance(editing.id, const ProviderBalance());
       if (!mounted) return;
@@ -959,6 +1083,230 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
     );
   }
 
+  String _newKeyID(String name) {
+    final base = name
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), '-')
+        .replaceAll(RegExp(r'[^a-z0-9_-]'), '')
+        .replaceAll(RegExp(r'^[-_]+|[-_]+$'), '');
+    final stem = base.isEmpty
+        ? 'key'
+        : base.length > 32
+        ? base.substring(0, 32)
+        : base;
+    var candidate = stem;
+    var number = 2;
+    while (_keyRing.any((key) => key.id == candidate)) {
+      candidate = '$stem-$number';
+      number += 1;
+    }
+    return candidate;
+  }
+
+  Future<void> _addNamedKey() async {
+    if (!_editing || _saving || !_writable) return;
+    final l10n = _l10nOf(context);
+    final name = await showKitInputDialog(
+      context,
+      title: l10n.providerKeyAdd,
+      label: l10n.providerKeyName,
+      confirmLabel: l10n.providerAddSave,
+      hint: l10n.providerKeyNameHint,
+      validate: (value) => value.trim().isEmpty ? l10n.providerKeyNameRequired : null,
+      fieldKey: const ValueKey('provider-key-name-field'),
+      confirmKey: const ValueKey('provider-key-name-confirm'),
+    );
+    if (!mounted || name == null || name.trim().isEmpty) return;
+    final secret = await showKitInputDialog(
+      context,
+      title: name.trim(),
+      label: l10n.providerKeySecret,
+      confirmLabel: l10n.providerAddSave,
+      kind: KitFieldKind.secret,
+      helper: l10n.providerKeySecretHint,
+      validate: (value) => value.trim().isEmpty ? l10n.providerKeySecretRequired : null,
+      fieldKey: const ValueKey('provider-key-secret-field'),
+      confirmKey: const ValueKey('provider-key-secret-confirm'),
+    );
+    if (!mounted || secret == null || secret.trim().isEmpty) return;
+    final profileID = widget.controller.profile?.id;
+    final providerID = widget.editing?.id;
+    if (profileID == null || providerID == null) return;
+    final keyID = _newKeyID(name);
+    setState(() => _saving = true);
+    try {
+      final receipt = await _store.saveNamedKey(
+        providerID: providerID,
+        keyID: keyID,
+        name: name,
+        secret: secret,
+        activeKeyID: null,
+        keys: _keyRing,
+        resolved: _resolved,
+      );
+      final path = '/root/.secrets/opencode-plus/$providerID/$keyID.key';
+      final next = [
+        for (final key in _keyRing)
+          if (key.id != keyID) key,
+        ProviderKeyRecord(id: keyID, name: name.trim(), filePath: path),
+      ];
+      await _keyRingStore.save(
+        profileID: profileID,
+        providerID: providerID,
+        keys: next,
+        activeID: keyID,
+      );
+      final reloaded = await _tryReload();
+      if (!mounted) return;
+      setState(() {
+        _keyRing = List.unmodifiable(next);
+        _activeKeyID = keyID;
+        _keyMode = ProviderKeyMode.secretFile;
+        _apiKey.clear();
+        _lastReceipt = receipt;
+        _reloaded = reloaded;
+        _saving = false;
+      });
+      _say(l10n.providerKeyAdded(name.trim()));
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _saveError = _messageFor(error);
+        });
+      }
+    }
+  }
+
+  Future<void> _useNamedKey(ProviderKeyRecord key) async {
+    if (!_editing || _saving || key.id == _activeKeyID) return;
+    final profileID = widget.controller.profile?.id;
+    final providerID = widget.editing?.id;
+    if (profileID == null || providerID == null) return;
+    setState(() => _saving = true);
+    try {
+      final receipt = await _store.updateNamedKeys(
+        providerID: providerID,
+        keys: _keyRing,
+        activeKeyID: key.id,
+        resolved: _resolved,
+      );
+      await _keyRingStore.save(
+        profileID: profileID,
+        providerID: providerID,
+        keys: _keyRing,
+        activeID: key.id,
+      );
+      final reloaded = await _tryReload();
+      if (!mounted) return;
+      setState(() {
+        _activeKeyID = key.id;
+        _keyMode = ProviderKeyMode.secretFile;
+        _apiKey.clear();
+        _lastReceipt = receipt;
+        _reloaded = reloaded;
+        _saving = false;
+      });
+    } catch (error) {
+      if (mounted) setState(() { _saving = false; _saveError = _messageFor(error); });
+    }
+  }
+
+  Future<void> _renameNamedKey(ProviderKeyRecord key) async {
+    if (!_editing || _saving) return;
+    final l10n = _l10nOf(context);
+    final name = await showKitInputDialog(
+      context,
+      title: l10n.providerKeyRename,
+      label: l10n.providerKeyName,
+      initial: key.name,
+      confirmLabel: l10n.providerManageEdit,
+      validate: (value) => value.trim().isEmpty ? l10n.providerKeyNameRequired : null,
+      fieldKey: const ValueKey('provider-key-rename-field'),
+      confirmKey: const ValueKey('provider-key-rename-confirm'),
+    );
+    if (!mounted || name == null || name.trim().isEmpty || name.trim() == key.name) return;
+    final profileID = widget.controller.profile?.id;
+    final providerID = widget.editing?.id;
+    if (profileID == null || providerID == null) return;
+    final next = [
+      for (final item in _keyRing)
+        item.id == key.id
+            ? ProviderKeyRecord(id: item.id, name: name.trim(), filePath: item.filePath)
+            : item,
+    ];
+    setState(() => _saving = true);
+    try {
+      final receipt = await _store.updateNamedKeys(
+        providerID: providerID,
+        keys: next,
+        activeKeyID: _activeKeyID,
+        resolved: _resolved,
+      );
+      await _keyRingStore.save(
+        profileID: profileID,
+        providerID: providerID,
+        keys: next,
+        activeID: _activeKeyID,
+      );
+      if (!mounted) return;
+      setState(() { _keyRing = List.unmodifiable(next); _lastReceipt = receipt; _saving = false; });
+      _say(l10n.providerKeyRenamed(name.trim()));
+    } catch (error) {
+      if (mounted) setState(() { _saving = false; _saveError = _messageFor(error); });
+    }
+  }
+
+  Future<void> _removeNamedKey(ProviderKeyRecord key) async {
+    if (!_editing || _saving) return;
+    final l10n = _l10nOf(context);
+    if (_keyRing.length <= 1) {
+      _say(l10n.providerKeyCannotDeleteLast);
+      return;
+    }
+    if (key.id == _activeKeyID) {
+      _say(l10n.providerKeyCannotDeleteActive);
+      return;
+    }
+    final agreed = await showKitConfirm(
+      context,
+      title: l10n.providerKeyDeleteTitle(key.name),
+      body: l10n.providerKeyDeleteBody,
+      confirmLabel: l10n.providerManageDelete,
+      kind: KitConfirmKind.destructive,
+      icon: AppIconography.delete,
+      confirmKey: const ValueKey('provider-key-delete-confirm'),
+    );
+    if (!agreed || !mounted) return;
+    final profileID = widget.controller.profile?.id;
+    final providerID = widget.editing?.id;
+    if (profileID == null || providerID == null || _activeKeyID == null) return;
+    final next = _keyRing.where((item) => item.id != key.id).toList();
+    setState(() => _saving = true);
+    try {
+      final receipt = await _store.removeNamedKey(
+        providerID: providerID,
+        keyID: key.id,
+        remaining: next,
+        activeKeyID: _activeKeyID!,
+        removedPath: key.filePath,
+        resolved: _resolved,
+      );
+      await _keyRingStore.save(
+        profileID: profileID,
+        providerID: providerID,
+        keys: next,
+        activeID: _activeKeyID,
+      );
+      if (!mounted) return;
+      setState(() { _keyRing = List.unmodifiable(next); _lastReceipt = receipt; _saving = false; });
+      _say(l10n.providerKeyDeleted(key.name));
+    } catch (error) {
+      if (mounted) setState(() { _saving = false; _saveError = _messageFor(error); });
+    }
+  }
+
   Future<void> _copySnippet() async {
     final text = _previewText;
     if (text == null || text.isEmpty) return;
@@ -1136,6 +1484,73 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
 
   // ---------------- Configuration ----------------
 
+  List<Widget> _keyRingWidgets(BuildContext context, AppLocalizations l10n) {
+    if (!_editing || !_writable) return const [];
+    return [
+      KitSectionLabel(l10n.providerKeysTitle, gapBefore: _space(context)),
+      Text(
+        l10n.providerKeysHint,
+        style: KitText.styleOf(context, KitTextRole.caption),
+      ),
+      if (_keyRingLoading) ...[
+        _gap(context),
+        const KitSkeletonRows(count: 1),
+      ] else if (_keyRing.isNotEmpty) ...[
+        _gap(context),
+        KitRowGroup(
+          margin: EdgeInsets.zero,
+          children: [
+            for (final key in _keyRing)
+              KitRow(
+                key: ValueKey('provider-key-${key.id}'),
+                title: key.name,
+                supporting: TextSpan(
+                  text: key.id == _activeKeyID
+                      ? l10n.providerKeyCurrent
+                      : l10n.providerKeyAvailable,
+                ),
+                trailing: key.id == _activeKeyID
+                    ? Icon(AppIconography.check)
+                    : null,
+                onTap: key.id == _activeKeyID ? null : () => _useNamedKey(key),
+                menuLabel: l10n.providerKeyActions(key.name),
+                menu: [
+                  if (key.id != _activeKeyID)
+                    KitMenuItem(
+                      key: ValueKey('provider-key-use-${key.id}'),
+                      label: l10n.providerKeyUse,
+                      icon: AppIconography.check,
+                      onSelected: () => _useNamedKey(key),
+                    ),
+                  KitMenuItem(
+                    key: ValueKey('provider-key-rename-${key.id}'),
+                    label: l10n.providerKeyRename,
+                    icon: AppIconography.edit,
+                    onSelected: () => _renameNamedKey(key),
+                  ),
+                  if (_keyRing.length > 1 && key.id != _activeKeyID)
+                    KitMenuItem(
+                      key: ValueKey('provider-key-delete-${key.id}'),
+                      label: l10n.providerManageDelete,
+                      icon: AppIconography.delete,
+                      destructive: true,
+                      onSelected: () => _removeNamedKey(key),
+                    ),
+                ],
+              ),
+          ],
+        ),
+      ],
+      SizedBox(height: _space(context) / 2),
+      KitButton.secondary(
+        key: const ValueKey('provider-key-add'),
+        label: l10n.providerKeyAdd,
+        icon: AppIconography.add,
+        onPressed: _saving ? null : _addNamedKey,
+      ),
+    ];
+  }
+
   List<Widget> _configTab(BuildContext context, AppLocalizations l10n) => [
     KitSwitchRow(
       key: const ValueKey('provider-detail-enabled'),
@@ -1159,17 +1574,23 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
       },
       fieldKey: const ValueKey('custom-provider-name'),
     ),
+    ..._keyRingWidgets(context, l10n),
     _gap(context),
-    KitField.secret(
-      label: l10n.providerAddApiKey,
-      controller: _apiKey,
-      helper: l10n.providerAddApiKeyHelper,
-      textInputAction: TextInputAction.next,
-      saved: _hasStoredKey,
-      onChanged: (_) => setState(() {}),
-      fieldKey: const ValueKey('custom-provider-api-key'),
-    ),
-    _gap(context),
+    // Once named keys exist, adding one is the way to change the key; a
+    // second unlabelled field would be a way to overwrite a file without
+    // saying which one.
+    if (!(_editing && _keyRing.isNotEmpty)) ...[
+      KitField.secret(
+        label: l10n.providerAddApiKey,
+        controller: _apiKey,
+        helper: l10n.providerAddApiKeyHelper,
+        textInputAction: TextInputAction.next,
+        saved: _hasStoredKey,
+        onChanged: (_) => setState(() {}),
+        fieldKey: const ValueKey('custom-provider-api-key'),
+      ),
+      _gap(context),
+    ],
     KitField(
       label: l10n.providerAddBaseUrl,
       controller: _baseUrl,

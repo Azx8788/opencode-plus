@@ -155,6 +155,35 @@ object GuestFileWriter {
         }
     }
 
+    /** Removes one owner-only regular file after an identity re-check. */
+    @Throws(IOException::class)
+    fun removeOwned(root: File, relativePath: String): Boolean {
+        val file = target(root, relativePath)
+        if (!file.exists()) return false
+        val path = file.toPath()
+        val before = Files.readAttributes(
+            path,
+            BasicFileAttributes::class.java,
+            LinkOption.NOFOLLOW_LINKS,
+        )
+        if (!before.isRegularFile) throw Refused("not a file")
+        if (Files.getPosixFilePermissions(path, LinkOption.NOFOLLOW_LINKS) !=
+            PosixFilePermissions.fromString(MODE)
+        ) {
+            throw Refused("mode")
+        }
+        val links = Files.getAttribute(path, "unix:nlink", LinkOption.NOFOLLOW_LINKS) as Int
+        if (links != 1) throw Refused("links")
+        val now = Files.readAttributes(
+            path,
+            BasicFileAttributes::class.java,
+            LinkOption.NOFOLLOW_LINKS,
+        )
+        if (now.fileKey() != before.fileKey()) throw Refused("replaced")
+        Files.delete(path)
+        return true
+    }
+
     /**
      * Reads one small private file and removes it, refusing anything that is
      * not the file the caller described.

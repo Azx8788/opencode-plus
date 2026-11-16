@@ -56713,6 +56713,29 @@ abstract class AppLocalizations {
   /// **'Written into the server\'s configuration, which only the server\'s own account can read.'**
   String get providerAddApiKeyHelper;
 
+  String get providerKeysTitle;
+  String get providerKeysHint;
+  String get providerKeyAdd;
+  String get providerKeyRename;
+  String get providerKeyUse;
+  String get providerKeyName;
+  String get providerKeyNameHint;
+  String get providerKeyDefaultName;
+  String get providerKeyNameRequired;
+  String get providerKeySecret;
+  String get providerKeySecretHint;
+  String get providerKeySecretRequired;
+  String get providerKeyCurrent;
+  String get providerKeyAvailable;
+  String providerKeyActions(String name);
+  String providerKeyAdded(String name);
+  String providerKeyRenamed(String name);
+  String providerKeyDeleted(String name);
+  String providerKeyDeleteTitle(String name);
+  String get providerKeyDeleteBody;
+  String get providerKeyCannotDeleteLast;
+  String get providerKeyCannotDeleteActive;
+
   /// No description provided for @providerAddFetch.
   ///
   /// In en, this message translates to:
@@ -57432,6 +57455,11 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Set up'**
   String get providerManageSetup;
+  String get providerHide;
+  String providerHiddenDone(String name);
+  String providerShowHidden(int count);
+  String get providerShowHiddenHint;
+  String get providerShowHiddenDone;
 
   /// Integrations entry row into the provider window
   ///

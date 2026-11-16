@@ -34082,6 +34082,51 @@ class AppLocalizationsZh extends AppLocalizations {
   String get providerAddApiKeyHelper => '直接写入服务端配置，只有服务端自己的账号能读。';
 
   @override
+  String get providerKeysTitle => '命名 API 密钥';
+  @override
+  String get providerKeysHint => '同一个供应商可以保存多个密钥，只有当前选中的密钥会被使用。';
+  @override
+  String get providerKeyAdd => '添加密钥';
+  @override
+  String get providerKeyRename => '重命名密钥';
+  @override
+  String get providerKeyUse => '使用此密钥';
+  @override
+  String get providerKeyName => '密钥名称';
+  @override
+  String get providerKeyNameHint => '个人、工作、备用……';
+  @override
+  String get providerKeyDefaultName => '默认';
+  @override
+  String get providerKeyNameRequired => '请为密钥填写名称。';
+  @override
+  String get providerKeySecret => 'API 密钥';
+  @override
+  String get providerKeySecretHint => '保存在服务端私有文件中，不会保存到应用偏好设置。';
+  @override
+  String get providerKeySecretRequired => '请输入 API 密钥。';
+  @override
+  String get providerKeyCurrent => '当前使用中';
+  @override
+  String get providerKeyAvailable => '已保存的密钥';
+  @override
+  String providerKeyActions(String name) => '密钥“$name”的操作';
+  @override
+  String providerKeyAdded(String name) => '已添加并选中密钥“$name”';
+  @override
+  String providerKeyRenamed(String name) => '密钥已重命名为“$name”';
+  @override
+  String providerKeyDeleted(String name) => '已从列表移除密钥“$name”';
+  @override
+  String providerKeyDeleteTitle(String name) => '移除密钥“$name”？';
+  @override
+  String get providerKeyDeleteBody => '密钥文件会安全保留，但此供应商将不再使用它。之后可以再次添加。';
+  @override
+  String get providerKeyCannotDeleteLast => '请至少为此供应商保留一个命名密钥。';
+  @override
+  String get providerKeyCannotDeleteActive => '请先切换到其他密钥，再移除当前密钥。';
+
+  @override
   String get providerAddFetch => '获取模型';
 
   @override
@@ -34218,7 +34263,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get providerManageTitle => '供应商';
 
   @override
-  String get providerManageIntro => '服务器配置里的自定义供应商。点一行编辑，长按可以测试或删除。';
+  String get providerManageIntro => '服务器配置里的供应商。点一行编辑，长按可以测试、隐藏或删除。';
 
   @override
   String get providerManageRefresh => '重新读取';
@@ -34482,6 +34527,16 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get providerManageSetup => '去配置';
+  @override
+  String get providerHide => '从此列表隐藏';
+  @override
+  String providerHiddenDone(String name) => '已隐藏“$name”';
+  @override
+  String providerShowHidden(int count) => '显示 $count 个已隐藏的供应商';
+  @override
+  String get providerShowHiddenHint => '隐藏只影响此列表，不会改动服务器配置。';
+  @override
+  String get providerShowHiddenDone => '已重新显示隐藏的供应商';
 
   @override
   String get providerManageSubtitle => '内置的和自己加的在一张表里：点开填密钥、选协议、勾模型。';

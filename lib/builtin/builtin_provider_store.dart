@@ -140,12 +140,16 @@ typedef BuiltinScriptRunner =
 typedef BuiltinFileWriter =
     Future<void> Function(String relativePath, String content);
 
+/// Removes one app-managed provider key file inside the server.
+typedef BuiltinFileDeleter = Future<void> Function(String relativePath);
+
 class BuiltinProviderStore {
   BuiltinProviderStore({
     BuiltinLinux? linux,
     String? home,
     BuiltinScriptRunner? run,
     BuiltinFileWriter? writeFile,
+    BuiltinFileDeleter? deleteFile,
   }) : assert(
          linux != null || run != null || writeFile != null,
          'BuiltinProviderStore needs a bridge, a runner or a writer',
@@ -166,11 +170,23 @@ class BuiltinProviderStore {
                relativePath: path,
                content: content,
              );
+           }),
+       _deleteFile =
+           deleteFile ??
+           ((path) {
+             if (linux == null) {
+               throw ProviderWriteRefused(
+                 'This store cannot delete without a native bridge',
+                 reason: 'no-deleter',
+               );
+             }
+             return linux.deleteServerProviderKey(relativePath: path);
            });
 
   final String _home;
   final BuiltinScriptRunner _run;
   final BuiltinFileWriter _writeFile;
+  final BuiltinFileDeleter _deleteFile;
 
   /// A path inside the server, as the native writer takes it.
   String _relative(String absolute) {
@@ -483,6 +499,220 @@ fi
       format: target.format,
     );
   }
+
+  /// Writes one named key with an owner-only file, then points the provider
+  /// at it and records its display name in app-owned metadata. Existing keys
+  /// remain untouched so the person can switch back at any time.
+  Future<ProviderWriteReceipt> saveNamedKey({
+    required String providerID,
+    required String keyID,
+    required String name,
+    required String secret,
+    required String? activeKeyID,
+    required List<ProviderKeyRecord> keys,
+    ResolvedProviderConfig? resolved,
+  }) async {
+    if (!RegExp(r'^[a-zA-Z0-9._-]{1,48}$').hasMatch(providerID) ||
+        !RegExp(r'^[a-zA-Z0-9_-]{1,48}$').hasMatch(keyID) ||
+        name.trim().isEmpty ||
+        secret.trim().isEmpty) {
+      throw const ProviderWriteRefused('The key details are incomplete');
+    }
+    final path = '/root/.secrets/opencode-plus/$providerID/$keyID.key';
+    await _writeFile(_relative(path), secret.trim());
+    final nextKeys = <ProviderKeyRecord>[
+      for (final key in keys)
+        if (key.id != keyID) key,
+      ProviderKeyRecord(id: keyID, name: name.trim(), filePath: path),
+    ];
+    final target = resolved ?? await resolve();
+    final snapshot = await read(target);
+    final document = snapshot.document;
+    if (!snapshot.canMerge || document == null) {
+      throw const ProviderWriteRefused('The provider configuration cannot be edited here');
+    }
+    final root = target.format == ProviderConfigFormat.v1 ? 'provider' : 'providers';
+    final providers = document[root];
+    final provider = providers is Map ? providers[providerID] : null;
+    final settingsKey = target.format == ProviderConfigFormat.v1 ? 'options' : 'settings';
+    final oldSettings = provider is Map ? provider[settingsKey] : null;
+    if (provider is! Map || oldSettings is! Map) {
+      throw ProviderWriteRefused('No editable provider named "$providerID" exists');
+    }
+    final chosenID = activeKeyID ?? keyID;
+    if (!nextKeys.any((key) => key.id == chosenID)) {
+      throw const ProviderWriteRefused('Select a saved key first');
+    }
+    final active = nextKeys.firstWhere((key) => key.id == chosenID);
+    final settings = <String, Object?>{
+      ...oldSettings.cast<String, Object?>(),
+      'apiKey': '{file:${active.filePath}}',
+    };
+    final entry = <String, Object?>{
+      ...provider.cast<String, Object?>(),
+      settingsKey: settings,
+    };
+    final nextProviders = <String, Object?>{
+      for (final item in providers.entries) '${item.key}': item.value,
+      providerID: entry,
+    };
+    final next = <String, Object?>{...document, root: nextProviders};
+    final backup = await _writeDocument(
+      next,
+      path: snapshot.path,
+      exists: snapshot.exists,
+      previous: snapshot.raw,
+    );
+    return ProviderWriteReceipt(
+      configPath: snapshot.path,
+      backupPath: backup,
+      keyFileWritten: true,
+      providerID: providerID,
+      format: target.format,
+    );
+  }
+
+  /// Renames a key or changes the active key. It writes only the config; key
+  /// bytes never leave their existing private file.
+  Future<ProviderWriteReceipt> updateNamedKeys({
+    required String providerID,
+    required List<ProviderKeyRecord> keys,
+    required String? activeKeyID,
+    ResolvedProviderConfig? resolved,
+  }) => _writeKeyRingConfig(
+    providerID: providerID,
+    activeKeyID: activeKeyID,
+    keys: keys,
+    resolved: resolved,
+  );
+
+  Future<ProviderWriteReceipt> _writeKeyRingConfig({
+    required String providerID,
+    required List<ProviderKeyRecord> keys,
+    required String? activeKeyID,
+    ResolvedProviderConfig? resolved,
+  }) async {
+    final target = resolved ?? await resolve();
+    final snapshot = await read(target);
+    final document = snapshot.document;
+    if (!snapshot.canMerge || document == null) {
+      throw const ProviderWriteRefused(
+        'The provider configuration cannot be edited here',
+        reason: 'unwritable',
+      );
+    }
+    final root = target.format == ProviderConfigFormat.v1
+        ? 'provider'
+        : 'providers';
+    final providers = document[root];
+    if (providers is! Map || providers[providerID] is! Map) {
+      throw ProviderWriteRefused(
+        'No provider named "$providerID" is in the configuration',
+        reason: 'missing',
+      );
+    }
+    final existingProvider = providers[providerID] as Map;
+    final settingsKey = target.format == ProviderConfigFormat.v1
+        ? 'options'
+        : 'settings';
+    final oldSettings = existingProvider[settingsKey];
+    if (oldSettings is! Map) {
+      throw const ProviderWriteRefused('The provider settings are unreadable');
+    }
+    if (activeKeyID != null && !keys.any((key) => key.id == activeKeyID)) {
+      throw const ProviderWriteRefused('Select a saved key first');
+    }
+    for (final key in keys) {
+      if (!_safeKeyPath(key.filePath, providerID) || key.name.trim().isEmpty) {
+        throw const ProviderWriteRefused('A saved key entry is invalid');
+      }
+    }
+    final settings = <String, Object?>{
+      ...oldSettings.cast<String, Object?>(),
+      if (activeKeyID != null)
+        'apiKey': '{file:${keys.firstWhere((key) => key.id == activeKeyID).filePath}}'
+      else
+        'apiKey': null,
+    };
+    if (activeKeyID == null) settings.remove('apiKey');
+    final entry = <String, Object?>{
+      ...existingProvider.cast<String, Object?>(),
+      settingsKey: settings,
+    };
+    final nextProviders = <String, Object?>{
+      for (final item in providers.entries) '${item.key}': item.value,
+      providerID: entry,
+    };
+    final next = <String, Object?>{...document, root: nextProviders};
+    final backup = await _writeDocument(
+      next,
+      path: snapshot.path,
+      exists: snapshot.exists,
+      previous: snapshot.raw,
+    );
+    return ProviderWriteReceipt(
+      configPath: snapshot.path,
+      backupPath: backup,
+      keyFileWritten: false,
+      providerID: providerID,
+      format: target.format,
+    );
+  }
+
+  /// Remove a named key only when it is not selected and the config explicitly
+  /// owns the managed key ring. Legacy/external files are never deleted.
+  Future<ProviderWriteReceipt> removeNamedKey({
+    required String providerID,
+    required String keyID,
+    required List<ProviderKeyRecord> remaining,
+    required String activeKeyID,
+    String? removedPath,
+    ResolvedProviderConfig? resolved,
+  }) async {
+    final target = resolved ?? await resolve();
+    final receipt = await _writeKeyRingConfig(
+      providerID: providerID,
+      keys: remaining,
+      activeKeyID: activeKeyID,
+      resolved: target,
+    );
+    if (removedPath != null && _managedKeyPath(removedPath, providerID)) {
+      try {
+        await _deleteFile(_relative(removedPath));
+      } catch (_) {
+        // The config no longer references the file; a failed unlink must not
+        // turn a successful removal back into an error.
+      }
+    }
+    return receipt;
+  }
+
+  /// Deletes the key files this app created for a provider that is being
+  /// removed. Only the managed folder is touched; a legacy or external key is
+  /// left where its owner put it.
+  Future<void> removeProviderKeyFiles(
+    String providerID,
+    Iterable<String> paths,
+  ) async {
+    for (final path in paths) {
+      if (!_managedKeyPath(path, providerID)) continue;
+      try {
+        await _deleteFile(_relative(path));
+      } catch (_) {
+        // Best effort: the provider entry is gone either way.
+      }
+    }
+  }
+
+  static bool _managedKeyPath(String path, String providerID) => RegExp(
+    '^/root/\\.secrets/opencode-plus/${RegExp.escape(providerID)}/[a-zA-Z0-9_-]{1,48}\\.key$',
+  ).hasMatch(path);
+
+  static bool _safeKeyPath(String path, String providerID) =>
+      path == '/root/.secrets/$providerID.key' ||
+      RegExp(
+        '^/root/\\.secrets/opencode-plus/${RegExp.escape(providerID)}/[a-zA-Z0-9_-]{1,48}\\.key$',
+      ).hasMatch(path);
 
   /// Writes one model's context window into an entry that is already on disk.
   ///

@@ -69,6 +69,10 @@ void main() {
       expect(record.secretPath, '/root/.secrets/openrouter.key');
       expect(record.models.map((model) => model.id).toSet(), {'a/model', 'b'});
       expect(record.name, 'OpenRouter');
+      // The old single file is the first named key, so the editor can rename
+      // it or add another without copying its bytes.
+      expect(record.keyRing.single.filePath, '/root/.secrets/openrouter.key');
+      expect(record.activeKeyID, record.keyRing.single.id);
     });
 
     test('reads a plaintext key as one', () {

@@ -1,6 +1,6 @@
 # 思考等级问题交接（2026-11-16 更新）
 
-> 当前候选版本：`0.3.22+30`，尚待完整 CI 和升级后的真机验收。
+> 当前候选版本：`0.3.23+31`，尚待完整 CI 和升级后的真机验收。
 > 本文替换前一版的错误判断；不能将“目录没有 Max”推断为“网关不支持 Max”。
 
 ## 用户实际要解决的事
@@ -80,8 +80,11 @@
 | `test/builtin_provider_store_test.dart` | 原生配置写入及再次编辑后 Max 仍在、启动脚本不冻结配置 |
 | `test/server_config_reload_test.dart` | 重载请求携带正确 directory/workspace |
 | `test/variant_unavailable_test.dart` | 错误分类、模型/供应商变更触发刷新 |
+| `test/provider_key_ring_store_test.dart` | 密钥名称/路径、旧密钥纳入、越界路径拒绝、无密钥正文 |
+| `test/provider_visibility_store_test.dart` | 未配置模板按服务器隐藏/恢复、非法 ID 忽略 |
+| `test/builtin_provider_store_test.dart`（密钥组） | 命名密钥文件、切换引用、移除只删受管文件、旧路径不删 |
 
-**真机验收必须另做**：安装 `0.3.22+30` 后，当前任务完成再重启内置
+**真机验收必须另做**：安装 `0.3.23+31` 后，当前任务完成再重启内置
 服务器一次（运行中的旧进程仍有配置快照），选择自定义 Max 并应用；随后
 刷新模型、编辑供应商并保存、重启 App，检查 Max 仍可选并保持已选。
 同时检查菜单无重复分组/大段文案，点 Max 后勾选与芯片同步变为 Max。

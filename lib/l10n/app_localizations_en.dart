@@ -36086,6 +36086,51 @@ class AppLocalizationsEn extends AppLocalizations {
       'Written into the server\'s configuration, which only the server\'s own account can read.';
 
   @override
+  String get providerKeysTitle => 'Named API keys';
+  @override
+  String get providerKeysHint => 'Keep more than one key for this provider. Only the selected key is used.';
+  @override
+  String get providerKeyAdd => 'Add key';
+  @override
+  String get providerKeyRename => 'Rename key';
+  @override
+  String get providerKeyUse => 'Use this key';
+  @override
+  String get providerKeyName => 'Key name';
+  @override
+  String get providerKeyNameHint => 'Personal, work, backup…';
+  @override
+  String get providerKeyDefaultName => 'Default';
+  @override
+  String get providerKeyNameRequired => 'Give this key a name.';
+  @override
+  String get providerKeySecret => 'API key';
+  @override
+  String get providerKeySecretHint => 'Stored in a private server-side file. It is not kept in app preferences.';
+  @override
+  String get providerKeySecretRequired => 'Enter an API key.';
+  @override
+  String get providerKeyCurrent => 'Currently in use';
+  @override
+  String get providerKeyAvailable => 'Saved key';
+  @override
+  String providerKeyActions(String name) => 'Actions for key “$name”';
+  @override
+  String providerKeyAdded(String name) => 'Key “$name” added and selected';
+  @override
+  String providerKeyRenamed(String name) => 'Key renamed to “$name”';
+  @override
+  String providerKeyDeleted(String name) => 'Key “$name” removed from the list';
+  @override
+  String providerKeyDeleteTitle(String name) => 'Remove key “$name”?';
+  @override
+  String get providerKeyDeleteBody => 'The key file is kept safely but this provider will no longer use it. You can add it again later.';
+  @override
+  String get providerKeyCannotDeleteLast => 'Keep at least one named key for this provider.';
+  @override
+  String get providerKeyCannotDeleteActive => 'Choose another key before removing the active one.';
+
+  @override
   String get providerAddFetch => 'Fetch models';
 
   @override
@@ -36233,7 +36278,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get providerManageIntro =>
-      'The providers written into the server configuration. Tap a row to edit it; long-press for test and delete.';
+      'The providers written into the server configuration. Tap a row to edit it; long-press for test, hide or delete.';
 
   @override
   String get providerManageRefresh => 'Read again';
@@ -36509,6 +36554,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get providerManageSetup => 'Set up';
+  @override
+  String get providerHide => 'Hide from this list';
+  @override
+  String providerHiddenDone(String name) => '“$name” hidden';
+  @override
+  String providerShowHidden(int count) => 'Show $count hidden providers';
+  @override
+  String get providerShowHiddenHint =>
+      'Hiding only affects this list. Nothing in the server configuration changes.';
+  @override
+  String get providerShowHiddenDone => 'Hidden providers shown again';
 
   @override
   String get providerManageSubtitle =>

@@ -44117,6 +44117,43 @@
   "providerAddModels": "Models",
   "providerAddApiKey": "API key",
   "providerAddApiKeyHelper": "Written into the server's configuration, which only the server's own account can read.",
+  "providerKeysTitle": "Named API keys",
+  "providerKeysHint": "Keep more than one key for this provider. Only the selected key is used.",
+  "providerKeyAdd": "Add key",
+  "providerKeyRename": "Rename key",
+  "providerKeyUse": "Use this key",
+  "providerKeyName": "Key name",
+  "providerKeyNameHint": "Personal, work, backup…",
+  "providerKeyDefaultName": "Default",
+  "providerKeyNameRequired": "Give this key a name.",
+  "providerKeySecret": "API key",
+  "providerKeySecretHint": "Stored in a private server-side file. It is not kept in app preferences.",
+  "providerKeySecretRequired": "Enter an API key.",
+  "providerKeyCurrent": "Currently in use",
+  "providerKeyAvailable": "Saved key",
+  "providerKeyActions": "Actions for key “{name}”",
+  "@providerKeyActions": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "providerKeyAdded": "Key “{name}” added and selected",
+  "@providerKeyAdded": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "providerKeyRenamed": "Key renamed to “{name}”",
+  "@providerKeyRenamed": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "providerKeyDeleted": "Key “{name}” removed from the list",
+  "@providerKeyDeleted": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "providerKeyDeleteTitle": "Remove key “{name}”?",
+  "@providerKeyDeleteTitle": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "providerKeyDeleteBody": "The key file is kept safely but this provider will no longer use it. You can add it again later.",
+  "providerKeyCannotDeleteLast": "Keep at least one named key for this provider.",
+  "providerKeyCannotDeleteActive": "Choose another key before removing the active one.",
   "providerAddFetch": "Fetch models",
   "providerAddFetching": "The server is reading the list…",
   "providerAddFetchFailed": "Could not read the model list",
@@ -44246,9 +44283,9 @@
   "@providerManageTitle": {
     "description": "Providers"
   },
-  "providerManageIntro": "The providers written into the server configuration. Tap a row to edit it; long-press for test and delete.",
+  "providerManageIntro": "The providers written into the server configuration. Tap a row to edit it; long-press for test, hide or delete.",
   "@providerManageIntro": {
-    "description": "The providers written into the server configuration. Tap a row to edit it; long-press for test and delete."
+    "description": "The providers written into the server configuration. Tap a row to edit it; long-press for test, hide or delete."
   },
   "providerManageRefresh": "Read again",
   "@providerManageRefresh": {
@@ -44617,6 +44654,17 @@
   "@providerManageSetup": {
     "description": "Provider row action for an entry that has no configuration yet"
   },
+  "providerHide": "Hide from this list",
+  "providerHiddenDone": "“{name}” hidden",
+  "@providerHiddenDone": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "providerShowHidden": "Show {count} hidden providers",
+  "@providerShowHidden": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "providerShowHiddenHint": "Hiding only affects this list. Nothing in the server configuration changes.",
+  "providerShowHiddenDone": "Hidden providers shown again",
   "providerManageSubtitle": "Shipped and your own endpoints in one list: tap to set the key, choose the protocol and pick models.",
   "@providerManageSubtitle": {
     "description": "Integrations entry row into the provider window"

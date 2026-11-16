@@ -2,6 +2,23 @@
 
 This project is in public alpha. Only the newest preview is supported.
 
+## 0.3.23+31 — 2026-11-16
+
+  * **Several named API keys per provider.** A saved provider keeps a list of
+    keys with names you choose. Tap a saved key to use it, rename it, or remove
+    one you no longer need. Names and paths live in app settings; the keys
+    themselves stay in owner-only files on the server, and only the selected
+    key is referenced by `opencode.json`. An older single key file is shown as
+    "Default" and can be renamed or kept beside new ones.
+  * **A new provider's first key becomes a named key.** Saving a typed key now
+    writes it to the same private per-provider folder instead of leaving a
+    plaintext value in the provider settings.
+  * **Shipped providers you do not use can be hidden.** A built-in row that was
+    never configured is only a starting point, so it is hidden from this list
+    rather than pretending to delete a server entry that does not exist. The
+    "show hidden providers" row restores them; configured providers keep their
+    real delete, confirmed and backed up.
+
 ## 0.3.22+30 — 2026-11-16
 
   * **One compact reasoning-level menu.** The separate custom-level group and

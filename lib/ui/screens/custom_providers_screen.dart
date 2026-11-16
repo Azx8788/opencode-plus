@@ -6,6 +6,8 @@ import '../../builtin/builtin_linux.dart';
 import '../../builtin/builtin_provider_store.dart';
 import '../../builtin/builtin_provider_templates.dart';
 import '../../builtin/builtin_server.dart' show looksLikeInAppServer;
+import '../../builtin/provider_key_ring_store.dart';
+import '../../builtin/provider_visibility_store.dart';
 import '../../domain/custom_provider.dart' show ProviderProtocol;
 import '../../domain/custom_provider_record.dart';
 import '../../l10n/app_localizations.dart';
@@ -55,6 +57,12 @@ class CustomProvidersScreen extends StatefulWidget {
 class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
   late final BuiltinLinux _linux = widget.linux ?? BuiltinLinux();
   late final BuiltinProviderStore _store = BuiltinProviderStore(linux: _linux);
+  late final ProviderVisibilityStore _visibility = ProviderVisibilityStore(
+    widget.controller.store.prefs,
+  );
+  late final ProviderKeyRingStore _keyRingStore = ProviderKeyRingStore(
+    widget.controller.store.prefs,
+  );
 
   CustomProviderCatalogue? _catalogue;
   ResolvedProviderConfig? _resolved;
@@ -62,6 +70,7 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
   bool _loading = true;
   bool _busy = false;
   bool _initialOpened = false;
+  Set<String> _hidden = const {};
 
   /// True when this profile is the server the app itself runs, whose files
   /// this app may write.
@@ -70,6 +79,8 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
   @override
   void initState() {
     super.initState();
+    final profileID = widget.controller.profile?.id;
+    if (profileID != null) _hidden = _visibility.load(profileID);
     unawaited(_load());
   }
 
@@ -188,7 +199,31 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
     if (!agreed || !mounted) return;
     setState(() => _busy = true);
     try {
+      final profileID = widget.controller.profile?.id;
+      final keyRing = profileID == null
+          ? null
+          : await _keyRingStore.load(
+              profileID: profileID,
+              providerID: record.id,
+              currentPath: record.secretPath,
+            );
       await _store.remove(record.id, resolved: _resolved);
+      await _store.removeProviderKeyFiles(record.id, [
+        for (final key in keyRing?.keys ?? const []) key.filePath,
+        if (record.secretPath case final path?) path,
+      ]);
+      if (profileID != null) {
+        try {
+          await _keyRingStore.save(
+            profileID: profileID,
+            providerID: record.id,
+            keys: const [],
+            activeID: null,
+          );
+        } catch (_) {
+          // Stale display names cannot make a removed provider usable again.
+        }
+      }
       if (!mounted) return;
       setState(() => _busy = false);
       _say(l10n.providerManageDeleted(record.name));
@@ -206,6 +241,34 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
     ScaffoldMessenger.maybeOf(
       context,
     )?.showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _hide(ProviderListEntry entry) async {
+    final profileID = widget.controller.profile?.id;
+    if (profileID == null) return;
+    final l10n = _l10nOf(context);
+    try {
+      await _visibility.hide(profileID, entry.id);
+      if (!mounted) return;
+      setState(() => _hidden = _visibility.load(profileID));
+      _say(l10n.providerHiddenDone(entry.name));
+    } catch (error) {
+      if (mounted) setState(() => _error = error);
+    }
+  }
+
+  Future<void> _restoreHidden() async {
+    final profileID = widget.controller.profile?.id;
+    if (profileID == null) return;
+    final l10n = _l10nOf(context);
+    try {
+      await _visibility.restoreAll(profileID);
+      if (!mounted) return;
+      setState(() => _hidden = _visibility.load(profileID));
+      _say(l10n.providerShowHiddenDone);
+    } catch (error) {
+      if (mounted) setState(() => _error = error);
+    }
   }
 
   @override
@@ -304,7 +367,23 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
       ];
     }
     if (catalogue == null) return const [];
-    final entries = providerListEntries(catalogue);
+    final allEntries = providerListEntries(catalogue);
+    // A shipped template that was never saved exists only as a starting
+    // point. "Delete" cannot remove what the server never had, so hiding it
+    // from this list is the honest act; configured providers are filtered out
+    // of hiding entirely and keep their real delete.
+    final entries = [
+      for (final entry in allEntries)
+        if (entry.configured || !_hidden.contains(entry.id)) entry,
+    ];
+    final hiddenCount = allEntries
+        .where(
+          (entry) =>
+              entry.template != null &&
+              !entry.configured &&
+              _hidden.contains(entry.id),
+        )
+        .length;
     // Two sources, two sections: a shipped template is a provider whose
     // models come from the server's own catalogue, and a custom one is a
     // channel the person declared. They behave differently on save (one is
@@ -385,6 +464,22 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
           ],
         ),
       ],
+      if (hiddenCount > 0) ...[
+        SizedBox(height: tokens.space3),
+        KitRowGroup(
+          margin: EdgeInsets.zero,
+          children: [
+            KitRow(
+              key: const ValueKey('providers-restore-hidden'),
+              title: l10n.providerShowHidden(hiddenCount),
+              supporting: TextSpan(text: l10n.providerShowHiddenHint),
+              supportingMaxLines: 2,
+              titleAccent: true,
+              onTap: _restoreHidden,
+            ),
+          ],
+        ),
+      ],
       // The catalogue view keeps its door: it is where every model of every
       // provider sits on one page, with a switch and a test each.
       SizedBox(height: tokens.space4),
@@ -449,14 +544,20 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
             ),
       menuLabel: l10n.providerManageMenu(entry.name),
       menu: [
-        if (record == null)
+        if (record == null) ...[
           KitMenuItem(
             key: ValueKey('provider-setup-${entry.id}'),
             label: l10n.providerManageSetup,
             icon: AppIconography.edit,
             onSelected: () => _openForm(null, template: entry.template),
-          )
-        else ...[
+          ),
+          KitMenuItem(
+            key: ValueKey('provider-hide-${entry.id}'),
+            label: l10n.providerHide,
+            icon: AppIconography.archive,
+            onSelected: () => _hide(entry),
+          ),
+        ] else ...[
           KitMenuItem(
             key: ValueKey('provider-edit-${entry.id}'),
             label: l10n.providerManageEdit,
