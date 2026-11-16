@@ -90,12 +90,12 @@ void main() {
       await sub.cancel();
       await server.close(force: true);
     });
-    final gateway = Api2Gateway(client: client)
-      ..serverRunsTools = (_) => true
-        ..memoryContext = (_) async => MemoryPromptContext(
-          value: 'Only approved memory',
-          isCurrent: () => true,
-        );
+    final gateway = Api2Gateway(client: client);
+    gateway.serverRunsTools = (_) => true;
+    gateway.memoryContext = (_) async => MemoryPromptContext(
+      value: 'Only approved memory',
+      isCurrent: () => true,
+    );
     await gateway.promptAsync('s', text: 'Original user text');
     expect(
       calls.indexOf(

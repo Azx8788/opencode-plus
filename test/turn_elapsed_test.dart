@@ -110,7 +110,7 @@ void main() {
     () {
       final session = SessionElapsed.fromMessages([
         MessageWithParts(
-          info: const MessageInfo(id: 'u1', sessionID: 's', role: 'user'),
+          info: MessageInfo(id: 'u1', sessionID: 's', role: 'user'),
         ),
         step(
           'a1',
@@ -127,7 +127,7 @@ void main() {
           completed: 3000,
         ),
         MessageWithParts(
-          info: const MessageInfo(id: 'u2', sessionID: 's', role: 'user'),
+          info: MessageInfo(id: 'u2', sessionID: 's', role: 'user'),
         ),
         step(
           'a3',

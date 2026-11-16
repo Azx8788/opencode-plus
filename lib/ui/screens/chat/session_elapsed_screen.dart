@@ -6,6 +6,7 @@ import '../../domain/models.dart';
 import '../../domain/turn_elapsed.dart';
 import '../../l10n/app_localizations.dart';
 import '../kit/kit.dart';
+import '../theme_roles.dart';
 
 /// The conversation's elapsed-time page: a ring of recorded phases, the
 /// stage totals and one bar per reply. It draws with the app's own theme

@@ -1,9 +1,4 @@
-import 'package:flutter/material.dart';
-
-import '../../domain/request_log.dart';
-import '../../state/connection.dart';
-import '../../state/request_log.dart';
-import '../kit/kit.dart';
+part of '../usage_screen.dart';
 
 /// Cross-session request timeline from the local log. It shows only prompts
 /// this app actually dispatched since the feature arrived; it never

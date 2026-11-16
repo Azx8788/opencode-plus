@@ -190,7 +190,7 @@ void main() {
       final scope = tester.widget<KitSegmented<String>>(
         find.byType(KitSegmented<String>),
       );
-      scope.onChanged('global');
+      scope.onChanged!('global');
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('memory-review-save')));
       await tester.pumpAndSettle();

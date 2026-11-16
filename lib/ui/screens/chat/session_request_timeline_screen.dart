@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../domain/models.dart';
 import '../../l10n/app_localizations.dart';
 import '../kit/kit.dart';
+import '../theme_roles.dart';
 
 /// A per-request timeline of one conversation, built only from the server's
 /// recorded request timestamps. No API-key lane is invented: OpenCode's

@@ -35,7 +35,7 @@ void main() {
 
   List<MessageWithParts> messages() => [
     MessageWithParts(
-      info: const MessageInfo(id: 'u1', sessionID: 's', role: 'user'),
+      info: MessageInfo(id: 'u1', sessionID: 's', role: 'user'),
     ),
     MessageWithParts(
       info: MessageInfo(
@@ -102,7 +102,7 @@ void main() {
             textScaler: TextScaler.linear(scale),
           ),
           child: kitStyleTheme(
-            KitEffectsScope(
+            child: KitEffectsScope(
               effects: KitEffects.defaults.copyWith(
                 motion: KitMotionLevel.off,
                 haptics: false,
