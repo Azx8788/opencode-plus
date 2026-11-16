@@ -96,6 +96,24 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> reveal(
+    WidgetTester tester,
+    Finder target, {
+    String list = 'provider-config-list',
+    double delta = 240,
+  }) async {
+    await tester.scrollUntilVisible(
+      target,
+      delta,
+      scrollable: find.descendant(
+        of: find.byKey(ValueKey(list)),
+        matching: find.byType(Scrollable),
+      ).first,
+      maxScrolls: 40,
+    );
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('provider actions are visible without long press; templates can hide and restore', (tester) async {
     await tester.pumpWidget(MaterialApp(home: CustomProvidersScreen(controller: controller, linux: linux)));
     await tester.pumpAndSettle();
@@ -108,14 +126,17 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('provider-row-openai')), findsNothing);
     final restore = find.byKey(const ValueKey('providers-restore-hidden'));
-    await tester.ensureVisible(restore);
+    await reveal(tester, restore, list: 'custom-providers-list');
     await tester.tap(restore);
     await tester.pumpAndSettle();
+    await reveal(tester, find.byKey(const ValueKey('provider-row-openai')),
+        list: 'custom-providers-list', delta: -240);
     expect(find.byKey(const ValueKey('provider-row-openai')), findsOneWidget);
   });
 
   testWidgets('named keys render without an unlabelled replacement field', (tester) async {
     await openEditor(tester);
+    await reveal(tester, find.byKey(const ValueKey('provider-key-work')));
     expect(find.byKey(const ValueKey('provider-key-work')), findsOneWidget);
     expect(find.byKey(const ValueKey('provider-key-backup')), findsOneWidget);
     expect(find.byKey(const ValueKey('custom-provider-api-key')), findsNothing);
@@ -126,7 +147,7 @@ void main() {
   testWidgets('renaming changes only metadata and survives reopening the editor', (tester) async {
     await openEditor(tester);
     final row = find.byKey(const ValueKey('provider-key-work'));
-    await tester.ensureVisible(row);
+    await reveal(tester, row);
     await tester.longPress(row);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('provider-key-rename-work')));
@@ -138,6 +159,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pumpAndSettle();
     await openEditor(tester);
+    await reveal(tester, find.text('Personal'));
     expect(find.text('Personal'), findsOneWidget);
     expect(find.text('Backup'), findsOneWidget);
   });
@@ -147,6 +169,7 @@ void main() {
     document['providers']['gateway']['settings']['apiKey'] = 'fixture-legacy-key';
     linux.files['.oc-opencode2/config/opencode/opencode.json'] = jsonEncode(document);
     await openEditor(tester);
+    await reveal(tester, find.text('Default'));
     final rows = tester.widgetList<KitRow>(find.byType(KitRow));
     expect(rows.where((row) => row.title == 'Default'), hasLength(1));
     expect(linux.writes, isEmpty);
@@ -159,7 +182,7 @@ void main() {
     linux.files['.oc-opencode2/config/opencode/opencode.json'] = jsonEncode(document);
     await openEditor(tester);
     final add = find.byKey(const ValueKey('provider-key-add'));
-    await tester.ensureVisible(add);
+    await reveal(tester, add);
     await tester.tap(add);
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('provider-key-name-field')), 'Personal');
@@ -180,7 +203,7 @@ void main() {
     expect(names.keys.map((key) => key.name), containsAll(['Default', 'Personal']));
     final legacy = names.keys.firstWhere((key) => key.name == 'Default');
     final legacyRow = find.byKey(ValueKey('provider-key-${legacy.id}'));
-    await tester.ensureVisible(legacyRow);
+    await reveal(tester, legacyRow, delta: -240);
     await tester.tap(legacyRow);
     await tester.pumpAndSettle();
     final switched = jsonDecode(linux.files['.oc-opencode2/config/opencode/opencode.json']!) as Map;

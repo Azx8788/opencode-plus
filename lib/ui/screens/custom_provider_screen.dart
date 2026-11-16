@@ -1515,12 +1515,12 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
             child: IndexedStack(
               index: _tab.index,
               children: [
-                _tabList(context, _configTab(context, l10n)),
+                _tabList(context, _configTab(context, l10n), _Tab.config),
                 _visited.contains(_Tab.models)
-                    ? _tabList(context, _modelsTab(context, l10n))
+                    ? _tabList(context, _modelsTab(context, l10n), _Tab.models)
                     : const SizedBox.shrink(),
                 _visited.contains(_Tab.advanced)
-                    ? _tabList(context, _advancedTab(context, l10n))
+                    ? _tabList(context, _advancedTab(context, l10n), _Tab.advanced)
                     : const SizedBox.shrink(),
               ],
             ),
@@ -1533,9 +1533,10 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
   EdgeInsetsDirectional _pad(BuildContext context) =>
       KitScreen.padding(context);
 
-  Widget _tabList(BuildContext context, List<Widget> children) {
+  Widget _tabList(BuildContext context, List<Widget> children, _Tab tab) {
     final pad = _pad(context);
     return ListView(
+      key: ValueKey('provider-${tab.name}-list'),
       padding: EdgeInsetsDirectional.fromSTEB(
         pad.start,
         _space(context),
