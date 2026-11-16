@@ -34323,6 +34323,8 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get sessionElapsedOutput => '输出';
   @override
+  String get sessionElapsedUnknown => '未分类生成（含未单独记录的工具参数）';
+  @override
   String get sessionElapsedTool => '工具执行';
   @override
   String sessionElapsedSteps(int steps, String duration) =>
@@ -34331,13 +34333,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get requestTimeline => '请求时间线';
   @override
   String get requestTimelineIntro =>
-      '只绘制本应用实际发送的请求；泳道按模型区分，服务器不报告具体使用的 API 密钥。';
+      '会话内使用已记录的模型步骤时间；本机用量标出服务器已确认的消息发送时间，不冒充供应商逐次请求的耗时。未报告具体 API 密钥，不推测密钥泳道。';
   @override
   String get requestTimelineEmpty => '该时间窗内没有已记录的请求';
   @override
   String requestTimelineNote(int count) => '$count 条带时间戳的请求';
   @override
-  String get requestTimelineUnknownModel => '服务器默认';
+  String get requestTimelineUnknownModel => '模型未报告';
   @override
   String get requestTimelineWindow => '时间范围';
   @override

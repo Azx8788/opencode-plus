@@ -56765,6 +56765,7 @@ abstract class AppLocalizations {
   String get sessionElapsedWait;
   String get sessionElapsedThinking;
   String get sessionElapsedOutput;
+  String get sessionElapsedUnknown;
   String get sessionElapsedTool;
   String sessionElapsedSteps(int steps, String duration);
   String get requestTimeline;

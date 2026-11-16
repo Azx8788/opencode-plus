@@ -36333,6 +36333,9 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get sessionElapsedOutput => 'Output';
   @override
+  String get sessionElapsedUnknown =>
+      'Unclassified streaming (including unreported tool arguments)';
+  @override
   String get sessionElapsedTool => 'Tool execution';
   @override
   String sessionElapsedSteps(int steps, String duration) =>
@@ -36341,14 +36344,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get requestTimeline => 'Request timeline';
   @override
   String get requestTimelineIntro =>
-      'Only requests this app actually sent are drawn. Lanes are models; which API key was used is not reported by the server.';
+      'Chat lanes use recorded model-step times. Local usage marks acknowledged prompt sends, not provider-request durations. API-key identity is not reported; no key lanes are inferred.';
   @override
   String get requestTimelineEmpty => 'No requests recorded in this window';
   @override
   String requestTimelineNote(int count) =>
       '$count requests with recorded timestamps';
   @override
-  String get requestTimelineUnknownModel => 'Server default';
+  String get requestTimelineUnknownModel => 'Model not reported';
   @override
   String get requestTimelineWindow => 'Time window';
   @override

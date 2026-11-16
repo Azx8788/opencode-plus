@@ -20,6 +20,7 @@ import 'package:opencode_mobile/ui/screens/memory/memory_review_screen.dart';
 import 'package:opencode_mobile/ui/screens/memory/memory_screen.dart';
 
 import 'fixtures/memory_secure.dart';
+import 'fixtures/qa_cjk_theme.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -64,13 +65,7 @@ void main() {
     final size = ValueNotifier(textSize);
     addTearDown(size.dispose);
     final base = dark ? AppTheme.dark() : AppTheme.light();
-    final theme = base.copyWith(
-      textTheme: base.textTheme.copyWith(
-        bodyLarge: base.textTheme.bodyLarge!.copyWith(
-          fontFamilyFallback: const ['QaCjkFallback'],
-        ),
-      ),
-    );
+    final theme = qaCjkTheme(base);
     await tester.pumpWidget(
       MaterialApp(
         theme: theme,

@@ -54,8 +54,9 @@ void main() {
     ]);
     expect(elapsed.wait, const Duration(milliseconds: 500));
     expect(elapsed.thinking, const Duration(milliseconds: 1000));
-    // firstToken→streamed is 2.5s; the thought inside it is 1s.
-    expect(elapsed.output, const Duration(milliseconds: 1500));
+    // The remaining 1.5s could contain tool arguments, not necessarily text.
+    expect(elapsed.output, Duration.zero);
+    expect(elapsed.unclassified, const Duration(milliseconds: 1500));
     expect(elapsed.toolExecution, const Duration(seconds: 5));
     expect(elapsed.wall, const Duration(milliseconds: 7500));
     expect(elapsed.steps, 1);
@@ -141,9 +142,50 @@ void main() {
       expect(session.turns.length, 2);
       expect(session.steps, 2);
       expect(session.wait, const Duration(seconds: 1));
-      expect(session.output, const Duration(seconds: 2));
+      expect(session.output, Duration.zero);
+      expect(session.unclassified, const Duration(seconds: 2));
       // Two reply spans, not the wall time that includes the person's pause.
       expect(session.wall, const Duration(seconds: 4));
     },
   );
+
+  test('overlapping explicit parts and repeated tool calls count once', () {
+    Part text(int a, int b) => Part(
+      type: 'text',
+      text: 'x',
+      startedAt: DateTime.fromMillisecondsSinceEpoch(a),
+      completedAt: DateTime.fromMillisecondsSinceEpoch(b),
+    );
+    final tool = Part(
+      type: 'tool',
+      callID: 'c',
+      toolState: ToolState(
+        status: 'completed',
+        startedAt: DateTime.fromMillisecondsSinceEpoch(4000),
+        completedAt: DateTime.fromMillisecondsSinceEpoch(5000),
+      ),
+    );
+    final elapsed = TurnElapsed.fromSteps([
+      step(
+        'one',
+        created: 1000,
+        firstToken: 2000,
+        streamed: 4000,
+        completed: 5000,
+        parts: [text(2000, 3500), text(3000, 4000), tool],
+      ),
+      MessageWithParts(
+        info: MessageInfo(
+          id: 'shell-notice',
+          sessionID: 's',
+          role: 'assistant',
+        ),
+        parts: [tool],
+      ),
+    ]);
+    expect(elapsed.output, const Duration(seconds: 2));
+    expect(elapsed.unclassified, Duration.zero);
+    expect(elapsed.toolExecution, const Duration(seconds: 1));
+    expect(elapsed.toolCalls, 1);
+  });
 }

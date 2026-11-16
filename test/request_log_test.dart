@@ -44,10 +44,27 @@ void main() {
     final store = RequestLogStore(prefs);
     await expectLater(store.load(), throwsA(isA<FormatException>()));
     expect(store.snapshot.entries, isEmpty);
+    await expectLater(
+      store.record(profileID: 'phone', sessionID: 's'),
+      throwsA(isA<FormatException>()),
+    );
+    expect(prefs.getString(RequestLogStore.key), '{broken');
     await store.clear();
     await store.load();
     expect(store.snapshot.entries, isEmpty);
   });
+
+  test(
+    'first dispatch after reopening preserves existing unread records',
+    () async {
+      final prefs = await SharedPreferences.getInstance();
+      final first = RequestLogStore(prefs);
+      await first.record(profileID: 'phone', sessionID: 'one');
+      final reopened = RequestLogStore(prefs);
+      await reopened.record(profileID: 'phone', sessionID: 'two');
+      expect(reopened.snapshot.entries.map((e) => e.sessionID), ['one', 'two']);
+    },
+  );
 
   test(
     'entry parsing rejects missing identity but accepts server-default model',

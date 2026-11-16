@@ -45,10 +45,12 @@ class RequestLogStore extends ChangeNotifier {
     String? variant,
   }) {
     if (profileID.isEmpty || sessionID.isEmpty) return Future.value();
+    final at = DateTime.now().millisecondsSinceEpoch;
     final operation = _writes.then((_) async {
+      await load(); // Never overwrite the previous process's unread log.
       final entry = RequestLogEntry(
         id: _id(),
-        at: DateTime.now().millisecondsSinceEpoch,
+        at: at,
         profileID: profileID,
         sessionID: sessionID,
         providerID: providerID,
@@ -72,12 +74,16 @@ class RequestLogStore extends ChangeNotifier {
     return operation;
   }
 
-  Future<void> clear() => _writes = _writes.then((_) async {
-    if (preferences.containsKey(key) && !await preferences.remove(key)) {
-      throw StateError('Could not clear request log');
-    }
-    _snapshot = const RequestLogSnapshot(entries: []);
-    loaded = true;
-    notifyListeners();
-  });
+  Future<void> clear() {
+    final operation = _writes.then((_) async {
+      if (preferences.containsKey(key) && !await preferences.remove(key)) {
+        throw StateError('Could not clear request log');
+      }
+      _snapshot = const RequestLogSnapshot(entries: []);
+      loaded = true;
+      notifyListeners();
+    });
+    _writes = operation.then((_) {}, onError: (Object _, StackTrace _) {});
+    return operation;
+  }
 }

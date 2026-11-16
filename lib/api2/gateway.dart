@@ -516,17 +516,18 @@ class Api2Gateway
     List<PromptAgentMention> agentMentions = const [],
     PromptDelivery? delivery,
   }) {
-    onPromptDispatched?.call(sessionID, model, agent, variant);
-    return PromptTrace.track(
-      sessionID,
-      () => _promptAsync(
+    return PromptTrace.track(sessionID, () async {
+      await _promptAsync(
         sessionID,
         text: text,
         attachments: attachments,
         agentMentions: agentMentions,
         delivery: delivery,
-      ),
-    );
+      );
+      // An API send is not a model request, and admission/memory failures
+      // are not sends. Only record the server's successful acknowledgement.
+      onPromptDispatched?.call(sessionID, model, agent, variant);
+    });
   }
 
   Future<void> _promptAsync(

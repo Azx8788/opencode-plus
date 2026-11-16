@@ -14,11 +14,21 @@ class UsageRequestTimeline extends StatefulWidget {
 class _UsageRequestTimelineState extends State<UsageRequestTimeline> {
   late final RequestLogStore _log = widget.controller.store.requestLog;
   late Duration _window = const Duration(minutes: 60);
+  Object? _error;
 
   @override
   void initState() {
     super.initState();
-    unawaited(_log.load().catchError((Object _) {}));
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    try {
+      await _log.load();
+      if (mounted) setState(() => _error = null);
+    } catch (error) {
+      if (mounted) setState(() => _error = error);
+    }
   }
 
   @override
@@ -73,7 +83,12 @@ class _UsageRequestTimelineState extends State<UsageRequestTimeline> {
             ],
           ),
           SizedBox(height: t.space3),
-          if (!_log.loaded)
+          if (_error != null)
+            KitNotice.error(
+              message: l.usageInvalidResponse,
+              retry: KitAction(label: l.commonRetry, onPressed: _load),
+            )
+          else if (!_log.loaded)
             KitText(l.usageLoading, role: KitTextRole.secondary)
           else if (matches.isEmpty)
             KitSurface.panel(

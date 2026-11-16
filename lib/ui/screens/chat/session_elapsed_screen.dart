@@ -105,12 +105,14 @@ List<(Color, Duration)> _segments({
   required Duration thinking,
   required Duration output,
   required Duration tool,
+  required Duration unclassified,
   required ThemeRoles roles,
 }) => [
   (roles.text3, wait),
   (roles.accent, thinking),
   (roles.success, output),
   (roles.partner, tool),
+  (roles.surface3, unclassified),
 ];
 
 class _ElapsedRing extends StatelessWidget {
@@ -173,6 +175,7 @@ class _RingPainter extends CustomPainter {
       thinking: elapsed.thinking,
       output: elapsed.output,
       tool: elapsed.toolExecution,
+      unclassified: elapsed.unclassified,
       roles: roles,
     )) {
       if (segment.$2 == Duration.zero) continue;
@@ -222,6 +225,11 @@ class _StageList extends StatelessWidget {
           label: l.sessionElapsedTool,
           value: value(elapsed.toolExecution),
         ),
+        if (elapsed.unclassified > Duration.zero)
+          KitKeyValueRow(
+            label: l.sessionElapsedUnknown,
+            value: value(elapsed.unclassified),
+          ),
       ],
     );
   }
@@ -287,6 +295,7 @@ class _BarPainter extends CustomPainter {
       thinking: elapsed.thinking,
       output: elapsed.output,
       tool: elapsed.toolExecution,
+      unclassified: elapsed.unclassified,
       roles: roles,
     )) {
       if (segment.$2 == Duration.zero) continue;

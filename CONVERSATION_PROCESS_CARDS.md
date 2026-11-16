@@ -66,8 +66,8 @@ The conversation menu opens two read-only timing pages:
 
 - **Elapsed time** splits each reply, and the conversation as a whole, into
   recorded phases: waiting for the model's first token, thinking, output
-  streaming and tool execution. The generation window is never counted
-  twice: reasoning inside it is subtracted before the output is shown.
+  streaming and tool execution. Output/thinking require explicit part clocks;
+  a stream window's remainder stays unclassified (it may contain tool arguments).
   Phases may overlap in wall-clock time, so the ring shows proportions of
   recorded phase time rather than claiming a partition. Missing timestamps
   stay unreported.
@@ -76,7 +76,8 @@ The conversation menu opens two read-only timing pages:
   not report which named key a completed request used.
 
 The reply footer also shows the cache-hit rate from the final request's
-reported cache reads over that request's context total. When usage is not
+reported cache reads over that request's input (uncached input + cache reads +
+cache writes), excluding output and reasoning. When usage is not
 reported, the rate is absent rather than 0%.
 
 Usage → Local usage adds a cross-session timeline from a bounded local log

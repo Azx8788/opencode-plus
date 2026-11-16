@@ -77,6 +77,7 @@ void main() {
     expect(stats.toolCalls, 1);
     expect(stats.contextTokens, 10120);
     expect(stats.lastUsage!.cacheRead, 8000);
+    expect(stats.cacheHitRate, .8);
     expect(stats.total.input, 2100);
     expect(stats.generatedTokens, 220);
     expect(stats.total.total, 11320);
@@ -107,6 +108,7 @@ void main() {
         ),
       ]);
       expect(stats.contextTokens, isNull);
+      expect(stats.cacheHitRate, isNull);
       expect(stats.tokensPerSecond, isNull);
       expect(
         stats.total.total,
@@ -131,6 +133,37 @@ void main() {
     expect(TurnStatistics.fromSteps([_step('a2')]).duration, isNull);
     expect(TurnStatistics.fromSteps([_step('a2')]).contextTokens, isNull);
   });
+
+  test(
+    'cache rate uses final prompt input including cache writes, not output',
+    () {
+      final stats = TurnStatistics.fromSteps([
+        _step('previous', tokens: Tokens(input: 1, cacheRead: 999)),
+        _step(
+          'last',
+          tokens: Tokens(
+            input: 100,
+            cacheRead: 300,
+            cacheWrite: 100,
+            output: 500,
+            reasoning: 1000,
+          ),
+        ),
+      ]);
+      expect(stats.cacheHitRate, .6);
+      expect(
+        TurnStatistics.fromSteps([
+          _step('last', tokens: Tokens(input: 100, output: 50)),
+        ]).cacheHitRate,
+        0,
+      );
+      expect(
+        TurnStatistics.fromSteps([_step('last', tokens: Tokens(output: 50))])
+            .cacheHitRate,
+        isNull,
+      );
+    },
+  );
 
   test('explicit overlapping V1 intervals are counted once', () {
     Part timed(String type, int start, int end) => Part(

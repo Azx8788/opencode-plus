@@ -26,6 +26,15 @@ class TurnStatistics {
   int? get contextTokens => lastUsage?.total;
   int get generatedTokens => total.output + total.reasoning;
 
+  /// Cache reads are part of prompt input, not generated output. A reported
+  /// zero hit count is 0%; a missing final request/input denominator is unknown.
+  double? get cacheHitRate {
+    final usage = lastUsage;
+    if (usage == null) return null;
+    final input = usage.input + usage.cacheRead + usage.cacheWrite;
+    return input > 0 ? usage.cacheRead / input : null;
+  }
+
   /// Output and reasoning tokens over recorded provider streaming time.
   /// Tool execution and pauses between model steps are not in this clock.
   double? get tokensPerSecond {

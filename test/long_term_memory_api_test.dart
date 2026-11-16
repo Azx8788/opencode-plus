@@ -91,12 +91,15 @@ void main() {
       await server.close(force: true);
     });
     final gateway = Api2Gateway(client: client);
+    var acknowledged = 0;
+    gateway.onPromptDispatched = (_, _, _, _) => acknowledged++;
     gateway.serverRunsTools = (_) => true;
     gateway.memoryContext = (_) async => MemoryPromptContext(
       value: 'Only approved memory',
       isCurrent: () => true,
     );
     await gateway.promptAsync('s', text: 'Original user text');
+    expect(acknowledged, 1);
     expect(
       calls.indexOf(
         'PUT /api/experimental/session/s/instructions/entries/${MemoryPromptContext.key}',
@@ -116,6 +119,7 @@ void main() {
       throwsA(isA<MemoryException>()),
     );
     expect(calls.where((c) => c.endsWith('/prompt')).length, sent);
+    expect(acknowledged, 1, reason: 'Failed preflight is not a sent request');
   });
 
   test('changing memory during synchronization is reconciled before sending', () async {

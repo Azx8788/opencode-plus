@@ -16,22 +16,24 @@ class TurnElapsed {
     required this.toolExecution,
     required this.steps,
     required this.toolCalls,
+    this.unclassified = Duration.zero,
     this.wall,
   });
 
   /// Time from the model request starting to its first token: recorded as
-  /// `created → firstToken` per model step. Tool-argument generation is
-  /// part of this window; the server reports no separate clock for it.
+  /// `created → firstToken` per model step.
   final Duration wait;
 
   /// Recorded reasoning (thinking) part durations.
   final Duration thinking;
 
-  /// Recorded output streaming time: the per-step generation window
-  /// (`firstToken → streamed`, or the union of explicit part intervals)
-  /// minus the reasoning inside it, or the text part durations alone when
-  /// no generation window was recorded.
+  /// Union of explicit output text intervals only. A generation window
+  /// without text boundaries cannot distinguish output from tool arguments.
   final Duration output;
+
+  /// The server recorded a streaming window but not its text/argument phases.
+  /// Do not label the remainder as output: it may include tool arguments.
+  final Duration unclassified;
 
   /// Recorded tool execution time (`time.start → time.end` of executed
   /// tool calls).
@@ -45,7 +47,8 @@ class TurnElapsed {
   final int steps;
   final int toolCalls;
 
-  Duration get recorded => wait + thinking + output + toolExecution;
+  Duration get recorded =>
+      wait + thinking + output + toolExecution + unclassified;
 
   bool get isEmpty => recorded == Duration.zero && wall == null;
 
@@ -68,11 +71,10 @@ class TurnElapsed {
         )
         .toList();
     var wait = Duration.zero;
-    var generation = Duration.zero;
+    var unclassified = Duration.zero;
     var thinking = Duration.zero;
-    var textOnly = Duration.zero;
+    var output = Duration.zero;
     var toolExecution = Duration.zero;
-    var windowKnown = false;
     Duration? firstStart;
     Duration? lastEnd;
     final calls = <String>{};
@@ -84,16 +86,21 @@ class TurnElapsed {
       final firstToken = time?.firstToken;
       final streamed = time?.streamed;
       final completed = time?.completed;
-      if (created != null && firstToken != null && firstToken > created) {
-        wait += Duration(milliseconds: firstToken - created);
+      if (time?.recorded == false) {
+        continue;
       }
-      if (firstToken != null && streamed != null && streamed > firstToken) {
-        generation += Duration(milliseconds: streamed - firstToken);
-        windowKnown = true;
+      if (created != null &&
+          created > 0 &&
+          firstToken != null &&
+          firstToken > created) {
+        wait += Duration(milliseconds: firstToken - created);
       }
       Duration? start;
       Duration? end;
-      if (created != null && completed != null && completed >= created) {
+      if (created != null &&
+          created > 0 &&
+          completed != null &&
+          completed >= created) {
         start = Duration(milliseconds: created);
         end = Duration(milliseconds: completed);
       }
@@ -103,31 +110,38 @@ class TurnElapsed {
       if (end != null && (lastEnd == null || end > lastEnd)) {
         lastEnd = end;
       }
-      for (final part in step.parts) {
-        if (part.type == 'reasoning') {
-          thinking += part.duration ?? Duration.zero;
-        } else if (part.type == 'text') {
-          textOnly += part.duration ?? Duration.zero;
-        } else if (part.type == 'tool') {
-          if (!part.toolState.executed) continue;
-          final id = part.callID ?? part.id;
-          if (id != null) {
-            calls.add(id);
-          } else {
-            anonymousCalls++;
-          }
-          toolExecution += part.toolState.duration ?? Duration.zero;
-        }
+      final prose = step.parts
+          .where(
+            (p) =>
+                !p.synthetic &&
+                p.duration != null &&
+                (p.type == 'text' || p.type == 'reasoning'),
+          )
+          .toList();
+      thinking += _union(prose.where((p) => p.type == 'reasoning'));
+      output += _union(prose.where((p) => p.type == 'text'));
+      if (firstToken != null &&
+          firstToken > 0 &&
+          streamed != null &&
+          streamed > firstToken) {
+        final covered = _union(prose, from: firstToken, to: streamed);
+        unclassified += Duration(milliseconds: streamed - firstToken) - covered;
       }
     }
-    // The generation window contains the reasoning that streamed inside it;
-    // what is left is the output. Without a window, only the text part
-    // intervals were recorded.
-    final output = windowKnown
-        ? (generation - thinking).isNegative
-              ? Duration.zero
-              : generation - thinking
-        : textOnly;
+    for (final message in unique.values) {
+      for (final part in message.parts) {
+        if (part.synthetic || part.type != 'tool' || !part.toolState.executed) {
+          continue;
+        }
+        final id = part.callID ?? part.id;
+        if (id != null) {
+          if (!calls.add(id)) continue;
+        } else {
+          anonymousCalls++;
+        }
+        toolExecution += part.toolState.duration ?? Duration.zero;
+      }
+    }
     Duration? wall;
     if (firstStart != null && lastEnd != null && lastEnd >= firstStart) {
       wall = lastEnd - firstStart;
@@ -136,11 +150,35 @@ class TurnElapsed {
       wait: wait,
       thinking: thinking,
       output: output,
+      unclassified: unclassified,
       toolExecution: toolExecution,
       steps: steps.length,
       toolCalls: calls.length + anonymousCalls,
       wall: wall,
     );
+  }
+
+  static Duration _union(Iterable<Part> parts, {int? from, int? to}) {
+    final spans = <(int, int)>[];
+    for (final p in parts) {
+      var a = p.startedAt!.millisecondsSinceEpoch;
+      var b = p.completedAt!.millisecondsSinceEpoch;
+      if (from != null && a < from) a = from;
+      if (to != null && b > to) b = to;
+      if (a > 0 && b > a) spans.add((a, b));
+    }
+    spans.sort((a, b) => a.$1.compareTo(b.$1));
+    var total = 0, start = 0, end = 0;
+    for (final span in spans) {
+      if (span.$1 > end) {
+        total += end - start;
+        start = span.$1;
+        end = span.$2;
+      } else if (span.$2 > end) {
+        end = span.$2;
+      }
+    }
+    return Duration(milliseconds: total + end - start);
   }
 }
 
@@ -157,7 +195,10 @@ class SessionElapsed {
       turns.fold(Duration.zero, (sum, turn) => sum + turn.output);
   Duration get toolExecution =>
       turns.fold(Duration.zero, (sum, turn) => sum + turn.toolExecution);
-  Duration get recorded => wait + thinking + output + toolExecution;
+  Duration get unclassified =>
+      turns.fold(Duration.zero, (sum, turn) => sum + turn.unclassified);
+  Duration get recorded =>
+      wait + thinking + output + toolExecution + unclassified;
   int get steps => turns.fold(0, (sum, turn) => sum + turn.steps);
   int get toolCalls => turns.fold(0, (sum, turn) => sum + turn.toolCalls);
 
