@@ -303,10 +303,6 @@ extension _ConnectionControllerCatalogImpl on ConnectionController {
         final queued = _catalogFollowUp;
         if (queued != null && identical(_catalogFollowUpAfter, running)) {
           await queued;
-        } else if (!_catalogFresh && !_catalogRecent) {
-          // An invalidation may have arrived just as the original read was
-          // completing, before its follow-up slot was observable above.
-          await _ensureCatalog();
         }
       });
     }

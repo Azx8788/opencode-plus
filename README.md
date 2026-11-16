@@ -33,14 +33,14 @@ of losing its servers and its Ubuntu.
 ## Versioning
 
 `version:` in `pubspec.yaml` is the only version the APK carries
-(`0.3.18+26` is name 0.3.18, code 26). **A plain `flutter build apk` does not
+(`0.3.20+28` is name 0.3.20, code 28). **A plain `flutter build apk` does not
 move it**, so two builds of the same tree install as the same version and the
 phone has no reason to treat the second one as an upgrade. Use one of these
 (the numbers below are the current version and what each command makes of it):
 
 ```sh
-dart run tool/bump_version.dart              # 0.3.18+26 -> 0.3.18+27
-dart run tool/bump_version.dart --patch      # 0.3.18+26 -> 0.3.19+27
+dart run tool/bump_version.dart              # 0.3.20+28 -> 0.3.20+29
+dart run tool/bump_version.dart --patch      # 0.3.20+28 -> 0.3.21+29
 tool/build_apk.sh                            # bump, then build a release APK
 ```
 
