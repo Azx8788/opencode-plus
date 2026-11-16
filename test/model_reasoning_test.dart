@@ -91,6 +91,28 @@ Map _savedModel(Map document, {ProviderConfigFormat format = ProviderConfigForma
 
 void main() {
   group('generic effort options', () {
+    test('one ascending menu keeps both real and extra choices', () {
+      final choices = reasoningLevelChoices(_model(), allowOverrides: true);
+      expect(choices.map((c) => c.id), reasoningEffortLevels);
+      expect(choices.firstWhere((c) => c.id == 'high').requiresSave, isFalse);
+      expect(choices.firstWhere((c) => c.id == 'max').requiresSave, isTrue);
+    });
+
+    test('existing modes keep their IDs and order without duplicate levels', () {
+      final model = _model(variants: const [
+        CatalogVariant(id: 'deep-b', options: {'reasoningEffort': 'high'}),
+        CatalogVariant(id: 'HIGH', options: {'reasoningEffort': 'high'}),
+        CatalogVariant(id: 'deep-a', options: {'reasoningEffort': 'high'}),
+        CatalogVariant(id: 'max', disabled: true),
+      ]);
+      final choices = reasoningLevelChoices(model, allowOverrides: true);
+      expect(choices.map((c) => c.id), isNot(contains('max')));
+      expect(choices.map((c) => c.id), isNot(contains('high')));
+      expect(choices.map((c) => c.id), contains('HIGH'));
+      expect(choices.map((c) => c.id).toList().sublist(choices.length - 2),
+          ['deep-b', 'deep-a']);
+    });
+
     test('any proxy advertising reasoning effort can request Max', () {
       for (final provider in ['new-proxy', 'another-proxy', 'unknown-123']) {
         expect(additionalReasoningEfforts(_model(provider: provider)), contains('max'));

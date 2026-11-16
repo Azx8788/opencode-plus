@@ -18289,11 +18289,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get chatErrorVariantUnavailable => '当前目录缺少此思考等级。请打开模型选择器恢复它或选择其他等级。';
 
   @override
-  String get modelEffortCustomGroup => '自定义思考等级';
-  @override
-  String get modelEffortCustomHint => '为此模型保存明确的请求参数。服务商的实际支持可能与目录不同。';
-  @override
-  String modelEffortCustom(String level) => '$level · 自定义';
+  String get modelEffortCustomHint => '此等级将保存到服务器，服务商可能不支持。';
   @override
   String modelEffortUnavailable(String level) => '$level · 不可用';
   @override

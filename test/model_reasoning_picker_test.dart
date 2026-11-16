@@ -6,6 +6,7 @@ import 'package:opencode_mobile/domain/models.dart';
 import 'package:opencode_mobile/domain/server_gateway/value_types_core.dart';
 import 'package:opencode_mobile/state/connection.dart';
 import 'package:opencode_mobile/state/profiles.dart';
+import 'package:opencode_mobile/ui/kit/kit_menu.dart';
 import 'package:opencode_mobile/ui/widgets/pickers.dart';
 
 CatalogSnapshot _catalog({bool maxAvailable = false}) => CatalogSnapshot(
@@ -69,6 +70,39 @@ void main() {
     await tester.tap(button);
     await tester.pumpAndSettle();
   }
+
+  testWidgets('one compact ordered list, with no repeated descriptions', (tester) async {
+    await mount(tester, save: (_, _) async {});
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('model-effort-override-note')), findsNothing);
+    await tester.tap(find.byKey(const Key('model-picker-thinking')));
+    await tester.pumpAndSettle();
+    final menu = tester.widget<KitMenuPanel>(find.byType(KitMenuPanel));
+    expect(menu.items.map((item) => item.key), [
+      const ValueKey('model-variant-opaque-model-default'),
+      const ValueKey('model-extra-effort-none'),
+      const ValueKey('model-extra-effort-minimal'),
+      const ValueKey('model-extra-effort-low'),
+      const ValueKey('model-extra-effort-medium'),
+      const ValueKey('model-variant-opaque-model-high'),
+      const ValueKey('model-extra-effort-xhigh'),
+      const ValueKey('model-extra-effort-max'),
+    ]);
+    expect(menu.items.every((item) => item.group == null), isTrue);
+    expect(menu.items.every((item) => item.supporting == null), isTrue);
+    expect(find.text('Custom reasoning levels'), findsNothing);
+    final max = find.byKey(const ValueKey('model-extra-effort-max'));
+    await tester.ensureVisible(max);
+    await tester.tap(max);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('model-effort-override-note')), findsOneWidget);
+    expect(connection.selectedVariant, 'high');
+    await tester.tap(find.byKey(const Key('model-picker-thinking')));
+    await tester.pumpAndSettle();
+    final changed = tester.widget<KitMenuPanel>(find.byType(KitMenuPanel));
+    expect(changed.items.first.checked, isFalse);
+    expect(changed.items.last.checked, isTrue);
+  });
 
   testWidgets('Max is visible and saved before changing the selection', (tester) async {
     final writes = <String>[];

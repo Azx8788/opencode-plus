@@ -2,6 +2,17 @@
 
 This project is in public alpha. Only the newest preview is supported.
 
+## 0.3.22+30 — 2026-11-16
+
+  * **One compact reasoning-level menu.** The separate custom-level group and
+    repeated paragraphs are removed. Standard levels are sorted from lowest
+    to highest, followed by any existing named modes. The selected level's
+    checkmark updates immediately; unknown or disabled choices are not
+    silently substituted with Default.
+  * **Save semantics stay honest.** An additional request level shows one short
+    explanation after selection, not under every menu item. It is still saved
+    and confirmed in the server catalog before applying it to the conversation.
+
 ## 0.3.21+29 — 2026-11-16
 
   * **A persistent, visible Max choice, not an automatic downgrade.** On the

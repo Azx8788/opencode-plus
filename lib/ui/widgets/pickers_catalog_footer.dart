@@ -32,7 +32,7 @@ extension _ModelCatalogFooter on _ModelCatalogViewState {
         : chosenVariant != null
         ? _variantLabel(chosenVariant)
         : extra.contains(_draftVariant)
-        ? _strings.modelEffortCustom(level)
+        ? level
         : _strings.modelEffortUnavailable(level);
     final chips = <Widget>[
       if (drafted != null &&
@@ -44,7 +44,7 @@ extension _ModelCatalogFooter on _ModelCatalogViewState {
             label: _strings.modelPickerThinkingChip(chosenLabel),
             expanded: false,
             onPressed: () =>
-                unawaited(_chooseThinking(chipContext, drafted, variants)),
+                unawaited(_chooseThinking(chipContext, drafted)),
           ),
         ),
       if (agents.isNotEmpty)
@@ -75,9 +75,27 @@ extension _ModelCatalogFooter on _ModelCatalogViewState {
     if (chips.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: EdgeInsetsDirectional.only(bottom: KitTokens.of(context).space2),
-      child: KitChipWrap(
-        key: const Key('model-picker-footer'),
-        children: chips,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          KitChipWrap(
+            key: const Key('model-picker-footer'),
+            children: chips,
+          ),
+          // Explain an extra request setting once, after it is chosen, rather
+          // than repeating a long paragraph under every menu item.
+          if (extra.contains(_draftVariant))
+            Padding(
+              padding: EdgeInsets.only(top: KitTokens.of(context).space1),
+              child: KitText(
+                _strings.modelEffortCustomHint,
+                key: const Key('model-effort-override-note'),
+                role: KitTextRole.secondary,
+                tone: KitTextTone.secondary,
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -93,11 +111,13 @@ extension _ModelCatalogFooter on _ModelCatalogViewState {
   Future<void> _chooseThinking(
     BuildContext anchor,
     CatalogModel model,
-    List<CatalogVariant> variants,
   ) async {
     final locked = _lockedReason;
-    final known = variants.any((variant) => variant.id == _draftVariant);
-    final extra = _extraEfforts(model);
+    final choices = reasoningLevelChoices(
+      model,
+      allowOverrides: _extraEfforts(model).isNotEmpty,
+    );
+    final known = choices.any((choice) => choice.id == _draftVariant);
     await showKitMenu(
       anchor,
       semanticsLabel: _strings.modelPickerThinking,
@@ -110,7 +130,7 @@ extension _ModelCatalogFooter on _ModelCatalogViewState {
           disabledReason: locked,
           onSelected: () => _setVariant(model, ''),
         ),
-        if (_draftVariant.isNotEmpty && !known && !extra.contains(_draftVariant))
+        if (_draftVariant.isNotEmpty && !known)
           KitMenuItem(
             key: const Key('model-variant-unavailable'),
             label: presentedEffort(_draftVariant, _strings),
@@ -119,25 +139,18 @@ extension _ModelCatalogFooter on _ModelCatalogViewState {
             disabledReason: _strings.chatErrorVariantUnavailable,
             onSelected: () {},
           ),
-        for (final variant in variants)
+        for (final choice in choices)
           KitMenuItem(
-            key: ValueKey('model-variant-${model.id}-${variant.id}'),
-            label: _variantLabel(variant),
-            checked: variant.id == _draftVariant,
+            key: choice.requiresSave
+                ? ValueKey('model-extra-effort-${choice.id}')
+                : ValueKey('model-variant-${model.id}-${choice.id}'),
+            label: choice.variant == null
+                ? presentedEffort(choice.id, _strings)
+                : _variantLabel(choice.variant!),
+            checked: _draftVariant == choice.id,
             enabled: locked == null,
             disabledReason: locked,
-            onSelected: () => _setVariant(model, variant.id),
-          ),
-        for (final effort in extra)
-          KitMenuItem(
-            key: ValueKey('model-extra-effort-$effort'),
-            group: KitMenuGroup(_strings.modelEffortCustomGroup),
-            label: presentedEffort(effort, _strings),
-            supporting: _strings.modelEffortCustomHint,
-            checked: _draftVariant == effort,
-            enabled: locked == null,
-            disabledReason: locked,
-            onSelected: () => _setVariant(model, effort),
+            onSelected: () => _setVariant(model, choice.id),
           ),
       ],
     );

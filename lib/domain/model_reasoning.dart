@@ -25,8 +25,53 @@ List<String> additionalReasoningEfforts(CatalogModel model) {
       )) {
     return const [];
   }
-  final known = model.variants.map((v) => v.id).toSet();
+  final known = model.variants.map((v) => v.id.toLowerCase()).toSet();
   return [for (final id in reasoningEffortLevels) if (!known.contains(id)) id];
+}
+
+/// One choice in the single reasoning-level menu. The original variant ID and
+/// settings are retained; additions still require persistence before use.
+class ReasoningLevelChoice {
+  const ReasoningLevelChoice({required this.id, this.variant});
+  final String id;
+  final CatalogVariant? variant;
+  bool get requiresSave => variant == null;
+}
+
+/// A compact ascending list, not separate "native" and "custom" menus.
+/// Unknown server variants remain selectable, in their original relative
+/// order after the standard effort IDs. Disabled IDs are never added back.
+List<ReasoningLevelChoice> reasoningLevelChoices(
+  CatalogModel model, {
+  bool allowOverrides = false,
+}) {
+  final seen = <String>{};
+  final disabled = {
+    for (final variant in model.variants)
+      if (variant.disabled) variant.id,
+  };
+  final choices = <ReasoningLevelChoice>[
+    for (final variant in model.variants)
+      if (!variant.disabled &&
+          !disabled.contains(variant.id) &&
+          seen.add(variant.id))
+        ReasoningLevelChoice(id: variant.id, variant: variant),
+    if (allowOverrides)
+      for (final id in additionalReasoningEfforts(model))
+        ReasoningLevelChoice(id: id),
+  ];
+  final order = {
+    for (final (index, choice) in choices.indexed) choice.id: index,
+  };
+  int rank(String id) {
+    final index = reasoningEffortLevels.indexOf(id.toLowerCase());
+    return index < 0 ? reasoningEffortLevels.length : index;
+  }
+  choices.sort((a, b) {
+    final level = rank(a.id).compareTo(rank(b.id));
+    return level != 0 ? level : order[a.id]!.compareTo(order[b.id]!);
+  });
+  return choices;
 }
 
 /// Persist one explicit effort override into the server's existing provider.

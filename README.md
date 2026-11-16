@@ -33,14 +33,14 @@ of losing its servers and its Ubuntu.
 ## Versioning
 
 `version:` in `pubspec.yaml` is the only version the APK carries
-(`0.3.21+29` is name 0.3.21, code 29). **A plain `flutter build apk` does not
+(`0.3.22+30` is name 0.3.22, code 30). **A plain `flutter build apk` does not
 move it**, so two builds of the same tree install as the same version and the
 phone has no reason to treat the second one as an upgrade. Use one of these
 (the numbers below are the current version and what each command makes of it):
 
 ```sh
-dart run tool/bump_version.dart              # 0.3.21+29 -> 0.3.21+30
-dart run tool/bump_version.dart --patch      # 0.3.21+29 -> 0.3.22+30
+dart run tool/bump_version.dart              # 0.3.22+30 -> 0.3.22+31
+dart run tool/bump_version.dart --patch      # 0.3.22+30 -> 0.3.23+31
 tool/build_apk.sh                            # bump, then build a release APK
 ```
 
@@ -70,8 +70,9 @@ branches, conflict decisions and the validation gate before branch cleanup.
 
 For the built-in server, open the conversation's model picker → All models →
 Thinking. Models already advertising a reasoning-effort control show missing
-levels, including Max, under **Custom reasoning levels**. Choose a level and
-apply it to save the override and use it for the conversation. Save and Fetch
+levels, including Max, in the same compact, ascending list. Choose a level and
+apply it to save the override and use it for the conversation. An additional
+request level shows one short explanation after selection. Save and Fetch
 models preserve these settings. Provider support can differ from its catalog;
 an explicit override is not a promise that every model supports Max.
 

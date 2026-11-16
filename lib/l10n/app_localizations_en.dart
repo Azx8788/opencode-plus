@@ -19392,11 +19392,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'This reasoning level is missing from the current catalog. Open the model picker to restore it or choose another level.';
 
   @override
-  String get modelEffortCustomGroup => 'Custom reasoning levels';
-  @override
-  String get modelEffortCustomHint => 'Save an explicit request setting for this model. Provider support may differ from the catalog.';
-  @override
-  String modelEffortCustom(String level) => '$level · custom';
+  String get modelEffortCustomHint => 'This extra level will be saved to the server. Your provider may not support it.';
   @override
   String modelEffortUnavailable(String level) => '$level · unavailable';
   @override
