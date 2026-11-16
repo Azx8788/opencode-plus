@@ -160,6 +160,32 @@ extension _ChatSessionMenu on _ChatScreenState {
           icon: AppIconography.lightning,
           onSelected: () => unawaited(_summarizeMemory()),
         ),
+      if (_visibleHistory.isNotEmpty) ...[
+        KitMenuItem(
+          key: const ValueKey('chat-elapsed'),
+          label: _chatL10n(context).sessionElapsedTitle,
+          icon: AppIconography.timer,
+          onSelected: () => unawaited(
+            pushKitPage<void>(
+              context,
+              (_) => SessionElapsedScreen(messages: List.of(_visibleHistory)),
+            ),
+          ),
+        ),
+        KitMenuItem(
+          key: const ValueKey('chat-request-timeline'),
+          label: _chatL10n(context).requestTimeline,
+          icon: AppIconography.timeline,
+          onSelected: () => unawaited(
+            pushKitPage<void>(
+              context,
+              (_) => SessionRequestTimelineScreen(
+                messages: List.of(_visibleHistory),
+              ),
+            ),
+          ),
+        ),
+      ],
       if (canSchedulePrompts(_conn))
         KitMenuItem(
           label: _chatL10n(context).scheduleCreate,

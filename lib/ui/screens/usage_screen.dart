@@ -44,6 +44,7 @@ import 'usage_refresh_slot.dart';
 part 'usage/usage_dashboard.dart';
 part 'usage/usage_activity_heatmap.dart';
 part 'usage/usage_trend_chart.dart';
+part 'usage/usage_request_timeline.dart';
 
 AppLocalizations _strings(BuildContext context) =>
     lookupAppLocalizations(Localizations.localeOf(context));
@@ -250,6 +251,8 @@ class _UsageScreenState extends State<UsageScreen> {
                     ? null
                     : () => _openDetails(context),
               ),
+              gap(tokens.sectionGap),
+              UsageRequestTimeline(controller: widget.controller),
               if (snapshot != null) ...[
                 SizedBox(height: tokens.sectionGap),
                 KitText(

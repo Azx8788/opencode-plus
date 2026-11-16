@@ -34301,6 +34301,54 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get memoryDiscard => '放弃未保存的记忆修改？';
   @override
+  String chatStatsCacheRate(String rate) => '缓存命中 $rate';
+  @override
+  String get chatStatsCacheRateLabel => '缓存命中率';
+  @override
+  String get sessionElapsedTitle => '耗时统计';
+  @override
+  String get sessionElapsedEmpty => '还没有已记录的时间';
+  @override
+  String get sessionElapsedExplanation => '只显示服务端记录的时间；阶段可能重叠，未记录的时间不会估算。';
+  @override
+  String get sessionElapsedTimeline => '逐条回答';
+  @override
+  String sessionElapsedTurn(int index) => '第 $index 条回答';
+  @override
+  String sessionElapsedRecorded(String seconds) => '已记录阶段 $seconds';
+  @override
+  String get sessionElapsedWait => '模型等待';
+  @override
+  String get sessionElapsedThinking => '思考';
+  @override
+  String get sessionElapsedOutput => '输出';
+  @override
+  String get sessionElapsedTool => '工具执行';
+  @override
+  String sessionElapsedSteps(int steps, String duration) =>
+      '$steps 次模型请求 · 记录 $duration';
+  @override
+  String get requestTimeline => '请求时间线';
+  @override
+  String get requestTimelineIntro =>
+      '只绘制本应用实际发送的请求；泳道按模型区分，服务器不报告具体使用的 API 密钥。';
+  @override
+  String get requestTimelineEmpty => '该时间窗内没有已记录的请求';
+  @override
+  String requestTimelineNote(int count) => '$count 条带时间戳的请求';
+  @override
+  String get requestTimelineUnknownModel => '服务器默认';
+  @override
+  String get requestTimelineWindow => '时间范围';
+  @override
+  String get requestTimeline15m => '15 分钟';
+  @override
+  String get requestTimeline1h => '1 小时';
+  @override
+  String get requestTimeline6h => '6 小时';
+  @override
+  String requestTimelineCount(int count) => '该时间窗内 $count 条请求';
+  @override
   String get chatStatsTitle => '回答统计';
   @override
   String chatStatsSeconds(String seconds) => '$seconds 秒';

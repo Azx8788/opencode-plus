@@ -135,6 +135,17 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Upload elapsed and request timeline captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: timing-layout-${{ github.sha }}
+          path: |
+            build/qa/elapsed-*.png
+            build/qa/request-timeline-*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
   package:
     runs-on: ubuntu-latest
     timeout-minutes: 60

@@ -48,6 +48,17 @@ class Api2Gateway
   void Function(String sessionID)? sessionDispatchSettled;
   Future<MemoryPromptContext?> Function(String sessionID)? memoryContext;
 
+  /// Notifies the app of a prompt this gateway actually accepted for dispatch.
+  /// Called only for OpenCode 2 sends, with the model the caller selected;
+  /// no prompt text or attachment is ever reported.
+  void Function(
+    String sessionID,
+    ModelRef? model,
+    String? agent,
+    String? variant,
+  )?
+  onPromptDispatched;
+
   /// Whether the person approves [sessionID] automatically. Such a session
   /// keeps the server's own rules, so its tools never wait for this phone.
   bool Function(String sessionID)? serverRunsTools;
@@ -504,16 +515,19 @@ class Api2Gateway
     List<PromptAttachment> attachments = const [],
     List<PromptAgentMention> agentMentions = const [],
     PromptDelivery? delivery,
-  }) => PromptTrace.track(
-    sessionID,
-    () => _promptAsync(
+  }) {
+    onPromptDispatched?.call(sessionID, model, agent, variant);
+    return PromptTrace.track(
       sessionID,
-      text: text,
-      attachments: attachments,
-      agentMentions: agentMentions,
-      delivery: delivery,
-    ),
-  );
+      () => _promptAsync(
+        sessionID,
+        text: text,
+        attachments: attachments,
+        agentMentions: agentMentions,
+        delivery: delivery,
+      ),
+    );
+  }
 
   Future<void> _promptAsync(
     String sessionID, {

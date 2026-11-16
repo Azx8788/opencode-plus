@@ -36310,6 +36310,56 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get memoryDiscard => 'Discard unsaved memory changes?';
   @override
+  String chatStatsCacheRate(String rate) => '$rate cache hit';
+  @override
+  String get chatStatsCacheRateLabel => 'Cache hit rate';
+  @override
+  String get sessionElapsedTitle => 'Elapsed time';
+  @override
+  String get sessionElapsedEmpty => 'No recorded timing yet';
+  @override
+  String get sessionElapsedExplanation =>
+      'Only server-recorded timestamps are shown. Phases may overlap; missing timing stays unreported.';
+  @override
+  String get sessionElapsedTimeline => 'Replies';
+  @override
+  String sessionElapsedTurn(int index) => 'Reply $index';
+  @override
+  String sessionElapsedRecorded(String seconds) => 'Recorded phases $seconds';
+  @override
+  String get sessionElapsedWait => 'Waiting for model';
+  @override
+  String get sessionElapsedThinking => 'Thinking';
+  @override
+  String get sessionElapsedOutput => 'Output';
+  @override
+  String get sessionElapsedTool => 'Tool execution';
+  @override
+  String sessionElapsedSteps(int steps, String duration) =>
+      '$steps model requests · $duration recorded';
+  @override
+  String get requestTimeline => 'Request timeline';
+  @override
+  String get requestTimelineIntro =>
+      'Only requests this app actually sent are drawn. Lanes are models; which API key was used is not reported by the server.';
+  @override
+  String get requestTimelineEmpty => 'No requests recorded in this window';
+  @override
+  String requestTimelineNote(int count) =>
+      '$count requests with recorded timestamps';
+  @override
+  String get requestTimelineUnknownModel => 'Server default';
+  @override
+  String get requestTimelineWindow => 'Time window';
+  @override
+  String get requestTimeline15m => '15 min';
+  @override
+  String get requestTimeline1h => '1 hour';
+  @override
+  String get requestTimeline6h => '6 hours';
+  @override
+  String requestTimelineCount(int count) => '$count requests in this window';
+  @override
   String get chatStatsTitle => 'Reply statistics';
   @override
   String chatStatsSeconds(String seconds) => '$seconds s';

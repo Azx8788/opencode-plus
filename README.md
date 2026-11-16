@@ -89,6 +89,16 @@ See [MEMORY.md](MEMORY.md) for the contract and host limits.
 
 ## Conversation layout
 
+Each reply's footer shows reported elapsed time, model steps, generation
+speed, context and cache-hit rate from the final request's reported tokens.
+The conversation menu also opens two read-only timing pages: elapsed time
+(per reply and conversation-wide, from server-recorded timestamps) and a
+request timeline (per model, from those timestamps). Usage → Local usage
+adds a cross-session request timeline from a bounded local log of prompts
+this app actually sent. It starts empty with this version; no history is
+reconstructed, no prompt text is logged, and an unrecorded API-key choice is
+never invented. Missing time stays unreported rather than estimated.
+
 Reply prose stays on the page. Consecutive thoughts and tool operations sit
 in a collapsible process card, in their original order. Running cards open
 to the newest steps; a manual collapse or expansion is retained. Shell output

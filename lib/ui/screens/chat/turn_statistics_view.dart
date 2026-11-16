@@ -23,9 +23,16 @@ KitTurnStatistics? _replyStatistics(
   final speed = stats.tokensPerSecond;
   final contextTokens = stats.contextTokens;
   final cached = stats.lastUsage?.cacheRead ?? 0;
+  // Cache hits come from the final request's reported tokens; the rate is
+  // that request's hits over its own context total. Missing usage stays
+  // unknown instead of becoming a misleading zero percent.
+  final hitRate = contextTokens != null && contextTokens > 0 && cached > 0
+      ? (cached * 100 / contextTokens).round()
+      : null;
   String contextText(String count, String cache) => [
     strings.chatStatsContext(count),
     if (cached > 0) strings.chatStatsCached(cache),
+    if (hitRate != null) strings.chatStatsCacheRate('$hitRate%'),
   ].join(' ');
   final items = <KitTurnStat>[
     if (duration != null)
@@ -104,11 +111,18 @@ KitTurnStatistics? _replyStatistics(
                       ? strings.chatStatsNotReported
                       : '$contextTokens',
                 ),
-                if (stats.lastUsage != null)
+                if (stats.lastUsage != null) ...[
                   KitKeyValueRow(
                     label: strings.chatStatsCachedLabel,
                     value: '$cached',
                   ),
+                  KitKeyValueRow(
+                    label: strings.chatStatsCacheRateLabel,
+                    value: hitRate == null
+                        ? strings.chatStatsNotReported
+                        : '$hitRate%',
+                  ),
+                ],
                 KitKeyValueRow(
                   label: strings.chatStatsInputLabel,
                   value: stats.total.total > 0
