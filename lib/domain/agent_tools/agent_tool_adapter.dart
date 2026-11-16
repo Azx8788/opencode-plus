@@ -25,7 +25,7 @@ final class PhoneTool {
   /// Agent cards: native choice, form, confirm, report and photo cards.
   static const cards = PhoneTool(
     server: 'oc-ui',
-    tools: ['show', 'find_connectors'],
+    tools: ['show', 'find_connectors', 'memory_write'],
   );
 }
 
@@ -146,6 +146,9 @@ final class AgentToolAdapter {
   /// The read-only catalogue search tool on the same qualified MCP server.
   String? get connectorSearchName =>
       toolName(PhoneTool.cards, 'find_connectors');
+
+  /// Explicit, user-reviewed memory proposals over the same MCP transport.
+  String? get memoryWriteName => toolName(PhoneTool.cards, 'memory_write');
 
   static const claude = AgentToolAdapter._(
     id: 'claude',

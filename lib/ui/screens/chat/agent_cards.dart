@@ -118,6 +118,13 @@ extension _MessageViewAgentCards on _MessageView {
       }
 
       for (final part in run.parts) {
+        final memory = MemoryWriteRequest.fromPart(part);
+        if (memory != null) {
+          flush();
+          result.add(_AssistantPartRun([part], memory: memory));
+          first = false;
+          continue;
+        }
         final card = chat._cardForPart(part, part.messageID ?? m.info.id);
         if (card == null) {
           plain.add(part);

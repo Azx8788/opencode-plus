@@ -66,3 +66,8 @@ shell script, paid model request or provider-specific credential is involved.
 CI captures are artifacts named `usage-layout-<commit>`. They are widget
 renderings, not proof of installed-device acceptance. Publishing remains
 gated on all Flutter, Android native and APK jobs passing.
+
+Headless Linux lacks Android's system Chinese fallback. CI downloads a
+content-hash-verified Noto Sans SC font plus its OFL license into
+`build/qa-fonts` for a **test-only** fallback. AppSans stays primary; no font
+asset, fallback preference or theme setting is changed in the APK.

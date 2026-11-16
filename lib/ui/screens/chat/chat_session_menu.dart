@@ -142,6 +142,50 @@ extension _ChatSessionMenu on _ChatScreenState {
           message.info.role == 'user' && !message.info.id.startsWith('local-'),
     );
     return [
+      KitMenuItem(
+        key: const ValueKey('chat-memory'),
+        label: _chatL10n(context).memoryTitle,
+        icon: AppIconography.database,
+        onSelected: () => unawaited(
+          pushKitPage<void>(
+            context,
+            (_) => MemoryScreen(controller: _conn, sessionID: widget.sessionID),
+          ),
+        ),
+      ),
+      if (hasPrompt)
+        KitMenuItem(
+          key: const ValueKey('chat-memory-summarize'),
+          label: _chatL10n(context).memorySummarize,
+          icon: AppIconography.lightning,
+          onSelected: () => unawaited(_summarizeMemory()),
+        ),
+      if (_visibleHistory.isNotEmpty) ...[
+        KitMenuItem(
+          key: const ValueKey('chat-elapsed'),
+          label: _chatL10n(context).sessionElapsedTitle,
+          icon: AppIconography.timer,
+          onSelected: () => unawaited(
+            pushKitPage<void>(
+              context,
+              (_) => SessionElapsedScreen(messages: List.of(_visibleHistory)),
+            ),
+          ),
+        ),
+        KitMenuItem(
+          key: const ValueKey('chat-request-timeline'),
+          label: _chatL10n(context).requestTimeline,
+          icon: AppIconography.timeline,
+          onSelected: () => unawaited(
+            pushKitPage<void>(
+              context,
+              (_) => SessionRequestTimelineScreen(
+                messages: List.of(_visibleHistory),
+              ),
+            ),
+          ),
+        ),
+      ],
       if (canSchedulePrompts(_conn))
         KitMenuItem(
           label: _chatL10n(context).scheduleCreate,
@@ -398,9 +442,7 @@ extension _ChatSessionMenu on _ChatScreenState {
       if (!mounted || location != _conn.locationRevision) return;
       if (!await _persistDraft() || !mounted) return;
       await Navigator.of(context).push(
-        KitPageRoute<void>(
-          builder: (_) => ChatScreen(sessionID: target.id),
-        ),
+        KitPageRoute<void>(builder: (_) => ChatScreen(sessionID: target.id)),
       );
     } catch (error) {
       if (mounted) _showActionError(error);

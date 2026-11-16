@@ -60,6 +60,31 @@ The V2 message and event adapters preserve the server's streaming/reasoning
 timestamps and retain usage through step completion. Statistics are shown
 once per reply, including history, independent of timestamp preferences.
 
+## Elapsed time and request timeline
+
+The conversation menu opens two read-only timing pages:
+
+- **Elapsed time** splits each reply, and the conversation as a whole, into
+  recorded phases: waiting for the model's first token, thinking, output
+  streaming and tool execution. Output/thinking require explicit part clocks;
+  a stream window's remainder stays unclassified (it may contain tool arguments).
+  Phases may overlap in wall-clock time, so the ring shows proportions of
+  recorded phase time rather than claiming a partition. Missing timestamps
+  stay unreported.
+- **Request timeline** draws one lane per model from the model messages'
+  recorded start/end times. It never invents an API-key lane: OpenCode does
+  not report which named key a completed request used.
+
+The reply footer also shows the cache-hit rate from the final request's
+reported cache reads over that request's input (uncached input + cache reads +
+cache writes), excluding output and reasoning. When usage is not
+reported, the rate is absent rather than 0%.
+
+Usage → Local usage adds a cross-session timeline from a bounded local log
+of prompts this app actually dispatched (2000 entries, no prompt text,
+no credentials). It starts empty with this version; history is never
+reconstructed and a failed log write never blocks a send.
+
 ## Verification
 
 `test/conversation_process_cards_test.dart` covers the real rendering path,

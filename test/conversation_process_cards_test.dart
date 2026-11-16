@@ -224,7 +224,10 @@ void main() {
         find.byType(KitTurnStatistics),
       );
       expect(stats.items.map((item) => item.text), contains('2 steps'));
-      expect(stats.items.map((item) => item.text), contains('1.1k context'));
+      expect(
+        stats.items.map((item) => item.text),
+        contains('1.1k context 0.0% cache hit'),
+      );
       expect(find.byKey(const ValueKey('message-meta-a1')), findsNothing);
       expect(find.byKey(const ValueKey('message-meta-a2')), findsOneWidget);
       final header = find.descendant(

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../domain/product_failure.dart';
+import '../../domain/long_term_memory.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/connection.dart' show ConnectionController;
 import '../app_theme.dart';
@@ -76,6 +77,16 @@ String? connectionErrorText(ConnectionController c, {AppLocalizations? l10n}) {
 String productErrorText(Object error, {AppLocalizations? l10n}) {
   final copy =
       l10n ?? _ambientCopy ?? lookupAppLocalizations(const Locale('en'));
+  if (error is MemoryException) {
+    return switch (error.failure) {
+      MemoryFailure.storage => copy.memoryStorageFailed,
+      MemoryFailure.invalid => copy.memoryInvalid,
+      MemoryFailure.limit => copy.memoryLimit,
+      MemoryFailure.duplicate => copy.memoryDuplicate,
+      MemoryFailure.changed => copy.memoryChanged,
+      MemoryFailure.unsupported => copy.memorySyncUnsupported,
+    };
+  }
   final failure = ProductFailure.from(error);
   return switch (failure.category) {
     ProductFailureCategory.words =>

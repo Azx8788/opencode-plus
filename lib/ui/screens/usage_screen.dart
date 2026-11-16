@@ -6,10 +6,12 @@ import 'package:intl/intl.dart' hide TextDirection;
 
 import '../../api2/transport.dart';
 import '../../domain/quota_answers.dart';
+import '../../domain/request_log.dart';
 import '../../domain/usage_dashboard.dart';
 import '../../domain/server_gateway.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/connection.dart';
+import '../../state/request_log.dart';
 import '../../state/usage_budgets.dart';
 import '../../state/usage_overview.dart';
 import '../../state/app_launch_statistics.dart';
@@ -44,6 +46,7 @@ import 'usage_refresh_slot.dart';
 part 'usage/usage_dashboard.dart';
 part 'usage/usage_activity_heatmap.dart';
 part 'usage/usage_trend_chart.dart';
+part 'usage/usage_request_timeline.dart';
 
 AppLocalizations _strings(BuildContext context) =>
     lookupAppLocalizations(Localizations.localeOf(context));
@@ -230,6 +233,7 @@ class _UsageScreenState extends State<UsageScreen> {
                 lifetime: _overview.lifetime,
                 lifetimeLoading: _overview.lifetimeLoading,
                 lifetimeFailed: _overview.lifetimeError != null,
+                unavailable: _overview.detached || _overview.error != null,
                 range: _overview.range,
                 now: _overview.clock().toLocal(),
                 launches: AppLaunchStatistics.read(
@@ -249,6 +253,8 @@ class _UsageScreenState extends State<UsageScreen> {
                     ? null
                     : () => _openDetails(context),
               ),
+              gap(tokens.sectionGap),
+              UsageRequestTimeline(controller: widget.controller),
               if (snapshot != null) ...[
                 SizedBox(height: tokens.sectionGap),
                 KitText(

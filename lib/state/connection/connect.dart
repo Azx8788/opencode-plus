@@ -280,8 +280,47 @@ extension _ConnectionControllerConnectImpl on ConnectionController {
     }
     final gateway = pair.gateway;
     if (gateway is Api2Gateway) {
+      gateway.onPromptDispatched = (sessionID, model, agent, variant) {
+        // Record only what actually left for this saved server. The log is
+        // best-effort observability: it never gates or changes the send.
+        unawaited(
+          store.requestLog
+              .record(
+                profileID: profile.id,
+                sessionID: sessionID,
+                providerID: model?.providerID,
+                modelID: model?.modelID,
+                agent: agent,
+                variant: variant,
+              )
+              .catchError((Object _) {}),
+        );
+      };
       gateway.serverRunsTools = (id) =>
           identical(api, gateway) && _autoApprovalFor(id).automatic;
+      gateway.memoryContext = (id) async {
+        final memory = store.longTermMemory;
+        if (!memory.managed) return null;
+        await memory.load();
+        final revision = memory.revision;
+        final location = locationRevision;
+        final session = await gateway.session(id);
+        bool current() =>
+            !_disposed &&
+            identical(api, gateway) &&
+            profile.id == this.profile?.id &&
+            profile.baseUrl == this.profile?.baseUrl &&
+            location == locationRevision &&
+            memory.revision == revision;
+        if (!current()) throw const MemoryException(MemoryFailure.changed);
+        final projectKey = session.projectID == null
+            ? null
+            : memoryProjectKey(profile.id, profile.baseUrl, session.projectID!);
+        return MemoryPromptContext(
+          value: memory.snapshot.context(projectKey),
+          isCurrent: current,
+        );
+      };
     }
     if (gateway is Api2Gateway &&
         BuiltinLinux.managesServerUrl(profile.baseUrl)) {

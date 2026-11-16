@@ -13,6 +13,7 @@ const settingsGroupRowIds = <SettingsGroup, List<String>>{
     'settings-agents',
   ],
   SettingsGroup.chat: [
+    'settings-memory',
     'settings-show-reasoning',
     'settings-show-timestamps',
     'settings-phrase-chips',
@@ -267,6 +268,7 @@ class _SettingsGroupBodyState extends State<_SettingsGroupBody> {
         row('settings-agents'),
       ],
       SettingsGroup.chat => [
+        row('settings-memory'),
         // Two switches: the same stored values the conversation menu flips,
         // for every conversation on this device.
         row(

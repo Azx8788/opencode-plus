@@ -16,6 +16,7 @@ class UsageDashboard extends StatelessWidget {
     this.trendFinished = 0,
     this.lifetimeLoading = false,
     this.lifetimeFailed = false,
+    this.unavailable = false,
     this.onRange,
     this.onRetryTrend,
     this.onDetails,
@@ -28,6 +29,7 @@ class UsageDashboard extends StatelessWidget {
   final List<UsageTrendPoint> trend;
   final UsageTrendPlan? trendPlan;
   final bool trendLoading, lifetimeLoading, lifetimeFailed;
+  final bool unavailable;
   final int trendFinished;
   final ValueChanged<UsageRange>? onRange;
   final VoidCallback? onRetryTrend, onDetails;
@@ -125,7 +127,9 @@ class UsageDashboard extends StatelessWidget {
         ],
         SizedBox(height: t.space3),
         if (stats == null)
-          KitSurface.panel(child: KitText(l.usageLoading))
+          KitSurface.panel(
+            child: KitText(unavailable ? l.statsNotRecorded : l.usageLoading),
+          )
         else ...[
           _DashboardMetrics(
             items: [

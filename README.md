@@ -11,6 +11,8 @@ documents are now OpenCode Plus, while the application id stays
 `com.azx8788.opencode.mini` so an existing install upgrades in place instead
 of losing its servers and its Ubuntu.
 
+中文概览见 [opencodePlus项目介绍.md](opencodePlus项目介绍.md)；面向维护者的历史审计快照见 [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md)。
+
 ## What it does
 
 - **Agents run on the phone.** The app installs its own Ubuntu (proot, no root),
@@ -33,14 +35,14 @@ of losing its servers and its Ubuntu.
 ## Versioning
 
 `version:` in `pubspec.yaml` is the only version the APK carries
-(`0.3.24+32` is name 0.3.24, code 32). **A plain `flutter build apk` does not
+(`0.3.25+33` is name 0.3.25, code 33). **A plain `flutter build apk` does not
 move it**, so two builds of the same tree install as the same version and the
 phone has no reason to treat the second one as an upgrade. Use one of these
 (the numbers below are the current version and what each command makes of it):
 
 ```sh
-dart run tool/bump_version.dart              # 0.3.24+32 -> 0.3.24+33
-dart run tool/bump_version.dart --patch      # 0.3.24+32 -> 0.3.25+33
+dart run tool/bump_version.dart              # 0.3.25+33 -> 0.3.25+34
+dart run tool/bump_version.dart --patch      # 0.3.25+33 -> 0.3.26+34
 tool/build_apk.sh                            # bump, then build a release APK
 ```
 
@@ -76,7 +78,28 @@ source breakdowns and message counts are not invented; app launches begin
 counting with this version. See [LOCAL_USAGE_DASHBOARD.md](LOCAL_USAGE_DASHBOARD.md)
 for measurements, bounded reads and verification.
 
+## Memory
+
+Settings → Conversations → Memory lets you add, edit, disable and delete
+memories. In a conversation, ask AI to summarize memories, or use the
+conversation menu's summary action. The `oc-ui` MCP `memory_write` tool only
+proposes entries: preview, edit and select them, then explicitly save to the
+same local store. There is no background extraction, independent summary
+request or automatic write. The tool must be installed on the current agent;
+unsupported agents do not silently use files or a different model instead.
+See [MEMORY.md](MEMORY.md) for the contract and host limits.
+
 ## Conversation layout
+
+Each reply's footer shows reported elapsed time, model steps, generation
+speed, context and cache-hit rate from the final request's reported tokens.
+The conversation menu also opens two read-only timing pages: elapsed time
+(per reply and conversation-wide, from server-recorded timestamps) and a
+request timeline (per model, from those timestamps). Usage → Local usage
+adds a cross-session request timeline from a bounded local log of prompts
+this app actually sent. It starts empty with this version; no history is
+reconstructed, no prompt text is logged, and an unrecorded API-key choice is
+never invented. Missing time stays unreported rather than estimated.
 
 Reply prose stays on the page. Consecutive thoughts and tool operations sit
 in a collapsible process card, in their original order. Running cards open

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../../domain/genui/gen_ui_validation_js.dart';
 import 'gen_ui_connector_search_js.dart';
+import 'memory_write_tool_js.dart';
 
 /// Zero-dependency MCP stdio helper, installed only at app-owned fixed paths.
 ///
@@ -19,6 +20,7 @@ const enabledMarkerPath = ${jsonEncode(enabledMarkerPath)};
 const connectorSearchPath = ${jsonEncode('$enabledMarkerPath.search.json')};
 $genUiValidationJavascript
 $genUiConnectorSearchJavascript
+$memoryWriteToolJavascript
 $_server
 ''';
 }
@@ -174,22 +176,37 @@ async function frame(bytes) {
       protocolVersion: versions.includes(params.protocolVersion)
         ? params.protocolVersion : versions[0],
       capabilities: {tools: {listChanged: false}},
-      serverInfo: {name: 'oc-ui', version: '1.0.0'},
+      serverInfo: {name: 'oc-ui', version: '1.1.0'},
       instructions: 'Cards return immediately. End your turn after asking and wait for '
-        + 'a normal user message tagged [oc-ui answer <id>]. Never ask for secrets.'
+        + 'a normal user message tagged [oc-ui answer <id>]. Never ask for secrets. '
+        + 'Only when the user explicitly asks to remember or summarize memories, use '
+        + 'memory_write to submit candidates. It does not save: the person must review '
+        + 'and save in the app. Do not automatically extract memories or claim they are saved.'
     }));
   } else if (request.method === 'ping') {
     await send(result(id, {}));
   } else if (!initialized) {
     await send(error(id, -32000, 'Server not initialized'));
   } else if (request.method === 'tools/list') {
-    await send(result(id, {tools: [tool, genUiConnectorSearchTool]}));
+    await send(result(id, {tools: [tool, genUiConnectorSearchTool, memoryWriteTool]}));
   } else if (request.method === 'tools/call') {
-    if (!record(params) || !['show', 'find_connectors'].includes(params.name)
+    if (!record(params) || !['show', 'find_connectors', 'memory_write'].includes(params.name)
         || !record(params.arguments)) {
       await send(failedCall(id)); return;
     }
     if (!enabled()) { await send(failedCall(id)); return; }
+    if (params.name === 'memory_write') {
+      try { validateMemoryWrite(params.arguments); }
+      catch (_) {
+        await send(result(id, {isError: true, content: [{type: 'text',
+          text: 'Invalid memory proposal. Nothing has been saved. Use 1–8 entries, '
+            + 'each at most 1024 UTF-8 bytes, and scope global or project.'}]}));
+        return;
+      }
+      await send(result(id, {content: [{type: 'text', text: memoryWriteReceipt
+        + ' End your turn. The person can review and save in the app.'}]}));
+      return;
+    }
     if (params.name === 'find_connectors') {
       let args;
       try { args = validateGenUiConnectorSearchArguments(params.arguments); }

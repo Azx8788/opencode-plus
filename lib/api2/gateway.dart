@@ -11,6 +11,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../domain/models.dart';
+import '../domain/long_term_memory.dart';
+import 'memory.dart';
 import '../domain/server_gateway.dart';
 import '../domain/parallel_requests.dart';
 import '../domain/remote_shell.dart';
@@ -44,6 +46,18 @@ class Api2Gateway
   /// request is not proof of idle: transport failure may follow acceptance.
   Future<void> Function(String sessionID)? beforeSessionDispatch;
   void Function(String sessionID)? sessionDispatchSettled;
+  Future<MemoryPromptContext?> Function(String sessionID)? memoryContext;
+
+  /// Notifies the app of a prompt this gateway actually accepted for dispatch.
+  /// Called only for OpenCode 2 sends, with the model the caller selected;
+  /// no prompt text or attachment is ever reported.
+  void Function(
+    String sessionID,
+    ModelRef? model,
+    String? agent,
+    String? variant,
+  )?
+  onPromptDispatched;
 
   /// Whether the person approves [sessionID] automatically. Such a session
   /// keeps the server's own rules, so its tools never wait for this phone.
@@ -88,9 +102,9 @@ class Api2Gateway
     String command, {
     String? directory,
     required Duration timeout,
-  }) => Api2ShellRunner(
-    client,
-  ).runShellCommand(command, directory: directory, timeout: timeout);
+  }) =>
+      Api2ShellRunner(client)
+          .runShellCommand(command, directory: directory, timeout: timeout);
 
   @override
   String? get directory => client.directory;
@@ -501,16 +515,20 @@ class Api2Gateway
     List<PromptAttachment> attachments = const [],
     List<PromptAgentMention> agentMentions = const [],
     PromptDelivery? delivery,
-  }) => PromptTrace.track(
-    sessionID,
-    () => _promptAsync(
-      sessionID,
-      text: text,
-      attachments: attachments,
-      agentMentions: agentMentions,
-      delivery: delivery,
-    ),
-  );
+  }) {
+    return PromptTrace.track(sessionID, () async {
+      await _promptAsync(
+        sessionID,
+        text: text,
+        attachments: attachments,
+        agentMentions: agentMentions,
+        delivery: delivery,
+      );
+      // An API send is not a model request, and admission/memory failures
+      // are not sends. Only record the server's successful acknowledgement.
+      onPromptDispatched?.call(sessionID, model, agent, variant);
+    });
+  }
 
   Future<void> _promptAsync(
     String sessionID, {
@@ -522,6 +540,8 @@ class Api2Gateway
     sessionID,
     () => _run(() async {
       await _prepareSessionDispatch(sessionID);
+      final memory = memoryContext;
+      if (memory != null) await Api2Memory(client).sync(sessionID, memory);
       await client.prompt(
         sessionID,
         text: text,
@@ -592,6 +612,8 @@ class Api2Gateway
     () => _run(() async {
       await _prepareSessionDispatch(sessionID);
       final name = command.startsWith('/') ? command.substring(1) : command;
+      final memory = memoryContext;
+      if (memory != null) await Api2Memory(client).sync(sessionID, memory);
       await transport.postJson(
         '/session/$sessionID/command',
         body: {'command': name, 'text': args},

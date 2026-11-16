@@ -494,6 +494,7 @@ class _AssistantPartRun {
     this.heading,
     this.note,
     this.card,
+    this.memory,
   });
 
   final List<Part> parts;
@@ -503,6 +504,7 @@ class _AssistantPartRun {
   /// (docs/design/genui-plan-2026-10-07.md): it is drawn as the card, in the
   /// reply and not folded into the work line.
   final GenUiParse? card;
+  final MemoryWriteRequest? memory;
 
   /// What the agent said it was about to do, when it said so in a line
   /// ("Patching home shell") right before this run of tool calls. The run
@@ -569,6 +571,7 @@ List<_AssistantPartRun> _groupAssistantParts(List<Part> parts) {
 /// assistant text and interactive answer cards remain independent.
 bool _runIsWork(_AssistantPartRun run) =>
     run.card == null &&
+    run.memory == null &&
     (_isFoldedIntoWork(run.parts.first) ||
         run.parts.first.type == 'tool' ||
         run.parts.first.type == 'reasoning');

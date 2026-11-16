@@ -10,6 +10,10 @@ import 'package:opencode_mobile/domain/usage_statistics.dart';
 import 'package:opencode_mobile/l10n/app_localizations.dart';
 import 'package:opencode_mobile/state/app_launch_statistics.dart';
 import 'package:opencode_mobile/state/usage_overview.dart';
+import 'package:opencode_mobile/state/connection.dart';
+import 'package:opencode_mobile/state/profiles.dart';
+import 'package:opencode_mobile/background/live_background.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:opencode_mobile/ui/app_theme.dart';
 import 'package:opencode_mobile/ui/kit/kit.dart';
 import 'package:opencode_mobile/ui/kit/style/kit_style_theme.dart';
@@ -56,10 +60,13 @@ UsageSnapshot _snapshot({
                 steps: 12 + index,
                 cost: 0,
                 tokens: UsageTokens(
-                  input: 12000000 ~/ (index + 1),
+                  input:
+                      5560700 *
+                          const [44, 15, 9, 8, 5, 4, 2, 2, 2, 2, 2, 5][index] -
+                      130000,
                   output: 100000,
                   reasoning: 10000,
-                  cacheRead: 8000000 ~/ (index + 1),
+                  cacheRead: 20000,
                   cacheWrite: 0,
                 ),
               ),
@@ -79,6 +86,19 @@ List<UsageTrendPoint> _points(UsageSnapshot snapshot, {bool failed = false}) {
     snapshot.statistics,
     snapshot.range,
   );
+  final weights = List.generate(plan.buckets.length, (index) => index % 8 + 1);
+  final weightTotal = weights.fold<int>(0, (sum, value) => sum + value);
+  int share(int total, int index) {
+    if (index < weights.length - 1) {
+      return total * weights[index] ~/ weightTotal;
+    }
+    return total -
+        weights
+            .take(index)
+            .fold<int>(0, (sum, value) => sum + total * value ~/ weightTotal);
+  }
+
+  final tokens = snapshot.statistics.tokens;
   return [
     for (var index = 0; index < plan.buckets.length; index++)
       UsageTrendPoint(
@@ -90,15 +110,42 @@ List<UsageTrendPoint> _points(UsageSnapshot snapshot, {bool failed = false}) {
                 from: plan.buckets[index].from.millisecondsSinceEpoch,
                 to: plan.buckets[index].to.millisecondsSinceEpoch,
                 tokens: UsageTokens(
-                  input: (index % 8 + 1) * 1000000,
-                  output: 20000,
-                  reasoning: 4000,
-                  cacheRead: index % 3 * 2000000,
-                  cacheWrite: 0,
+                  input: share(tokens.input, index),
+                  output: share(tokens.output, index),
+                  reasoning: share(tokens.reasoning, index),
+                  cacheRead: share(tokens.cacheRead, index),
+                  cacheWrite: share(tokens.cacheWrite, index),
                 ),
               ),
       ),
   ];
+}
+
+class _Profiles extends ProfileStore {
+  _Profiles(SharedPreferences prefs) : super(prefs: prefs);
+  final phone = ServerProfile(
+    id: 'phone',
+    name: 'Phone',
+    baseUrl: 'http://127.0.0.1:4097',
+  );
+  @override
+  List<ServerProfile> get profiles => [phone];
+  @override
+  String? get activeId => phone.id;
+}
+
+class _ReadyOverview extends UsageOverview {
+  _ReadyOverview(super.connection) {
+    snapshot = _snapshot();
+    lifetime = _snapshot(range: UsageRange.allTime);
+    trendPlan = UsageTrendPlan.forStatistics(
+      snapshot!.statistics,
+      snapshot!.range,
+    );
+    trend = _points(snapshot!);
+  }
+  @override
+  Future<void> refresh() async {}
 }
 
 void main() {
@@ -112,6 +159,13 @@ void main() {
       await (FontLoader(
         entry.key,
       )..addFont(rootBundle.load(entry.value))).load();
+    }
+    final cjk = File('build/qa-fonts/NotoSansSC.ttf');
+    if (cjk.existsSync()) {
+      await (FontLoader('QaCjkFallback')..addFont(
+            cjk.readAsBytes().then((bytes) => ByteData.sublistView(bytes)),
+          ))
+          .load();
     }
   });
 
@@ -131,9 +185,19 @@ void main() {
     final snapshot = _snapshot(empty: empty);
     final size = ValueNotifier(textSize);
     addTearDown(size.dispose);
+    final appTheme = dark ? AppTheme.dark() : AppTheme.light();
+    // Test-only stand-in for Android's system CJK fallback. AppSans remains
+    // primary, and no APK font asset or appearance preference is changed.
+    final theme = appTheme.copyWith(
+      textTheme: appTheme.textTheme.copyWith(
+        bodyLarge: appTheme.textTheme.bodyLarge!.copyWith(
+          fontFamilyFallback: const ['QaCjkFallback'],
+        ),
+      ),
+    );
     await tester.pumpWidget(
       MaterialApp(
-        theme: dark ? AppTheme.dark() : AppTheme.light(),
+        theme: theme,
         locale: locale,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
@@ -359,6 +423,59 @@ void main() {
         '—',
       );
       expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'actual usage page preserves exact costs, budgets and the advanced report',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final connection = ConnectionController(
+        _Profiles(prefs),
+        isIsolated: true,
+        backgroundLive: BackgroundLiveController(
+          preferences: prefs,
+          invoke: (method, [arguments]) async => const {},
+        ),
+      );
+      final overview = _ReadyOverview(connection);
+      addTearDown(() {
+        overview.dispose();
+        connection.dispose();
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: UsageScreen(controller: connection, overview: overview),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final details = find.byKey(const ValueKey('stats-advanced'));
+      await tester.scrollUntilVisible(
+        details,
+        350,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const ValueKey('usage-content')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(details);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('usage-total-cost')), findsOneWidget);
+      expect(
+        tester
+            .widget<KitText>(find.byKey(const ValueKey('usage-total-cost')))
+            .text,
+        r'$1.25',
+      );
+      expect(find.byKey(const ValueKey('usage-budget-usd')), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
     },
   );
 
