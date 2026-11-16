@@ -59,7 +59,9 @@ extension _ChatMemory on _ChatScreenState {
       } catch (_) {
         /* The review explicitly shows unknown; project save stays disabled. */
       }
-      if (!current()) throw const MemoryException(MemoryFailure.changed);
+      if (!current() || !mounted) {
+        throw const MemoryException(MemoryFailure.changed);
+      }
       await pushKitPage<void>(
         context,
         (_) => MemoryReviewScreen(

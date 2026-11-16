@@ -72,7 +72,6 @@ class TurnElapsed {
     var thinking = Duration.zero;
     var textOnly = Duration.zero;
     var toolExecution = Duration.zero;
-    var toolCalls = 0;
     var windowKnown = false;
     Duration? firstStart;
     Duration? lastEnd;

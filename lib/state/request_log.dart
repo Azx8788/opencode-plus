@@ -68,7 +68,7 @@ class RequestLogStore extends ChangeNotifier {
       loaded = true;
       notifyListeners();
     });
-    _writes = operation.then((_) {}, onError: (Object _, StackTrace __) {});
+    _writes = operation.then((_) {}, onError: (Object _, StackTrace _) {});
     return operation;
   }
 

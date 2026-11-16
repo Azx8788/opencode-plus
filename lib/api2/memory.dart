@@ -14,9 +14,12 @@ class Api2Memory {
   ) async {
     for (var attempt = 0; attempt < 3; attempt++) {
       final context = await source(sessionID);
-      if (context == null)
+      if (context == null) {
         return; // No memory has ever been saved on this phone.
-      if (!context.isCurrent()) continue;
+      }
+      if (!context.isCurrent()) {
+        continue;
+      }
       final value = context.value;
       if (value != null &&
           utf8.encode(jsonEncode(value)).length >

@@ -94,7 +94,7 @@ class LongTermMemoryStore extends ChangeNotifier {
       revision++;
       notifyListeners();
     });
-    _writes = operation.then((_) {}, onError: (Object _, StackTrace __) {});
+    _writes = operation.then((_) {}, onError: (Object _, StackTrace _) {});
     return operation;
   }
 

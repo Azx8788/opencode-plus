@@ -2,11 +2,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../domain/models.dart';
-import '../../domain/turn_elapsed.dart';
-import '../../l10n/app_localizations.dart';
-import '../kit/kit.dart';
-import '../theme_roles.dart';
+import '../../../domain/models.dart';
+import '../../../domain/turn_elapsed.dart';
+import '../../../l10n/app_localizations.dart';
+import '../../kit/kit.dart';
+import '../../theme_roles.dart';
 
 /// The conversation's elapsed-time page: a ring of recorded phases, the
 /// stage totals and one bar per reply. It draws with the app's own theme
@@ -186,7 +186,6 @@ class _StageList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final t = KitTokens.of(context);
     final total = elapsed.recorded;
     String value(Duration phase) {
       if (phase == Duration.zero) return l.chatStatsNotReported;

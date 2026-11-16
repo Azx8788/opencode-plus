@@ -58,10 +58,15 @@ extension _ChatMessageActions on _ChatScreenState {
         onSelected: () => unawaited(_copyMessageText(message)),
       ),
     // The error row shows two fixes (another model, sign in to the agent),
-    if (!_conn.isIsolated && !_watching && _messageCopy(message).text.trim().isNotEmpty)
-      KitMenuItem(key: const ValueKey('message-menu-memory'),
-        label: _chatL10n(context).memorySaveMessage, icon: AppIconography.database,
-        onSelected: () => unawaited(_saveMessageMemory(message))),
+    if (!_conn.isIsolated &&
+        !_watching &&
+        _messageCopy(message).text.trim().isNotEmpty)
+      KitMenuItem(
+        key: const ValueKey('message-menu-memory'),
+        label: _chatL10n(context).memorySaveMessage,
+        icon: AppIconography.database,
+        onSelected: () => unawaited(_saveMessageMemory(message)),
+      ),
     // so its Error details is here.
     if (_agentRunFor(message.info) case final run? when _accountNeeded(run))
       KitMenuItem(
@@ -177,19 +182,30 @@ extension _ChatMessageActions on _ChatScreenState {
   Future<void> _saveMessageMemory(MessageWithParts message) async {
     final location = _conn.locationRevision;
     final identity = (_conn.profile?.id, _conn.profile?.baseUrl);
-    bool current() => mounted && location == _conn.locationRevision &&
+    bool current() =>
+        mounted &&
+        location == _conn.locationRevision &&
         identity == (_conn.profile?.id, _conn.profile?.baseUrl);
     try {
       await _conn.store.longTermMemory.load();
       MemoryProject? project;
-      try { project = await readMemoryProject(_conn, widget.sessionID); } catch (_) {}
-      if (!current()) return;
-      await pushKitPage<void>(context, (_) => MemoryEditor(
-        store: _conn.store.longTermMemory, project: project,
-        initialText: _messageCopy(message).text, sourceSessionID: widget.sessionID,
-        isCurrent: current,
-      ));
-    } catch (error) { if (current()) _showActionError(error); }
+      try {
+        project = await readMemoryProject(_conn, widget.sessionID);
+      } catch (_) {}
+      if (!current() || !mounted) return;
+      await pushKitPage<void>(
+        context,
+        (_) => MemoryEditor(
+          store: _conn.store.longTermMemory,
+          project: project,
+          initialText: _messageCopy(message).text,
+          sourceSessionID: widget.sessionID,
+          isCurrent: current,
+        ),
+      );
+    } catch (error) {
+      if (current()) _showActionError(error);
+    }
   }
 
   Future<void> _forkFromMessage(MessageWithParts message) async {
