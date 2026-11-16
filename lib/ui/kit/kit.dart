@@ -306,6 +306,7 @@ export 'chat/kit_message.dart';
 export 'chat/kit_phrase_chips.dart';
 export 'chat/kit_transcript_excerpt.dart';
 export 'chat/kit_turn.dart';
+export 'chat/kit_turn_statistics.dart';
 export 'kit_request_sheet.dart';
 export 'kit_context_region.dart';
 export 'kit_scrollbar.dart';

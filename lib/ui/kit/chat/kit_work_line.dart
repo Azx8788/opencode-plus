@@ -1,4 +1,4 @@
-// KitWorkLine: the one line a turn's work folds under
+// KitWorkLine: a themed process card a turn's work folds under
 // (docs/ux-system/kit-api/KitWorkLine.md, visual language §5: "work is
 // folded into one chip: Read 3 files · edited 1"). A KitChip.summary that
 // says what was done, what is happening now, or "Waiting for you", and
@@ -13,9 +13,12 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../../l10n/app_localizations.dart';
+import '../../app_iconography.dart';
 import '../kit_buttons.dart';
 import '../kit_max_width.dart';
 import '../kit_status_mark.dart';
+import '../kit_surface.dart';
+import '../kit_tokens.dart';
 import 'kit_step_timeline.dart';
 
 /// Where a turn's work stands. The host decides; the line only says it.
@@ -142,6 +145,7 @@ class KitWorkLine extends StatefulWidget {
     this.lineKey,
     this.stepsKey,
     this.tail,
+    this.thinking = false,
   });
 
   /// What the work did; the chip's summary words.
@@ -177,6 +181,7 @@ class KitWorkLine extends StatefulWidget {
   /// row. Null (or fewer than three steps beyond it) shows the steps up to
   /// [stepCap].
   final int? tail;
+  final bool thinking;
 
   /// Opened without asking when the work ended on a failure; otherwise
   /// folded. The host passes its stored choice as [expanded] when there is
@@ -312,7 +317,9 @@ class _KitWorkLineState extends State<KitWorkLine> {
 
   Widget _buildContent(BuildContext context) {
     final l10n = lookupAppLocalizations(Localizations.localeOf(context));
-    final summary = KitWorkLine.summaryOf(context, widget.counts);
+    final summary = widget.thinking
+        ? l10n.kitMessageThought
+        : KitWorkLine.summaryOf(context, widget.counts);
     final expanded = _expanded;
     final sep = l10n.kitWorkSeparator;
     final c = widget.counts;
@@ -365,40 +372,48 @@ class _KitWorkLineState extends State<KitWorkLine> {
         else
           steps[i],
     ];
-    return KitStepTimeline(
-      label: label,
-      spoken: spoken,
-      icon: KitStepTimeline.iconFor(
-        read: c.read,
-        searched: c.searched,
-        listed: c.listed,
-        edited: c.edited,
-        ran: c.ran,
-        fetched: c.fetched,
-        delegated: c.delegated,
-        other: c.other,
-      ),
-      mark: mark,
-      live: widget.state == KitWorkState.running && !expanded,
-      expanded: expanded,
-      onPressed: _toggle,
-      head: hidden > 0
-          ? Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: KitButton.tertiary(
-                label: l10n.kitWorkEarlierSteps(
-                  math.min(hidden, KitWorkLine.stepCap),
-                ),
-                onPressed: _revealEarlier,
+    return KitSurface(
+      key: const ValueKey('kit-work-card'),
+      level: KitSurfaceLevel.surface1,
+      shape: KitShape.panel,
+      padding: KitSurfacePadding.compact,
+      child: KitStepTimeline(
+        label: label,
+        spoken: spoken,
+        icon: widget.thinking
+            ? AppIconography.idea
+            : KitStepTimeline.iconFor(
+                read: c.read,
+                searched: c.searched,
+                listed: c.listed,
+                edited: c.edited,
+                ran: c.ran,
+                fetched: c.fetched,
+                delegated: c.delegated,
+                other: c.other,
               ),
-            )
-          : null,
-      steps: shown,
-      // The timeline folds the steps in and out itself (size and fade,
-      // owner request 2026-10-27); under reduced motion they are simply
-      // there or gone.
-      lineKey: widget.lineKey,
-      stepsKey: widget.stepsKey,
+        mark: mark,
+        live: widget.state == KitWorkState.running && !expanded,
+        expanded: expanded,
+        onPressed: _toggle,
+        head: hidden > 0
+            ? Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: KitButton.tertiary(
+                  label: l10n.kitWorkEarlierSteps(
+                    math.min(hidden, KitWorkLine.stepCap),
+                  ),
+                  onPressed: _revealEarlier,
+                ),
+              )
+            : null,
+        steps: shown,
+        // The timeline folds the steps in and out itself (size and fade,
+        // owner request 2026-10-27); under reduced motion they are simply
+        // there or gone.
+        lineKey: widget.lineKey,
+        stepsKey: widget.stepsKey,
+      ),
     );
   }
 }

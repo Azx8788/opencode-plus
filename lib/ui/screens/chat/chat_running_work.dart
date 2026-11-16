@@ -242,7 +242,7 @@ extension _ChatBackgroundWorkLine on _ChatScreenState {
 /// The expansion-store key of the work line that holds [runs].
 String _workStoreKey(List<_AssistantPartRun> runs) {
   final first = runs.first.parts.first;
-  return 'work:${first.id ?? first.callID ?? first.messageID}';
+  return 'work:${first.messageID ?? ''}/${first.id ?? first.callID}';
 }
 
 /// The steps of a reply's work lines, and the step a jump asked to show
@@ -284,10 +284,12 @@ extension _MessageViewSteps on _MessageView {
             toolName: part.toolName ?? 'tool',
             state: part.toolState,
             embedded: true,
+            previewOutput: true,
             heading: index == 0 ? run.heading : null,
             note: index == 0 ? run.note : null,
             expansionStore: expansionStore,
-            expansionKey: 'tool:${part.id ?? part.callID}',
+            expansionKey:
+                'tool:${part.messageID ?? ''}/${part.id ?? part.callID}',
             filePreviewLoader: filePreviewLoader,
             onAttachFile: onAttachFile,
             onDownloadFile: onDownloadFile,

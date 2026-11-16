@@ -29,7 +29,9 @@ class _ExpansionStore extends MapBase<String, bool> {
   bool get anyOpen => _anyOpen;
 
   void _sync() {
-    final now = _values.containsValue(true);
+    final now = _values.entries.any(
+      (entry) => entry.value && !entry.key.contains('@'),
+    );
     if (now == _anyOpen) return;
     _anyOpen = now;
     onOpenChanged();
@@ -204,9 +206,8 @@ extension _ChatTranscript on _ChatScreenState {
         return KitJumpPillLayer(
           pill: KitJumpPill.older(
             pillKey: const ValueKey('earlier-messages-pill'),
-            label: _chatL10n(
-              context,
-            ).chatUiEarlierMessageCount(_earlierPillCount),
+            label: _chatL10n(context)
+                .chatUiEarlierMessageCount(_earlierPillCount),
             onPressed: () => unawaited(_openTimeline()),
             visible: earlier > 0,
           ),
@@ -331,7 +332,9 @@ extension _ChatTranscript on _ChatScreenState {
           newest.toolName ?? 'tool',
           newest.toolState,
           l10n: _chatL10n(context),
-          named: !_liveStepsShown,
+          // The process card names the command; the live footer keeps the
+          // activity and total elapsed time without repeating the command.
+          named: false,
         );
         _noteRunningCommand(newest);
       }
@@ -727,6 +730,8 @@ extension _ChatTranscript on _ChatScreenState {
           m.info.role == 'user' &&
           index > queuedAfterIndex,
       m: m,
+      transcript: _messages,
+      workIsRunning: _live != null,
       meta: meta,
       parts: parts,
       reasoningExpanded: _conn.transcriptReasoningExpanded,

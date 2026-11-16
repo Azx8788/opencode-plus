@@ -425,6 +425,15 @@ extension _ModelCatalogModels on _ModelCatalogViewState {
             )
           : null,
       menu: [
+        if (model.enabled && _sameScope &&
+            looksLikeInAppServer(widget.controller.profile))
+          providerKeySwitchAction(
+            context: context,
+            controller: widget.controller,
+            providerID: model.providerID,
+            modelID: model.id,
+            linux: widget.linux,
+          ),
         if (model.enabled)
           KitMenuItem(
             label: favoriteLabel,

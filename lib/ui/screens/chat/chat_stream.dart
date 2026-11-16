@@ -560,6 +560,8 @@ extension _ChatStream on _ChatScreenState {
     url: part.url,
     synthetic: part.synthetic,
     ended: part.ended,
+    startedAt: part.startedAt,
+    completedAt: part.completedAt,
     noticeMetadata: part.noticeMetadata,
   );
 }

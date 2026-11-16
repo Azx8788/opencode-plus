@@ -25,6 +25,7 @@ import 'provider_test_screen.dart';
 import '../app_iconography.dart';
 import '../app_theme.dart' show AppStatusTone;
 import '../kit/kit.dart';
+import '../widgets/provider_key_switch.dart';
 
 AppLocalizations _l10nOf(BuildContext context) =>
     lookupAppLocalizations(Localizations.localeOf(context));
@@ -1385,6 +1386,27 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
     }
   }
 
+  Future<void> _switchKeyFromModel() async {
+    if (_saving || _keyRingLoading || !_sameServer || !_canManageKeys) return;
+    // Loading the chooser does not write. Re-read afterward even on failure:
+    // migration may have saved the old key before activation was refused.
+    setState(() => _saving = true);
+    try {
+      final changed = await showProviderKeySwitch(
+        context,
+        controller: widget.controller,
+        providerID: _draft().id,
+        linux: _linux,
+      );
+      if (_sameServer) {
+        if (changed) _apiKey.clear();
+        await _loadKeyRing();
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   void _say(String message) {
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
       SnackBar(content: Text(message)),
@@ -2055,6 +2077,17 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
                     ? null
                     : TextSpan(text: model.id),
                 selected: _selected.contains(model.id),
+                menu: [
+                  if (_canManageKeys)
+                    providerKeySwitchAction(
+                      context: context,
+                      controller: widget.controller,
+                      providerID: _draft().id,
+                      modelID: model.id,
+                      linux: _linux,
+                      onSelected: _switchKeyFromModel,
+                    ),
+                ],
                 onTap: () => _toggle(model.id, !_selected.contains(model.id)),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,

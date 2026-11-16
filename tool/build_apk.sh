@@ -8,8 +8,8 @@
 # the same version and the second one is refused.
 #
 # Usage:
-#   tool/build_apk.sh                 # 0.3.23+31 -> 0.3.23+32, then build
-#   tool/build_apk.sh --patch         # 0.3.23+31 -> 0.3.24+32, then build
+#   tool/build_apk.sh                 # 0.3.24+32 -> 0.3.24+33, then build
+#   tool/build_apk.sh --patch         # 0.3.24+32 -> 0.3.25+33, then build
 #   tool/build_apk.sh --no-bump       # build the version as it stands
 set -euo pipefail
 

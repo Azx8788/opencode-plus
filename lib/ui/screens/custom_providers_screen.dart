@@ -549,7 +549,7 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) =>
-                    ProviderModelsScreen(controller: widget.controller),
+                    ProviderModelsScreen(controller: widget.controller, linux: widget.linux),
               ),
             ),
           ),

@@ -1,9 +1,5 @@
-// The transcript's "Reasoning" switch keeps a turn's thoughts in view.
-//
-// With it off (the default), a finished turn folds its thoughts and tool calls
-// into one work line: a thought streams past and then disappears behind the
-// line. With it on, a thought keeps a block of its own, so what the model
-// thought stays readable after the turn ends — tool calls still fold.
+// Thoughts always belong to a process card. The Reasoning preference controls
+// expansion, not classification; prose never disappears into the card.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:opencode_mobile/domain/models.dart';
 import 'package:opencode_mobile/ui/screens/chat_screen.dart' as chat;
@@ -38,29 +34,27 @@ Part _text(String id, String value) =>
     Part(id: id, type: 'text', text: value, messageID: 'a1');
 
 void main() {
-  test('with the switch on, a thought is not folded into the work line', () {
+  test('thoughts belong to work with either reasoning preference', () {
     final thought = _thought('Consider both options carefully.\nThen decide.');
     final tool = _tool();
     expect(chat.debugRunsAreWork([thought, tool]), [true, true]);
-    expect(
-      chat.debugRunsAreWork([thought, tool], keepReasoning: true),
-      [false, true],
-    );
+    expect(chat.debugRunsAreWork([thought, tool], keepReasoning: true), [
+      true,
+      true,
+    ]);
   });
 
-  test('with the switch on, a one-line thought stays a block of its own', () {
+  test('a one-line thought stays its own step inside the work card', () {
     final thought = _thought('**Rebuilding the router**');
     final tool = _tool();
-    // Off: the line titles the tool run, so both are one work stretch.
-    expect(chat.debugRunsAreWork([thought, tool]), [true]);
-    // On: the thought keeps its own block above the work line.
-    expect(
-      chat.debugRunsAreWork([thought, tool], keepReasoning: true),
-      [false, true],
-    );
+    expect(chat.debugRunsAreWork([thought, tool]), [true, true]);
+    expect(chat.debugRunsAreWork([thought, tool], keepReasoning: true), [
+      true,
+      true,
+    ]);
   });
 
-  test('with the switch on, a thought does not fold the line before it', () {
+  test('a thought never folds the prose before it, with either preference', () {
     final passing = _text('text-0', 'Let me check the router:');
     final thought = _thought('The routes are built in main.dart.\nCheck it.');
     final explanation = _text(
@@ -71,7 +65,7 @@ void main() {
       _prompt('u1'),
       _step('a1', [passing, thought, explanation]),
     ]);
-    expect(chat.debugIsFoldedIntoWork(passing), isTrue);
+    expect(chat.debugIsFoldedIntoWork(passing), isFalse);
 
     final passingOn = _text('text-0', 'Let me check the router:');
     final thoughtOn = _thought('The routes are built in main.dart.\nCheck it.');

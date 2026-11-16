@@ -61,10 +61,13 @@ AppLocalizations _chatL10n(BuildContext context) =>
 // The chat transcript (a `part` of chat_screen.dart) opens file diffs through
 // this library, which it already imports; tool cards render diffs too.
 
-typedef ToolOutputFileLoader =
-    Future<FilePreviewData> Function(ToolOutputFile file);
-typedef ToolOutputFileAction =
-    Future<void> Function(ToolOutputFile file, FilePreviewData data);
+typedef ToolOutputFileLoader = Future<FilePreviewData> Function(
+  ToolOutputFile file,
+);
+typedef ToolOutputFileAction = Future<void> Function(
+  ToolOutputFile file,
+  FilePreviewData data,
+);
 
 /// One tool invocation as one line of the reply (a [KitToolRow]): what it
 /// did, where, and how it went, opening to its note and what it produced.
@@ -73,6 +76,10 @@ class ToolCard extends StatefulWidget {
   final String toolName;
   final ToolState state;
   final bool embedded;
+
+  /// In an opened process card, shell output starts with its bounded
+  /// preview visible. A saved per-tool collapse always wins.
+  final bool previewOutput;
 
   /// The agent's own one-line name for this step ("Setting up persistence
   /// check"), said right before the call. It becomes the row's title and the
@@ -126,6 +133,7 @@ class ToolCard extends StatefulWidget {
     required this.toolName,
     required this.state,
     this.embedded = false,
+    this.previewOutput = false,
     this.heading,
     this.note,
     this.expansionStore,
@@ -147,6 +155,16 @@ class ToolCard extends StatefulWidget {
 
 class _ToolCardState extends State<ToolCard> {
   bool _expanded = false;
+  bool _touched = false;
+
+  bool get _defaultExpansion =>
+      (widget.state.status == 'error' && !widget.state.declined) ||
+      (widget.previewOutput &&
+          const {
+            'bash',
+            'shell',
+          }.contains(widget.toolName.trim().toLowerCase()) &&
+          (widget.state.inFlight || widget.state.output?.isNotEmpty == true));
 
   /// The inline diff's "Wrap lines" choice (on the step's long-press menu);
   /// null leaves the diff's own default (wrapped on a phone).
@@ -198,6 +216,7 @@ class _ToolCardState extends State<ToolCard> {
 
   void _setExpanded(bool value) {
     setState(() {
+      _touched = true;
       _expanded = value;
       if (widget.expansionKey case final key?) {
         widget.expansionStore?[key] = value;
@@ -208,9 +227,7 @@ class _ToolCardState extends State<ToolCard> {
   @override
   void initState() {
     super.initState();
-    _expanded =
-        _storedExpansion ??
-        (widget.state.status == 'error' && !widget.state.declined);
+    _expanded = _storedExpansion ?? _defaultExpansion;
     _syncPreviewLoads();
   }
 
@@ -221,6 +238,8 @@ class _ToolCardState extends State<ToolCard> {
     // lands on the plan open): the stored choice wins.
     if (_storedExpansion case final stored? when stored != _expanded) {
       _expanded = stored;
+    } else if (_storedExpansion == null && !_touched) {
+      _expanded = _defaultExpansion;
     }
     if (!identical(oldWidget.state.outputFiles, widget.state.outputFiles) ||
         oldWidget.filePreviewLoader != widget.filePreviewLoader) {

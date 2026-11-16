@@ -8,11 +8,16 @@ import 'package:opencode_mobile/builtin/builtin_linux.dart';
 import 'package:opencode_mobile/builtin/provider_key_ring_store.dart';
 import 'package:opencode_mobile/domain/custom_provider.dart';
 import 'package:opencode_mobile/domain/custom_provider_record.dart';
+import 'package:opencode_mobile/domain/models.dart' show ModelRef;
+import 'package:opencode_mobile/domain/server_gateway/value_types_core.dart';
 import 'package:opencode_mobile/state/connection.dart';
 import 'package:opencode_mobile/state/profiles.dart';
 import 'package:opencode_mobile/ui/kit/kit.dart';
 import 'package:opencode_mobile/ui/screens/custom_provider_screen.dart';
 import 'package:opencode_mobile/ui/screens/custom_providers_screen.dart';
+import 'package:opencode_mobile/ui/screens/provider_models_screen.dart';
+import 'package:opencode_mobile/ui/widgets/pickers.dart';
+import 'package:opencode_mobile/ui/widgets/provider_key_switch.dart';
 
 class _Profiles extends ProfileStore {
   _Profiles(SharedPreferences prefs) : super(prefs: prefs);
@@ -27,6 +32,7 @@ class _Profiles extends ProfileStore {
 class _Linux extends BuiltinLinux {
   final files = <String, String>{};
   final writes = <String>[];
+  bool failConfigWrite = false;
 
   _Linux() {
     files['.oc-opencode2/config/opencode/opencode.json'] = jsonEncode({
@@ -58,6 +64,9 @@ class _Linux extends BuiltinLinux {
 
   @override
   Future<void> writeServerFile({required String relativePath, required String content}) async {
+    if (failConfigWrite && relativePath.endsWith('/opencode.json')) {
+      throw const BuiltinLinuxException('Fixture config write refused');
+    }
     writes.add(relativePath);
     files[relativePath] = content;
   }
@@ -112,6 +121,47 @@ void main() {
       maxScrolls: 40,
     );
     await tester.pumpAndSettle();
+  }
+
+  void seedKeySwitchCatalog() {
+    controller.catalog = const CatalogSnapshot(
+      providers: [CatalogProvider(id: 'gateway', name: 'Gateway', enabled: true)],
+      agents: [],
+      models: [
+        CatalogModel(id: 'opaque-model', providerID: 'gateway', name: 'Opaque model',
+            enabled: true, status: 'active', contextLimit: 200000, outputLimit: 32000,
+            reasoning: true, attachments: false, tools: true,
+            variants: [CatalogVariant(id: 'max', options: {'reasoningEffort': 'max'})]),
+        CatalogModel(id: 'other-model', providerID: 'gateway', name: 'Other model',
+            enabled: true, status: 'active', contextLimit: 200000, outputLimit: 32000,
+            reasoning: true, attachments: false, tools: true),
+      ],
+    );
+    controller.selectedModel = ModelRef(providerID: 'gateway', modelID: 'opaque-model');
+    controller.selectedVariant = 'max';
+  }
+
+  Future<void> mountKeyButton(WidgetTester tester) async {
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: Builder(
+      builder: (context) => TextButton(
+        key: const Key('open-key-switch'),
+        onPressed: () => showProviderKeySwitch(context,
+            controller: controller, providerID: 'gateway', linux: linux),
+        child: const Text('Switch key'),
+      ),
+    ))));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> openKeyButton(WidgetTester tester) async {
+    await tester.tap(find.byKey(const Key('open-key-switch')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('provider-key-switch-menu-gateway')), findsOneWidget);
+  }
+
+  String activeKeyReference() {
+    final doc = jsonDecode(linux.files['.oc-opencode2/config/opencode/opencode.json']!) as Map;
+    return doc['providers']['gateway']['settings']['apiKey'] as String;
   }
 
   testWidgets('provider actions are visible without long press; templates can hide and restore', (tester) async {
@@ -211,5 +261,140 @@ void main() {
     final allPrefs = prefs.getKeys().map((key) => prefs.get(key).toString()).join();
     expect(allPrefs, isNot(contains('fixture-legacy-key')));
     expect(allPrefs, isNot(contains('fixture-new-personal-key')));
+  });
+
+  testWidgets('long press a model to switch among three named keys without changing the model or Max', (tester) async {
+    seedKeySwitchCatalog();
+    final ring = ProviderKeyRingStore(prefs);
+    final saved = await ring.load(profileID: 'phone', providerID: 'gateway',
+        currentPath: '/root/.secrets/opencode-plus/gateway/work.key');
+    await ring.save(profileID: 'phone', providerID: 'gateway', activeID: 'work', keys: [
+      ...saved.keys,
+      const ProviderKeyRecord(id: 'spare', name: 'Spare', filePath: '/root/.secrets/opencode-plus/gateway/spare.key'),
+    ]);
+    linux.files['.secrets/opencode-plus/gateway/spare.key'] = 'fixture-spare-key';
+    final before = jsonDecode(linux.files['.oc-opencode2/config/opencode/opencode.json']!) as Map;
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: ModelCatalogView(controller: controller, linux: linux))));
+    await tester.pumpAndSettle();
+    final row = find.byKey(const ValueKey('model-option-gateway-opaque-model'));
+    await tester.ensureVisible(row);
+    await tester.longPress(row);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('model-key-switch-gateway-opaque-model')));
+    await tester.pumpAndSettle();
+    final menu = tester.widget<KitMenuPanel>(find.byType(KitMenuPanel));
+    expect(menu.items.map((item) => item.label), ['Work', 'Backup', 'Spare']);
+    expect(menu.items.first.checked, isTrue);
+    expect(menu.items.first.group, const KitMenuGroup('Gateway · applies to all its models'));
+    await tester.tap(find.byKey(const ValueKey('provider-key-choice-gateway-backup')));
+    await tester.pumpAndSettle();
+    expect(activeKeyReference(), '{file:/root/.secrets/opencode-plus/gateway/backup.key}');
+    expect(controller.selectedModel!.wireName, 'gateway/opaque-model');
+    expect(controller.selectedVariant, 'max');
+    final after = jsonDecode(linux.files['.oc-opencode2/config/opencode/opencode.json']!) as Map;
+    expect(after['providers']['gateway']['models'], before['providers']['gateway']['models']);
+    final other = find.byKey(const ValueKey('model-option-gateway-other-model'));
+    await tester.ensureVisible(other);
+    await tester.longPress(other);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('model-key-switch-gateway-other-model')));
+    await tester.pumpAndSettle();
+    final reopened = tester.widget<KitMenuPanel>(find.byType(KitMenuPanel));
+    expect(reopened.items.singleWhere((item) => item.label == 'Backup').checked, isTrue);
+    await tester.tap(find.byKey(const ValueKey('provider-key-choice-gateway-spare')));
+    await tester.pumpAndSettle();
+    expect(activeKeyReference(), '{file:/root/.secrets/opencode-plus/gateway/spare.key}');
+    expect(controller.selectedVariant, 'max');
+  });
+
+  testWidgets('key shortcut is also on the provider model list', (tester) async {
+    seedKeySwitchCatalog();
+    await tester.pumpWidget(MaterialApp(home: ProviderModelsScreen(controller: controller, linux: linux)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const PageStorageKey('provider-section-gateway')));
+    await tester.pumpAndSettle();
+    await tester.longPress(find.byKey(const ValueKey('provider-model-gateway-opaque-model')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('model-key-switch-gateway-opaque-model')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('provider-key-choice-gateway-backup')), findsOneWidget);
+    expect(linux.writes, isEmpty, reason: 'opening the key menu never writes');
+    await tester.tap(find.byKey(const ValueKey('provider-key-choice-gateway-work')));
+    await tester.pumpAndSettle();
+    expect(linux.writes, isEmpty, reason: 'selecting the current key is a no-op');
+  });
+
+  testWidgets('missing key and failed config write do not change the saved key', (tester) async {
+    await mountKeyButton(tester);
+    linux.files.remove('.secrets/opencode-plus/gateway/backup.key');
+    await openKeyButton(tester);
+    await tester.tap(find.byKey(const ValueKey('provider-key-choice-gateway-backup')));
+    await tester.pumpAndSettle();
+    expect(linux.writes, isEmpty);
+    expect(activeKeyReference(), '{file:/root/.secrets/opencode-plus/gateway/work.key}');
+    linux.files['.secrets/opencode-plus/gateway/backup.key'] = 'fixture-backup-key';
+    linux.failConfigWrite = true;
+    await openKeyButton(tester);
+    await tester.tap(find.byKey(const ValueKey('provider-key-choice-gateway-backup')));
+    await tester.pumpAndSettle();
+    expect(activeKeyReference(), '{file:/root/.secrets/opencode-plus/gateway/work.key}');
+    linux.failConfigWrite = false;
+    await openKeyButton(tester);
+    final menu = tester.widget<KitMenuPanel>(find.byType(KitMenuPanel));
+    expect(menu.items.singleWhere((item) => item.label == 'Work').checked, isTrue);
+    await tester.tap(find.byKey(const ValueKey('provider-key-choice-gateway-work')));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('model shortcut keeps a plaintext legacy key available for switching back', (tester) async {
+    final doc = jsonDecode(linux.files['.oc-opencode2/config/opencode/opencode.json']!) as Map;
+    doc['providers']['gateway']['settings']['apiKey'] = 'fixture-legacy-key';
+    linux.files['.oc-opencode2/config/opencode/opencode.json'] = jsonEncode(doc);
+    await mountKeyButton(tester);
+    await openKeyButton(tester);
+    expect(linux.writes, isEmpty);
+    await tester.tap(find.byKey(const ValueKey('provider-key-choice-gateway-backup')));
+    await tester.pumpAndSettle();
+    expect(activeKeyReference(), '{file:/root/.secrets/opencode-plus/gateway/backup.key}');
+    final saved = await ProviderKeyRingStore(prefs).load(profileID: 'phone', providerID: 'gateway',
+        currentPath: '/root/.secrets/opencode-plus/gateway/backup.key');
+    final legacy = saved.keys.singleWhere((key) => key.name == 'Default');
+    expect(linux.files[legacy.filePath.replaceFirst('/root/', '')], 'fixture-legacy-key');
+    await openKeyButton(tester);
+    await tester.tap(find.byKey(ValueKey('provider-key-choice-gateway-${legacy.id}')));
+    await tester.pumpAndSettle();
+    expect(activeKeyReference(), '{file:${legacy.filePath}}');
+  });
+
+  testWidgets('the key menu refuses to overwrite a choice changed while open', (tester) async {
+    await mountKeyButton(tester);
+    await openKeyButton(tester);
+    final doc = jsonDecode(linux.files['.oc-opencode2/config/opencode/opencode.json']!) as Map;
+    doc['providers']['gateway']['settings']['apiKey'] = '{file:/root/some-other.key}';
+    linux.files['.oc-opencode2/config/opencode/opencode.json'] = jsonEncode(doc);
+    await tester.tap(find.byKey(const ValueKey('provider-key-choice-gateway-backup')));
+    await tester.pumpAndSettle();
+    expect(linux.writes, isEmpty);
+    expect(activeKeyReference(), '{file:/root/some-other.key}');
+  });
+
+  testWidgets('the model shortcut does not overwrite key names changed while open', (tester) async {
+    await mountKeyButton(tester);
+    await openKeyButton(tester);
+    final ring = ProviderKeyRingStore(prefs);
+    final saved = await ring.load(profileID: 'phone', providerID: 'gateway',
+        currentPath: '/root/.secrets/opencode-plus/gateway/work.key');
+    await ring.save(profileID: 'phone', providerID: 'gateway', activeID: 'work', keys: [
+      for (final key in saved.keys)
+        ProviderKeyRecord(id: key.id, name: key.id == 'backup' ? 'Renamed backup' : key.name,
+            filePath: key.filePath),
+    ]);
+    await tester.tap(find.byKey(const ValueKey('provider-key-choice-gateway-backup')));
+    await tester.pumpAndSettle();
+    expect(linux.writes, isEmpty);
+    expect(activeKeyReference(), '{file:/root/.secrets/opencode-plus/gateway/work.key}');
+    final latest = await ring.load(profileID: 'phone', providerID: 'gateway',
+        currentPath: '/root/.secrets/opencode-plus/gateway/work.key');
+    expect(latest.keys.singleWhere((key) => key.id == 'backup').name, 'Renamed backup');
   });
 }

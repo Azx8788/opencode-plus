@@ -183,10 +183,12 @@ Set<int> _turnActionOwners(
     // whatever step happens to be newest and jump down with every new one.
     // It arrives when the turn ends; long-press works meanwhile.
     if (end != null && !(last && running)) {
+      final meta = _messageMeta(messages, end);
       final endDraws =
           hasBody(end) ||
           metaAlways ||
-          _messageMeta(messages, end).modelLabel != null;
+          meta.modelLabel != null ||
+          (meta.stats?.steps ?? 0) > 0;
       final owner = endDraws ? end : lastWithBody;
       if (owner != null) owners.add(owner);
     }
@@ -307,28 +309,9 @@ KitWorkCounts _workCounts(Iterable<Part> tools, {required int steps}) {
 
 bool _isToolPart(Part part) => part.type == 'tool';
 
-/// What a finished turn did on its way to the answer: the passing words the
-/// agent said between steps ("Now let me test each command:") and the
-/// notices the server filed mid-turn (a background command finishing). Once
-/// the turn is over they belong with the work, folded under its line.
-///
-/// Only passing words fold (decision 2026-09-28, review board "chat", gap
-/// 17): an explanation the agent wrote before its last step ("The
-/// flakiness comes from CheckoutBloc…") is part of the answer and stays in
-/// view, below the turn's one work line. The work folds; the prose never
-/// hides.
+/// Operational notices join the process card. Assistant prose never joins
+/// it, even a short progress update: finishing must not hide or reorder words.
 final _foldedIntoWork = Expando<bool>('folded into work');
-
-/// Whether [text], said between steps, is passing words ("Looking into
-/// it.", "Now let me run the tests:") rather than an explanation: one short
-/// line, or one line that leads into the next step with a colon. A second
-/// line, a paragraph break or a code block makes it an explanation.
-bool _isPassingWords(String text) {
-  final words = text.trim();
-  if (words.isEmpty) return true;
-  if (words.contains('\n') || words.contains('```')) return false;
-  return words.length <= 80 || (words.endsWith(':') && words.length <= 200);
-}
 
 bool _isFoldedIntoWork(Object item) => _foldedIntoWork[item] ?? false;
 
@@ -340,77 +323,26 @@ bool _foldableNotice(MessageWithParts message) {
   final part = v2VariantPart(message);
   return part != null &&
       part.type == 'v2:notice' &&
+      part.toolName != 'agent-error' &&
+      part.toolName != 'agent-warning' &&
       BackgroundAgentResult.fromPart(part) == null;
 }
 
-/// Marks, for each finished turn, what folds into its work. The turn still
-/// running ([liveTail]) keeps everything in view: what the agent says while it
-/// works is how the reader follows along. Every mark is written each time,
-/// so a turn that is continued is unfolded again.
-///
-/// [keepReasoning] is the transcript's "Reasoning" switch: a thought is not
-/// work then, so it neither folds nor keeps passing words folded with it.
-void _markFoldedWork(
-  List<MessageWithParts> messages, {
-  bool liveTail = false,
-  bool keepReasoning = false,
-}) {
-  var start = 0;
-  void closeTurn(int end, {required bool live}) {
-    // The turn in reading order: each entry is a part, or a notice message.
-    final entries = <Object>[];
-    var seenAssistant = false;
-    for (var i = start; i < end; i += 1) {
-      final message = messages[i];
-      _foldedIntoWork[message] = false;
-      if (message.info.role == 'assistant') {
-        seenAssistant = true;
-        for (final part in message.parts.where((part) => part.isRenderable)) {
-          _foldedIntoWork[part] = false;
-          entries.add(part);
-        }
-      } else if (seenAssistant && _foldableNotice(message)) {
-        entries.add(message);
-      }
+void _markFoldedWork(List<MessageWithParts> messages) {
+  var seenAssistant = false;
+  for (final message in messages) {
+    _foldedIntoWork[message] = false;
+    for (final part in message.parts) {
+      _foldedIntoWork[part] = false;
     }
-    if (live) return;
-    bool isWork(Object entry) =>
-        entry is Part &&
-        (entry.type == 'tool' ||
-            (!keepReasoning && entry.type == 'reasoning'));
-    bool isText(Object entry) => entry is Part && entry.type == 'text';
-    final lastWork = entries.lastIndexWhere(isWork);
-    if (lastWork < 0) return;
-    // Text before the last work is on the way; but a turn that ended on a
-    // tool call still said something last, and that stays the answer.
-    var cutoff = lastWork;
-    if (!entries.skip(lastWork + 1).any(isText)) {
-      cutoff = entries.lastIndexWhere(isText);
-      while (cutoff > 0 && isText(entries[cutoff - 1])) {
-        cutoff -= 1;
-      }
-    }
-    for (var i = 0; i < entries.length; i += 1) {
-      // Text folds only on the way to the answer, and only passing words;
-      // a notice (a background command finishing) is part of the work
-      // wherever it landed.
-      final entry = entries[i];
-      if ((entry is Part &&
-              isText(entry) &&
-              i < cutoff &&
-              _isPassingWords(entry.text)) ||
-          entry is MessageWithParts) {
-        _foldedIntoWork[entry] = true;
-      }
+    if (_isPrompt(message)) {
+      seenAssistant = false;
+    } else if (message.info.role == 'assistant') {
+      seenAssistant = true;
+    } else if (seenAssistant && _foldableNotice(message)) {
+      _foldedIntoWork[message] = true;
     }
   }
-
-  for (var index = 0; index < messages.length; index += 1) {
-    if (!_isPrompt(messages[index])) continue;
-    closeTurn(index, live: false);
-    start = index + 1;
-  }
-  closeTurn(messages.length, live: liveTail);
 }
 
 List<List<Part>> _timelineDisplayParts(
@@ -418,33 +350,21 @@ List<List<Part>> _timelineDisplayParts(
   bool liveTail = false,
   bool keepReasoning = false,
 }) {
-  _markFoldedWork(messages, liveTail: liveTail, keepReasoning: keepReasoning);
+  // The same content/work boundaries while streaming and after completion.
+  // Reasoning visibility controls expansion, never whether it is prose.
+  _markFoldedWork(messages);
   final display = List.generate(messages.length, (_) => <Part>[]);
   final pendingParts = <Part>[];
   String? pendingType;
   int? pendingOwner;
   int? lastAssistant;
-  // The turn still running keeps its work where it happened, between the
-  // words, so the reader can follow along; a finished turn gathers its
-  // work into one line (the first stretch's place) with the explanation it
-  // kept in view after it (see [_foldedIntoWork]).
-  final liveFrom = liveTail ? messages.lastIndexWhere(_isPrompt) + 1 : null;
-  int? poolOwner;
-  var poolEnd = 0;
 
   void flushPending() {
     if (pendingOwner case final owner?) {
       if (pendingType == 'text') {
         display[owner].add(_mergeTextParts(pendingParts));
-      } else if (poolOwner case final pool?) {
-        display[pool].insertAll(poolEnd, pendingParts);
-        poolEnd += pendingParts.length;
       } else {
         display[owner].addAll(pendingParts);
-        if (liveFrom == null || owner < liveFrom) {
-          poolOwner = owner;
-          poolEnd = display[owner].length;
-        }
       }
     }
     pendingParts.clear();
@@ -460,7 +380,6 @@ List<List<Part>> _timelineDisplayParts(
         _isFoldedIntoWork(part);
     if (!mergeable) {
       flushPending();
-      poolOwner = null;
       display[owner].add(part);
       return;
     }
@@ -492,7 +411,6 @@ List<List<Part>> _timelineDisplayParts(
     }
     if (message.info.role != 'assistant') {
       flushPending();
-      poolOwner = null;
       display[index].addAll(parts);
       continue;
     }
@@ -504,8 +422,6 @@ List<List<Part>> _timelineDisplayParts(
     }
     if (message.info.errorText != null) {
       flushPending();
-      // An error is drawn where it happened: work after it starts anew.
-      poolOwner = null;
     }
 
     final nextIsAssistant =
@@ -560,9 +476,12 @@ Part _mergeTextParts(List<Part> parts) {
   }
   final merged = Part(
     id: first.id,
-    messageID: first.messageID,
+    messageID: parts.last.messageID ?? first.messageID,
     type: first.type,
     text: buffer.toString(),
+    ended: parts.every((part) => part.ended),
+    startedAt: first.startedAt,
+    completedAt: parts.last.completedAt,
   );
   if (parts.any(_isFoldedIntoWork)) _foldedIntoWork[merged] = true;
   return merged;
@@ -594,33 +513,6 @@ class _AssistantPartRun {
   final String? note;
 }
 
-/// Splits a thought into a title for the work that follows it and the rest.
-/// Models open a thought with a short line naming what they are about to do
-/// ("**Rebuilding latest source**"), then explain. That line titles the step;
-/// the explanation waits inside it. A thought with no such opening line keeps
-/// its own block.
-({String heading, String? note})? _stepHeading(Part part) {
-  if (part.type != 'reasoning') return null;
-  final text = part.text.trim();
-  if (text.isEmpty) return null;
-  final breakAt = text.indexOf('\n');
-  final first = (breakAt < 0 ? text : text.substring(0, breakAt)).trim();
-  if (first.length > 72) return null;
-  // Models differ. Some open every thought with a title of their own
-  // ("**Rebuilding latest source**"); others think in long prose whose first
-  // line is just its first sentence ("Okay, let me look at the router.").
-  // Only a line the model marked as a heading may title a step when more
-  // follows it; prose stays a thinking block of its own.
-  final markedHeading =
-      first.startsWith('#') ||
-      (first.startsWith('**') && first.endsWith('**') && first.length > 4);
-  if (breakAt >= 0 && !markedHeading) return null;
-  final plain = first.replaceAll(RegExp(r'[*_`#]+'), '').trim();
-  if (plain.isEmpty) return null;
-  final rest = breakAt < 0 ? '' : text.substring(breakAt).trim();
-  return (heading: plain, note: rest.isEmpty ? null : rest);
-}
-
 /// Some models (and servers) fill a thought they have nothing in with a
 /// sentence saying so ("No reasoning available."). It says nothing about the
 /// work, so it is dropped instead of becoming the label of the step after it.
@@ -630,10 +522,7 @@ bool _isPlaceholderThought(String text) => RegExp(
   caseSensitive: false,
 ).hasMatch(text.trim());
 
-List<_AssistantPartRun> _groupAssistantParts(
-  List<Part> parts, {
-  bool keepReasoning = false,
-}) {
+List<_AssistantPartRun> _groupAssistantParts(List<Part> parts) {
   final runs = <_AssistantPartRun>[];
   var index = 0;
   while (index < parts.length) {
@@ -653,7 +542,9 @@ List<_AssistantPartRun> _groupAssistantParts(
       }
       final textParts = <Part>[current];
       var next = index + 1;
-      while (next < parts.length && parts[next].type == current.type) {
+      while (next < parts.length &&
+          parts[next].type == current.type &&
+          parts[next].messageID == current.messageID) {
         textParts.add(parts[next]);
         next += 1;
       }
@@ -668,62 +559,52 @@ List<_AssistantPartRun> _groupAssistantParts(
       toolParts.add(parts[next]);
       next += 1;
     }
-    // A one-line thought right before the call or the run is its title, not
-    // a row of its own — unless the transcript keeps reasoning in view, when
-    // the thought stays a block of its own above the work line.
-    ({String heading, String? note})? title;
-    if (!keepReasoning && runs.isNotEmpty && !runs.last.grouped) {
-      title = _stepHeading(runs.last.parts.single);
-      if (title != null) runs.removeLast();
-    }
-    runs.add(
-      _AssistantPartRun(
-        toolParts,
-        grouped: toolParts.length > 1,
-        heading: title?.heading,
-        note: title?.note,
-      ),
-    );
+    runs.add(_AssistantPartRun(toolParts, grouped: toolParts.length > 1));
     index = next;
   }
   return runs;
 }
 
-/// Whether this run is drawn inside a turn's work line: tool calls, folded
-/// passing words, and (unless the transcript keeps reasoning in view) a
-/// thought. Shared by [_stretches] and its test.
-bool _runIsWork(_AssistantPartRun run, {required bool keepReasoning}) =>
+/// Thoughts, tools and operational notices belong in a process card;
+/// assistant text and interactive answer cards remain independent.
+bool _runIsWork(_AssistantPartRun run) =>
     run.card == null &&
     (_isFoldedIntoWork(run.parts.first) ||
         run.parts.first.type == 'tool' ||
-        (!keepReasoning && run.parts.first.type == 'reasoning'));
+        run.parts.first.type == 'reasoning');
 
 /// Whether each run of [parts] folds into the work line, for the
 /// transcript's "Reasoning" switch parity test.
 @visibleForTesting
-List<bool> debugRunsAreWork(
-  List<Part> parts, {
-  bool keepReasoning = false,
-}) => [
-  for (final run in _groupAssistantParts(parts, keepReasoning: keepReasoning))
-    _runIsWork(run, keepReasoning: keepReasoning),
+List<bool> debugRunsAreWork(List<Part> parts, {bool keepReasoning = false}) => [
+  for (final run in _groupAssistantParts(parts)) _runIsWork(run),
 ];
 
 class _MessageMeta {
-  const _MessageMeta({this.modelLabel, this.turnTokens, this.turnCost});
+  const _MessageMeta({
+    this.modelLabel,
+    this.turnTokens,
+    this.turnCost,
+    this.stats,
+  });
 
   _MessageMeta withModelLabel(String? label) => _MessageMeta(
     modelLabel: label,
     turnTokens: turnTokens,
     turnCost: turnCost,
+    stats: stats,
   );
 
   final String? modelLabel;
   final int? turnTokens;
   final double? turnCost;
+  final TurnStatistics? stats;
 
   bool get isEmpty =>
-      modelLabel == null && turnTokens == null && turnCost == null;
+      modelLabel == null &&
+      turnTokens == null &&
+      turnCost == null &&
+      stats == null;
 }
 
 String? _modelLabel(MessageInfo info) {
@@ -777,6 +658,7 @@ _MessageMeta _messageMeta(List<MessageWithParts> messages, int index) {
     modelLabel: modelChanged ? currentModel : null,
     turnTokens: turnTokens > 0 ? turnTokens : null,
     turnCost: turnCost > 0 ? turnCost : null,
+    stats: TurnStatistics.fromSteps(steps),
   );
 }
 

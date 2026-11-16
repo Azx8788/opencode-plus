@@ -36088,7 +36088,67 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get providerKeysTitle => 'Named API keys';
   @override
-  String get providerKeysHint => 'Keep more than one key for this provider. Only the selected key is used.';
+  String get providerKeysHint => 'Use the last selected key by default. A newly added key is selected automatically; keys are never rotated.';
+  @override
+  String get chatStatsTitle => 'Reply statistics';
+  @override
+  String chatStatsSeconds(String seconds) => '$seconds s';
+  @override
+  String chatStatsDuration(String duration) => 'Elapsed $duration';
+  @override
+  String chatStatsSteps(int count) => count == 1 ? '1 step' : '$count steps';
+  @override
+  String chatStatsSpeed(String speed) => '$speed tok/s';
+  @override
+  String chatStatsContext(String count) => '$count context';
+  @override
+  String chatStatsCached(String count) => '(cached $count)';
+  @override
+  String get chatStatsDurationLabel => 'Reply elapsed time';
+  @override
+  String get chatStatsStepsLabel => 'Model steps';
+  @override
+  String get chatStatsToolsLabel => 'Executed tool calls';
+  @override
+  String get chatStatsSpeedLabel => 'Generation speed';
+  @override
+  String get chatStatsContextLabel => 'Final request context tokens';
+  @override
+  String get chatStatsCachedLabel => 'Final request cache hits';
+  @override
+  String get chatStatsInputLabel => 'Reported input tokens, all steps';
+  @override
+  String get chatStatsOutputLabel => 'Reported output tokens, all steps';
+  @override
+  String get chatStatsReasoningLabel => 'Reported reasoning tokens, all steps';
+  @override
+  String get chatStatsCostLabel => 'Reported cost';
+  @override
+  String get chatStatsNotReported => 'Not reported by the server';
+  @override
+  String get chatStatsExplanation => 'Elapsed time includes tool work. Speed uses output and reasoning tokens over recorded streaming time, excluding tools and pauses between steps. Context is the final model request; totals include the usage reported across all steps. Missing measurements are not estimated.';
+  @override
+  String chatProcessThinkingFor(String duration) => 'Thinking · $duration';
+  @override
+  String chatProcessThoughtFor(String duration) => 'Thought for $duration';
+  @override
+  String get providerKeySwitch => 'Switch API key';
+  @override
+  String get providerKeyLoading => 'Reading saved keys…';
+  @override
+  String get providerKeySwitching => 'Switching the provider key…';
+  @override
+  String get providerKeyConfigureFirst => 'Add named keys in this provider’s configuration first.';
+  @override
+  String providerKeyProviderScope(String provider) => '$provider · applies to all its models';
+  @override
+  String providerKeySwitched(String name) => 'Now using key “$name” for this provider’s models';
+  @override
+  String get providerKeyMissing => 'The selected key file is missing or empty. The current key was not changed.';
+  @override
+  String get providerKeySelectionChanged => 'The provider’s keys changed while the menu was open. Open the menu again to select a key.';
+  @override
+  String get providerKeySwitchFailed => 'Could not switch the key. Open the menu again to check the saved selection; no fallback key was chosen.';
   @override
   String get providerKeyAdd => 'Add key';
   @override

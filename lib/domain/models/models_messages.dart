@@ -4,14 +4,26 @@ part of '../models.dart';
 
 class MsgTime {
   final int? created;
+  final int? firstToken;
+  final int? streamed;
   final int? completed;
-  MsgTime({this.created, this.completed});
+  final bool recorded;
+  MsgTime({
+    this.created,
+    this.firstToken,
+    this.streamed,
+    this.completed,
+    this.recorded = true,
+  });
 
   factory MsgTime.fromJson(dynamic v) {
     if (v is Map<String, dynamic>) {
       return MsgTime(
         created: _asInt(v['created']),
+        firstToken: _asInt(v['firstToken']),
+        streamed: _asInt(v['streamed']),
         completed: _asInt(v['completed']),
+        recorded: v['recorded'] != false,
       );
     }
     return MsgTime();
@@ -84,7 +96,8 @@ enum MessageErrorKind {
     if (key.contains('contentfilter')) return contentFilter;
     if (key.contains('abort')) return aborted;
     if (key.contains('modelnotfound')) return modelNotFound;
-    if (key.contains('variantunavailable') || key.contains('effortunavailable')) {
+    if (key.contains('variantunavailable') ||
+        key.contains('effortunavailable')) {
       return variantUnavailable;
     }
     return unknown;
@@ -635,6 +648,11 @@ class Part {
   /// never says: the message's own end then stands for it.
   final bool ended;
 
+  /// Server-recorded text/reasoning times, never inferred from the phone's
+  /// clock. Missing timestamps stay unknown in the transcript statistics.
+  final DateTime? startedAt;
+  final DateTime? completedAt;
+
   /// A small, allowlisted presentation contract for server-authored notices.
   /// It contains no arbitrary provider/configuration metadata.
   final Map<String, String> noticeMetadata;
@@ -652,6 +670,8 @@ class Part {
     this.url,
     this.synthetic = false,
     this.ended = false,
+    this.startedAt,
+    this.completedAt,
     this.noticeMetadata = const {},
   }) : toolState = toolState ?? ToolState(status: 'pending');
 
@@ -661,6 +681,13 @@ class Part {
           (type == 'reasoning' && text.trim().isNotEmpty) ||
           type == 'tool' ||
           type == 'file');
+
+  Duration? get duration {
+    final start = startedAt;
+    final end = completedAt;
+    if (start == null || end == null || end.isBefore(start)) return null;
+    return end.difference(start);
+  }
 
   factory Part.fromJson(Map<String, dynamic> j) {
     // A command that runs as a sub-agent arrives as a user message holding
@@ -687,10 +714,14 @@ class Part {
       filename: j['filename']?.toString(),
       url: j['url']?.toString(),
       synthetic: (j['synthetic'] as bool?) ?? false,
-      ended: switch (j['time']) {
-        final Map<dynamic, dynamic> time => time['end'] != null,
-        _ => false,
-      },
+      ended:
+          j['ended'] == true ||
+          switch (j['time']) {
+            final Map<dynamic, dynamic> time => time['end'] != null,
+            _ => false,
+          },
+      startedAt: j['time'] is Map ? _asDateTime(j['time']['start']) : null,
+      completedAt: j['time'] is Map ? _asDateTime(j['time']['end']) : null,
     );
   }
 }

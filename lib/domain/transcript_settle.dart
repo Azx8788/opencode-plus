@@ -124,6 +124,9 @@ Part _finished(Part part) {
     filename: part.filename,
     url: part.url,
     synthetic: part.synthetic,
+    ended: part.ended,
+    startedAt: part.startedAt,
+    completedAt: part.completedAt,
     noticeMetadata: part.noticeMetadata,
   );
 }

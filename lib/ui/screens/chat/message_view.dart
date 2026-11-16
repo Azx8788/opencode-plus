@@ -10,6 +10,8 @@ class _MessageView extends StatelessWidget {
   final MessageWithParts m;
   final _MessageMeta meta;
   final List<Part> parts;
+  final List<MessageWithParts>? transcript;
+  final bool workIsRunning;
   final bool reasoningExpanded;
   final Map<String, bool> expansionStore;
   final bool showTimestamp;
@@ -88,6 +90,8 @@ class _MessageView extends StatelessWidget {
     required this.m,
     required this.meta,
     required this.parts,
+    this.transcript,
+    this.workIsRunning = false,
     required this.reasoningExpanded,
     required this.expansionStore,
     required this.showTimestamp,
@@ -261,7 +265,7 @@ class _MessageView extends StatelessWidget {
     final noReply = onSendAgainNoReply;
     final steer = _chat(context)?._steerWaitNote(context, m.info.id);
     final chat = stoppedHere ? _chat(context) : null;
-    final messages = chat?._messages;
+    final messages = chat?._messages ?? transcript;
     final latest =
         stoppedHere &&
         _inLatestTurn(
@@ -414,21 +418,16 @@ class _MessageView extends StatelessWidget {
   Widget _replyTurn(BuildContext context, List<Part> visibleParts) {
     final strings = _chatL10n(context);
     final chat = _chat(context);
-    final messages = chat?._messages;
+    final messages = chat?._messages ?? transcript;
     final index = messages?.indexWhere((item) => item.info.id == m.info.id);
     final createdAt = m.info.time?.created;
 
-    // Usage rides on the same preference as timestamps: both are detail a
-    // reader opts into, and the model label alone marks a switch.
+    // The timestamp preference governs the clock only. Reply statistics
+    // live on their own compact row, on every finished reply.
     final metaParts = <String>[
       if (showTimestamp && createdAt != null)
         _fmtSessionTime(createdAt, context),
       ?meta.modelLabel,
-      if (showTimestamp) ...[
-        if (meta.turnTokens case final tokens?)
-          strings.chatUiTokenCount(_fmtTokens(tokens)),
-        if (meta.turnCost case final cost?) _fmtCost(cost),
-      ],
     ];
     // The server ends a step the person declined as "aborted"; that is their
     // answer to a request, not a Stop and not a failure, so the turn carries
@@ -539,42 +538,29 @@ class _MessageView extends StatelessWidget {
               if (!(chat?._toolWaitsForYou(part) ?? false)) part,
           ])
         : visibleParts;
-    final runs = _withCards(
-      _groupAssistantParts(shown, keepReasoning: reasoningExpanded),
-      chat,
-    );
-    // While the turn's live line names the step in hand, that step is not a
-    // second line above it; once the turn ends it folds into the one work
-    // line (owner decision 5, 20 Oct 2026).
-    // A tap on the live line shows the steps: then they are drawn, opened.
+    final runs = _withCards(_groupAssistantParts(shown), chat);
     final stepsShown = chat?._liveStepsShown ?? false;
-    final liveNamesStep =
-        live != null && !(interrupted || stopped || waiting) && !stepsShown;
-    bool runsStep(_AssistantPartRun run) =>
-        run.card == null &&
-        run.parts.any(
-          (part) =>
-              part.type == 'tool' &&
-              part.toolState.executed &&
-              (part.toolState.status == 'running' ||
-                  part.toolState.status == 'pending'),
-        );
     final blocks = <Widget>[
-      for (final stretch in _stretches(runs, keepReasoning: reasoningExpanded))
-        if (stretch.length > 1 || stretch.single.grouped)
+      for (final stretch in _stretches(runs))
+        if (_runIsWork(stretch.first))
           _WorkGroup(
-            key: ValueKey(
-              'work:${stretch.first.parts.first.id ?? stretch.first.parts.first.callID}',
-            ),
+            key: ValueKey(_workStoreKey(stretch)),
             runs: stretch,
             expansionStore: _openedForStep(stretch, chat),
             waitingForYou: waiting,
             stopped: stopped,
-            hideWhileRunning: liveNamesStep,
             openWhileRunning: live != null && stepsShown,
+            reasoningExpanded: reasoningExpanded,
+            reasoningWorking: stretch.any(
+              (run) => run.parts.any(
+                (part) =>
+                    part.type == 'reasoning' &&
+                    _partIsWriting(part, writing && identical(run, runs.last)),
+              ),
+            ),
             buildRun: (run) => _stepWidgets(run, runs, writing, chat),
           )
-        else if (!(liveNamesStep && runsStep(stretch.single)))
+        else
           _runWidget(stretch.single, runs, writing, chat),
       if (raw != null && !stopped)
         _AssistantErrorRow(
@@ -628,7 +614,11 @@ class _MessageView extends StatelessWidget {
         ? chat._stoppedLine(latest: latest, onContinue: onContinue)
         : (null, null);
 
-    final footer = onCopy == null && contextActions == null
+    final statistics = meta.stats == null
+        ? null
+        : _replyStatistics(context, meta.stats!, messageID: m.info.id);
+    final footer =
+        onCopy == null && contextActions == null && statistics == null
         ? null
         : KitTurnFooter(
             copyText: () =>
@@ -639,6 +629,7 @@ class _MessageView extends StatelessWidget {
                 .isNotEmpty,
             meta: metaParts.isEmpty ? null : metaParts.join(' · '),
             menu: _menuItems(withCopy: false),
+            statistics: statistics,
           );
 
     final Widget turn = KitTurn(
@@ -699,19 +690,15 @@ class _MessageView extends StatelessWidget {
       .map((part) => part.text)
       .join('\n\n');
 
-  /// Splits a message's runs into what is said and what is done: each text
-  /// block (or attachment) stands alone, and each unbroken stretch of
-  /// thoughts and tool calls between them is one list. A thought the
-  /// transcript keeps in view ([keepReasoning]) is said-block material
-  /// instead, so it never joins that stretch.
+  /// Consecutive work is one card, even a single thought or tool. Prose
+  /// separates cards and stays where the model wrote it.
   static List<List<_AssistantPartRun>> _stretches(
-    List<_AssistantPartRun> runs, {
-    bool keepReasoning = false,
-  }) {
+    List<_AssistantPartRun> runs,
+  ) {
     final stretches = <List<_AssistantPartRun>>[];
     var work = <_AssistantPartRun>[];
     for (final run in runs) {
-      if (_runIsWork(run, keepReasoning: keepReasoning)) {
+      if (_runIsWork(run)) {
         work.add(run);
         continue;
       }
@@ -751,8 +738,23 @@ class _MessageView extends StatelessWidget {
           onAttachFile: onAttachFile,
           onDownloadFile: onDownloadFile,
           onOpenSession: onOpenSession,
-          streaming: streaming && identical(run, all.last),
+          streaming: _partIsWriting(
+            run.parts.single,
+            streaming && identical(run, all.last),
+          ),
         );
+
+  bool _partIsWriting(Part part, bool fallback) {
+    if (part.ended) return false;
+    final messages = transcript;
+    final index = messages?.indexWhere((row) => row.info.id == part.messageID);
+    if (messages == null || index == null || index < 0) return fallback;
+    final info = messages[index].info;
+    return info.time?.isDone != true &&
+        info.errorText == null &&
+        _inLatestTurn(messages, index) &&
+        (workIsRunning || live != null || fallback);
+  }
 
   static String _fmtTokens(int n) {
     if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';

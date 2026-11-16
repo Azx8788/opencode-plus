@@ -30,6 +30,7 @@ import '../motion/kit_reveal.dart';
 import '../style/kit_signal.dart'
     show KitSignalAspect, KitTrack, kitSegmentTimer, kitSignalHead;
 import 'kit_message.dart';
+import 'kit_turn_statistics.dart';
 
 /// At this text scale and above the footer's meta words move above the
 /// buttons, which stay on one row at the end (KitTurn.md Adaptive). The
@@ -246,6 +247,7 @@ class KitTurnFooter {
     this.onMore,
     this.copyLabel,
     this.canCopy = true,
+    this.statistics,
   });
 
   /// Whether the turn has any reply words to copy. A turn that only ran
@@ -275,6 +277,10 @@ class KitTurnFooter {
   /// done ("Copy reply so far", "Copy loaded reply"); null reads "Copy
   /// reply". The Copy button's tooltip and the long-press item use it.
   final String? copyLabel;
+
+  /// Measurements belong to every finished reply, not just the newest
+  /// one. They are independent of the optional timestamp/model meta line.
+  final KitTurnStatistics? statistics;
 }
 
 /// One turn: a prompt, then everything until the agent hands back, made of
@@ -527,6 +533,7 @@ class _TurnFrameState extends State<_TurnFrame> {
         (footer.canCopy ||
             footer.menu.isNotEmpty ||
             footer.onMore != null ||
+            footer.statistics != null ||
             (turn.latest && (footer.meta?.isNotEmpty ?? false)));
     final footed =
         footer != null && footerHasContent && ends && _ended(turn.phase);
@@ -765,7 +772,20 @@ class _TurnFrameState extends State<_TurnFrame> {
         ],
       );
     }
-    return KeyedSubtree(key: turn.footerKey, child: row);
+    return KeyedSubtree(
+      key: turn.footerKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          row,
+          if (footer.statistics != null) ...[
+            SizedBox(height: tokens.space1),
+            footer.statistics!,
+          ],
+        ],
+      ),
+    );
   }
 }
 

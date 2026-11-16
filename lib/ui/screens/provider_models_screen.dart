@@ -2,12 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../builtin/builtin_linux.dart';
+import '../../builtin/builtin_server.dart' show looksLikeInAppServer;
 import '../../domain/models.dart' show ModelRef;
 import '../../domain/server_gateway/value_types_core.dart'
     show CatalogModel, CatalogProvider;
 import '../../l10n/app_localizations.dart';
 import '../../state/connection.dart';
 import 'provider_test_screen.dart';
+import '../widgets/provider_key_switch.dart';
+import '../kit/kit_menu.dart';
 
 AppLocalizations _l10nOf(BuildContext context) =>
     lookupAppLocalizations(Localizations.localeOf(context));
@@ -19,9 +23,10 @@ AppLocalizations _l10nOf(BuildContext context) =>
 /// Models come from the server's catalogue — the same list the picker uses —
 /// so nothing here is a second, drifting inventory.
 class ProviderModelsScreen extends StatelessWidget {
-  const ProviderModelsScreen({super.key, required this.controller});
+  const ProviderModelsScreen({super.key, required this.controller, this.linux});
 
   final ConnectionController controller;
+  final BuiltinLinux? linux;
 
   @override
   Widget build(BuildContext context) {
@@ -64,6 +69,7 @@ class ProviderModelsScreen extends StatelessWidget {
                 _ProviderSection(
                   key: ValueKey('provider-models-${provider.id}'),
                   controller: controller,
+                  linux: linux,
                   provider: provider,
                   models: [
                     for (final model in catalog.models)
@@ -85,9 +91,11 @@ class _ProviderSection extends StatelessWidget {
     required this.controller,
     required this.provider,
     required this.models,
+    this.linux,
   });
 
   final ConnectionController controller;
+  final BuiltinLinux? linux;
   final CatalogProvider provider;
   final List<CatalogModel> models;
 
@@ -122,6 +130,17 @@ class _ProviderSection extends StatelessWidget {
       dense: true,
       title: Text(model.name.isEmpty ? model.id : model.name),
       subtitle: Text(model.id),
+      onLongPress: looksLikeInAppServer(controller.profile)
+          ? () => showKitMenu(context, items: [
+              providerKeySwitchAction(
+                context: context,
+                controller: controller,
+                providerID: provider.id,
+                modelID: model.id,
+                linux: linux,
+              ),
+            ])
+          : null,
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

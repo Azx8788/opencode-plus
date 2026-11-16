@@ -16,6 +16,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import '../domain/models.dart';
 import '../domain/server_gateway.dart';
 import 'events.dart';
+import 'gateway_mappers.dart' show v1ToolTimeJson;
 import 'models.dart';
 import 'sse2.dart';
 import 'transport.dart';
@@ -30,6 +31,12 @@ class Api2EventAdapter {
 
   final _toolCalls = <String, _ToolCall>{};
   final _stepCreated = <String, int>{};
+  final _stepRecorded = <String, bool>{};
+  final _stepFirstToken = <String, int>{};
+  final _stepStreamed = <String, int>{};
+  final _partStarted = <String, int>{};
+  final _stepUsage =
+      <String, ({double? cost, Api2Tokens? tokens, String? finish})>{};
 
   /// The agent and model a step started with: `step.ended` and `step.failed`
   /// do not repeat them, and an info without them would drop the reply's
@@ -317,9 +324,24 @@ class Api2EventAdapter {
         ];
 
       case Api2SessionStepEvent():
+        if (event.cost != null ||
+            event.tokens != null ||
+            event.finish != null) {
+          final known = _stepUsage[event.assistantMessageID];
+          _remember(_stepUsage, event.assistantMessageID, (
+            cost: event.cost ?? known?.cost,
+            tokens: event.tokens ?? known?.tokens,
+            finish: event.finish ?? known?.finish,
+          ));
+        }
         switch (event.phase) {
           case Api2Phase.started:
             _remember(_stepCreated, event.assistantMessageID, created);
+            _remember(
+              _stepRecorded,
+              event.assistantMessageID,
+              envelope.created != null,
+            );
             _remember(_stepModels, event.assistantMessageID, (
               agent: event.agent,
               model: event.model,
@@ -335,7 +357,33 @@ class Api2EventAdapter {
                 exceptMessageID: event.assistantMessageID,
               ),
               _env('message.updated', {
-                'info': _assistantInfo(event, created: created),
+                'info': _assistantInfo(
+                  event,
+                  created: created,
+                  recorded: envelope.created != null,
+                ),
+              }),
+            ];
+          case Api2Phase.firstToken:
+          case Api2Phase.streamed:
+            // The envelope's server clock is the measurement. A missing
+            // timestamp must not become the phone's arrival time.
+            if (envelope.created case final recorded?) {
+              _remember(
+                event.phase == Api2Phase.firstToken
+                    ? _stepFirstToken
+                    : _stepStreamed,
+                event.assistantMessageID,
+                recorded,
+              );
+            }
+            return [
+              _env('message.updated', {
+                'info': _assistantInfo(
+                  event,
+                  created: created,
+                  recorded: envelope.created != null,
+                ),
               }),
             ];
           case Api2Phase.ended:
@@ -349,6 +397,7 @@ class Api2EventAdapter {
                   event,
                   created: created,
                   completed: created,
+                  recorded: envelope.created != null,
                 ),
               }),
             ];
@@ -364,6 +413,7 @@ class Api2EventAdapter {
                   event,
                   created: created,
                   completed: created,
+                  recorded: envelope.created != null,
                   // Details always has words: a step that failed with no
                   // message says so, with whatever the server did send.
                   errorMessage:
@@ -380,7 +430,6 @@ class Api2EventAdapter {
               }),
             ];
           default:
-            // `streamed` (provider body finished) has no v1 analogue.
             return const [];
         }
 
@@ -393,6 +442,7 @@ class Api2EventAdapter {
           type: 'text',
           delta: event.delta,
           text: event.text,
+          timestamp: envelope.created,
         );
 
       case Api2SessionReasoningEvent():
@@ -404,6 +454,7 @@ class Api2EventAdapter {
           type: 'reasoning',
           delta: event.delta,
           text: event.text,
+          timestamp: envelope.created,
         );
 
       case Api2SessionToolInputEvent():
@@ -457,6 +508,8 @@ class Api2EventAdapter {
             sessionID: event.sessionID,
             name: call.name,
             input: event.input,
+            startedAt: envelope.created,
+            executed: event.executed,
           ),
         );
         return [
@@ -506,6 +559,7 @@ class Api2EventAdapter {
             'attachments': attachments,
             if (event.metadata != null) 'metadata': event.metadata,
             if (event.executed != null) 'executed': event.executed,
+            'time': {'start': ?call?.startedAt, 'end': ?envelope.created},
           }, toolName: call?.name),
           // The call started before this stream (a reconnect): its name and
           // input are not here, so read the transcript again for them.
@@ -542,18 +596,17 @@ class Api2EventAdapter {
                     'type': 'reasoning',
                     'text': item.text,
                     'messageID': event.messageID,
+                    'time': ?v1ToolTimeJson(item.time),
                   },
                 }),
               );
             case Api2ToolCallContent():
               out.add(
-                _toolPart(
-                  event.sessionID,
-                  event.messageID,
-                  item.id,
-                  _rawToolStateJson(item.state),
-                  toolName: item.name,
-                ),
+                _toolPart(event.sessionID, event.messageID, item.id, {
+                  ..._rawToolStateJson(item.state),
+                  'time': ?v1ToolTimeJson(item.time),
+                  'executed': ?item.executed,
+                }, toolName: item.name),
               );
             case Api2UnknownContent():
               break;
@@ -695,6 +748,7 @@ class Api2EventAdapter {
   Map<String, dynamic> _assistantInfo(
     Api2SessionStepEvent event, {
     required int created,
+    required bool recorded,
     int? completed,
     String? errorMessage,
     String? errorName,
@@ -702,6 +756,10 @@ class Api2EventAdapter {
     final known = _stepModels[event.assistantMessageID];
     final agent = event.agent ?? known?.agent;
     final model = event.model ?? known?.model;
+    final usage = _stepUsage[event.assistantMessageID];
+    final cost = event.cost ?? usage?.cost;
+    final tokens = event.tokens ?? usage?.tokens;
+    final finish = event.finish ?? usage?.finish;
     return {
       'id': event.assistantMessageID,
       'sessionID': event.sessionID,
@@ -709,11 +767,15 @@ class Api2EventAdapter {
       'agent': ?agent,
       'providerID': ?model?.providerID,
       'modelID': ?model?.id,
-      if (event.cost != null) 'cost': event.cost,
-      if (event.tokens != null) 'tokens': _tokensJson(event.tokens!),
-      if (event.finish != null) 'finish': event.finish,
+      'cost': ?cost,
+      if (tokens != null) 'tokens': _tokensJson(tokens),
+      'finish': ?finish,
       'time': {
         'created': _stepCreated[event.assistantMessageID] ?? created,
+        'recorded':
+            recorded && (_stepRecorded[event.assistantMessageID] ?? false),
+        'firstToken': ?_stepFirstToken[event.assistantMessageID],
+        'streamed': ?_stepStreamed[event.assistantMessageID],
         'completed': ?completed,
       },
       if (errorMessage != null)
@@ -736,9 +798,12 @@ class Api2EventAdapter {
     required String type,
     String? delta,
     String? text,
+    int? timestamp,
   }) {
+    final key = '$messageID/$partID';
     switch (phase) {
       case Api2Phase.started:
+        if (timestamp != null) _remember(_partStarted, key, timestamp);
         return [
           _env('message.part.updated', {
             'sessionID': sessionID,
@@ -747,6 +812,7 @@ class Api2EventAdapter {
               'type': type,
               'text': '',
               'messageID': messageID,
+              'time': {'start': ?timestamp},
             },
           }),
         ];
@@ -770,7 +836,8 @@ class Api2EventAdapter {
               'text': text ?? '',
               'messageID': messageID,
               // v1's shape for a finished part: the reply's caret goes.
-              'time': {'end': DateTime.now().millisecondsSinceEpoch},
+              'ended': true,
+              'time': {'start': ?_partStarted.remove(key), 'end': ?timestamp},
             },
           }),
         ];
@@ -788,6 +855,7 @@ class Api2EventAdapter {
   }) {
     final name =
         toolName ?? _toolCalls[_callKey(messageID, callID)]?.name ?? '';
+    final known = _toolCalls[_callKey(messageID, callID)];
     return _env('message.part.updated', {
       'sessionID': sessionID,
       'part': {
@@ -796,7 +864,13 @@ class Api2EventAdapter {
         'type': 'tool',
         'messageID': messageID,
         if (name.isNotEmpty) 'tool': name,
-        'state': state,
+        'state': {
+          ...state,
+          if (!state.containsKey('time') && known?.startedAt != null)
+            'time': {'start': known!.startedAt},
+          if (!state.containsKey('executed') && known?.executed != null)
+            'executed': known!.executed,
+        },
       },
     });
   }
@@ -880,7 +954,15 @@ class _ToolCall {
   final String sessionID;
   final String name;
   final Map<String, dynamic>? input;
-  const _ToolCall({required this.sessionID, required this.name, this.input});
+  final int? startedAt;
+  final bool? executed;
+  const _ToolCall({
+    required this.sessionID,
+    required this.name,
+    this.input,
+    this.startedAt,
+    this.executed,
+  });
 }
 
 /// One live subscription to `GET /api/event`, surfaced through the domain

@@ -31,6 +31,7 @@ import '../../domain/model_reasoning.dart';
 import '../../api2/server_config_reload.dart';
 import '../../builtin/builtin_linux.dart';
 import '../../builtin/builtin_provider_store.dart';
+import '../../builtin/builtin_server.dart' show looksLikeInAppServer;
 import '../../domain/provider_presentation.dart';
 import '../../domain/product_repository.dart';
 import '../../state/connection.dart';
@@ -38,6 +39,7 @@ import '../../domain/free_model.dart' show openCodeFreeProviderID;
 import '../../domain/model_display_name.dart' show modelNameFromId;
 import '../widgets/connect_methods.dart';
 import 'product_states.dart' show productErrorDetails;
+import 'provider_key_switch.dart';
 import '../../state/model_library.dart';
 import '../../l10n/app_localizations.dart';
 import '../app_iconography.dart';
@@ -374,6 +376,7 @@ class ModelCatalogView extends StatefulWidget {
     this.sessionID,
     this.focusAgent = false,
     this.saveReasoningEffort,
+    this.linux,
   }) : _apply = null;
 
   const ModelCatalogView._sheet({
@@ -385,11 +388,13 @@ class ModelCatalogView extends StatefulWidget {
     this.focusAgent = false,
   }) : _apply = apply,
        saveReasoningEffort = null,
+       linux = null,
        scrollController = null,
        onClose = null,
        showHeader = false;
 
   final ConnectionController controller;
+  final BuiltinLinux? linux;
   final ScrollController? scrollController;
   final VoidCallback? onApplied;
   final VoidCallback? onClose;

@@ -362,12 +362,9 @@ class V2TranscriptRow extends StatelessWidget {
   }
 }
 
-/// Everything the agent did between two things it said: thoughts, tool calls
-/// and runs of them, folded under one [KitWorkLine]. Closed, the line says
-/// how much was done; while work is going on it names the step in hand, and
-/// while a request waits for the person it says "Waiting for you" (never a
-/// spinner, AUTO-15). Open, the steps hang off a rule in the order they
-/// happened.
+/// Thoughts and operations between two prose blocks, inside one themed
+/// process card. Running work stays visible here; completed cards collapse
+/// unless the person opened them. The transcript keeps that choice.
 class _WorkGroup extends StatefulWidget {
   const _WorkGroup({
     super.key,
@@ -376,17 +373,17 @@ class _WorkGroup extends StatefulWidget {
     required this.buildRun,
     this.waitingForYou = false,
     this.stopped = false,
-    this.hideWhileRunning = false,
     this.openWhileRunning = false,
+    this.reasoningExpanded = false,
+    this.reasoningWorking = false,
   });
 
   /// The person tapped the live line to see the steps: while this work
   /// runs it is drawn opened.
   final bool openWhileRunning;
 
-  /// The turn's live line names the running step: while this work is still
-  /// running it draws nothing, and it folds into its one line after.
-  final bool hideWhileRunning;
+  final bool reasoningExpanded;
+  final bool reasoningWorking;
 
   final List<_AssistantPartRun> runs;
   final Map<String, bool> expansionStore;
@@ -408,6 +405,26 @@ class _WorkGroupState extends State<_WorkGroup> {
       .where((part) => part.type == 'tool');
 
   String get _storeKey => _workStoreKey(widget.runs);
+  String get _defaultKey => '$_storeKey@reasoning-default';
+
+  @override
+  void initState() {
+    super.initState();
+    final storedDefault = widget.expansionStore[_defaultKey];
+    if (storedDefault != null && storedDefault != widget.reasoningExpanded) {
+      widget.expansionStore.remove(_storeKey);
+      widget.expansionStore.remove(_defaultKey);
+    }
+  }
+
+  @override
+  void didUpdateWidget(_WorkGroup oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.reasoningExpanded != widget.reasoningExpanded) {
+      widget.expansionStore.remove(_storeKey);
+      widget.expansionStore.remove(_defaultKey);
+    }
+  }
 
   /// Whether the work ended on a failure. Agents fail and retry all the
   /// time (a patch that did not apply, then one that did); a failure they got
@@ -441,56 +458,54 @@ class _WorkGroupState extends State<_WorkGroup> {
       }
       if (livePart != null) break;
     }
-    final state = livePart != null
+    final state = widget.stopped || _endedCutOff
+        ? KitWorkState.stopped
+        : livePart != null || widget.reasoningWorking
         ? (widget.waitingForYou
               ? KitWorkState.waitingForYou
               : KitWorkState.running)
         : _endedFailed
         ? KitWorkState.endedFailed
-        : widget.stopped || _endedCutOff
-        ? KitWorkState.stopped
         : KitWorkState.done;
     final now = state == KitWorkState.running
-        ? liveRun!.heading ??
-              runningToolTicker(
-                livePart!.toolName ?? 'tool',
-                livePart.toolState,
-                l10n: strings,
-              )
+        ? livePart == null
+              ? strings.kitMessageThinking
+              : liveRun!.heading ??
+                    runningToolTicker(
+                      livePart!.toolName ?? 'tool',
+                      livePart.toolState,
+                      l10n: strings,
+                    )
         : null;
-    // While the live line names the running step the work draws nothing;
-    // once it ends the work line unfolds in where the steps were (and folds
-    // away again if more work starts in the same stretch).
-    final hidden = state == KitWorkState.running && widget.hideWhileRunning;
-    // Only an unrecovered failure or a produced file is worth opening
-    // unasked; progress is already named on the closed line.
+    final hasReasoning = widget.runs.any(
+      (run) => run.parts.any((part) => part.type == 'reasoning'),
+    );
     final opensByDefault =
+        state == KitWorkState.running ||
+        (widget.reasoningExpanded && hasReasoning) ||
         KitWorkLine.opensByDefault(state) ||
         _tools.any((part) => part.toolState.outputFiles.isNotEmpty);
-    return KitReveal(
-      key: const Key('work-group-reveal'),
-      child: hidden
-          ? null
-          : KeyedSubtree(
-              key: const Key('work-group'),
-              child: KitWorkLine(
-                counts: _workCounts(_tools, steps: widget.runs.length),
-                state: state,
-                now: now,
-                expanded:
-                    state == KitWorkState.running && widget.openWhileRunning
-                    ? true
-                    : widget.expansionStore[_storeKey] ?? opensByDefault,
-                onExpansionChanged: (open) =>
-                    setState(() => widget.expansionStore[_storeKey] = open),
-                lineKey: const Key('work-group-header'),
-                stepsKey: const Key('work-group-steps'),
-                // A long running turn keeps its newest steps in view; the finished
-                // ones fold behind "Show N earlier steps".
-                tail: state == KitWorkState.running ? 3 : null,
-                steps: [for (final run in widget.runs) ...widget.buildRun(run)],
-              ),
-            ),
+    return KeyedSubtree(
+      key: const Key('work-group'),
+      child: KitWorkLine(
+        counts: _workCounts(_tools, steps: widget.runs.length),
+        state: state,
+        thinking: _tools.isEmpty && hasReasoning,
+        now: now,
+        expanded: state == KitWorkState.running && widget.openWhileRunning
+            ? true
+            : widget.expansionStore[_storeKey] ?? opensByDefault,
+        onExpansionChanged: (open) => setState(() {
+          widget.expansionStore[_storeKey] = open;
+          widget.expansionStore[_defaultKey] = widget.reasoningExpanded;
+        }),
+        lineKey: const Key('work-group-header'),
+        stepsKey: const Key('work-group-steps'),
+        // A long running turn keeps its newest steps in view; the finished
+        // ones fold behind "Show N earlier steps".
+        tail: state == KitWorkState.running ? 3 : null,
+        steps: [for (final run in widget.runs) ...widget.buildRun(run)],
+      ),
     );
   }
 }
@@ -560,9 +575,11 @@ class _AssistantMessagePart extends StatelessWidget {
       return _Reasoning(
         text: part.text,
         expanded: reasoningExpanded,
-        working: streaming,
+        working: streaming && !part.ended,
+        startedAt: part.startedAt,
+        took: part.duration,
         expansionStore: expansionStore,
-        expansionKey: 'reasoning:${part.id ?? part.messageID}',
+        expansionKey: 'reasoning:${part.messageID ?? ''}/${part.id}',
       );
     }
     if (part.type == 'tool') {
@@ -580,10 +597,11 @@ class _AssistantMessagePart extends StatelessWidget {
             : ValueKey(part.id ?? part.callID),
         toolName: part.toolName ?? 'tool',
         state: part.toolState,
+        previewOutput: true,
         heading: heading,
         note: note,
         expansionStore: expansionStore,
-        expansionKey: 'tool:${part.id ?? part.callID}',
+        expansionKey: 'tool:${part.messageID ?? ''}/${part.id ?? part.callID}',
         filePreviewLoader: filePreviewLoader,
         onAttachFile: onAttachFile,
         onDownloadFile: onDownloadFile,
@@ -630,12 +648,16 @@ class _Reasoning extends StatefulWidget {
   final String text;
   final bool expanded;
   final bool working;
+  final DateTime? startedAt;
+  final Duration? took;
   final Map<String, bool>? expansionStore;
   final String? expansionKey;
   const _Reasoning({
     required this.text,
     required this.expanded,
     this.working = false,
+    this.startedAt,
+    this.took,
     this.expansionStore,
     this.expansionKey,
   });
@@ -708,18 +730,31 @@ class _ReasoningState extends State<_Reasoning> {
   }
 
   @override
-  Widget build(BuildContext context) => KeyedSubtree(
-    key: const Key('assistant-reasoning-block'),
-    child: KitMessage.thought(
-      thoughtKey: const Key('reasoning-toggle'),
-      heading: widget.working ? null : _preview(widget.text),
-      working: widget.working,
-      body: _proseMarkdown(context, widget.text, role: KitTextRole.secondary),
-      expanded: _open,
-      onExpansionChanged: (open) => setState(() {
-        _open = open;
-        _persist(open);
-      }),
+  Widget build(BuildContext context) => KitSince(
+    since: widget.working ? widget.startedAt : null,
+    ticks: KitSinceTicks.seconds,
+    builder: (context, timing) => KeyedSubtree(
+      key: const Key('assistant-reasoning-block'),
+      child: KitMessage.thought(
+        thoughtKey: const Key('reasoning-toggle'),
+        heading: widget.working && widget.startedAt != null
+            ? _chatL10n(
+                context,
+              ).chatProcessThinkingFor(_replyDuration(context, timing.elapsed))
+            : widget.took != null
+            ? _chatL10n(context)
+                  .chatProcessThoughtFor(_replyDuration(context, widget.took!))
+            : widget.working
+            ? null
+            : _preview(widget.text),
+        working: widget.working,
+        body: _proseMarkdown(context, widget.text, role: KitTextRole.secondary),
+        expanded: _open,
+        onExpansionChanged: (open) => setState(() {
+          _open = open;
+          _persist(open);
+        }),
+      ),
     ),
   );
 }

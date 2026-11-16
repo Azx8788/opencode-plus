@@ -203,14 +203,21 @@ class Api2UnknownContent extends Api2AssistantContent {
 
 class Api2MessageTime {
   final int? created;
+  final int? firstToken;
   final int? streamed;
   final int? completed;
-  Api2MessageTime({this.created, this.streamed, this.completed});
+  Api2MessageTime({
+    this.created,
+    this.firstToken,
+    this.streamed,
+    this.completed,
+  });
 
   factory Api2MessageTime.fromJson(dynamic v) {
     final j = _asMap(v);
     return Api2MessageTime(
       created: _asInt(j?['created']),
+      firstToken: _asInt(j?['firstToken']),
       streamed: _asInt(j?['streamed']),
       completed: _asInt(j?['completed']),
     );

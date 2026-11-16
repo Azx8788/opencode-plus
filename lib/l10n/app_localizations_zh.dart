@@ -34084,7 +34084,67 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get providerKeysTitle => '命名 API 密钥';
   @override
-  String get providerKeysHint => '同一个供应商可以保存多个密钥，只有当前选中的密钥会被使用。';
+  String get providerKeysHint => '默认沿用上次选中的密钥；新添加的密钥会自动选中，不会轮询使用。';
+  @override
+  String get chatStatsTitle => '回答统计';
+  @override
+  String chatStatsSeconds(String seconds) => '$seconds 秒';
+  @override
+  String chatStatsDuration(String duration) => '耗时 $duration';
+  @override
+  String chatStatsSteps(int count) => '$count 步';
+  @override
+  String chatStatsSpeed(String speed) => '$speed tok/s';
+  @override
+  String chatStatsContext(String count) => '$count 上下文';
+  @override
+  String chatStatsCached(String count) => '（已缓存 $count）';
+  @override
+  String get chatStatsDurationLabel => '回答耗时';
+  @override
+  String get chatStatsStepsLabel => '模型调用步数';
+  @override
+  String get chatStatsToolsLabel => '实际执行的工具调用';
+  @override
+  String get chatStatsSpeedLabel => '生成速度';
+  @override
+  String get chatStatsContextLabel => '最后一次请求的上下文';
+  @override
+  String get chatStatsCachedLabel => '最后一次请求的缓存命中';
+  @override
+  String get chatStatsInputLabel => '累计输入 Token（已上报）';
+  @override
+  String get chatStatsOutputLabel => '累计输出 Token（已上报）';
+  @override
+  String get chatStatsReasoningLabel => '累计思考 Token（已上报）';
+  @override
+  String get chatStatsCostLabel => '已上报费用';
+  @override
+  String get chatStatsNotReported => '服务器未提供';
+  @override
+  String get chatStatsExplanation => '回答耗时包含工具执行。生成速度按输出及思考 Token 与实际流式生成时间计算，不含工具执行和步骤之间的等待。上下文取最后一次模型请求；累计用量汇总各步已上报的数据。缺失的统计不会估算。';
+  @override
+  String chatProcessThinkingFor(String duration) => '正在思考 · $duration';
+  @override
+  String chatProcessThoughtFor(String duration) => '思考了 $duration';
+  @override
+  String get providerKeySwitch => '切换密钥';
+  @override
+  String get providerKeyLoading => '正在读取已保存的密钥…';
+  @override
+  String get providerKeySwitching => '正在切换供应商密钥…';
+  @override
+  String get providerKeyConfigureFirst => '请先在此供应商的配置中添加命名密钥。';
+  @override
+  String providerKeyProviderScope(String provider) => '$provider · 对其全部模型生效';
+  @override
+  String providerKeySwitched(String name) => '此供应商的模型已切换为密钥“$name”';
+  @override
+  String get providerKeyMissing => '所选密钥文件不存在或为空，当前密钥未改变。';
+  @override
+  String get providerKeySelectionChanged => '菜单打开期间供应商密钥发生了变化，请重新打开菜单选择。';
+  @override
+  String get providerKeySwitchFailed => '切换密钥失败。请重新打开菜单检查已保存的选择；不会自动改用其他密钥。';
   @override
   String get providerKeyAdd => '添加密钥';
   @override

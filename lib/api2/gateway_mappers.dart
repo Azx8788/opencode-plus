@@ -201,8 +201,8 @@ Session mapApi2Session(Api2Session session) => Session(
 ///   v1 `output` string and file items become v1 `attachments`, but the
 ///   original text/file interleaving is preserved as `contentSegments`
 ///   (rendered by [ToolState.segments]-aware tool cards).
-/// - **Reasoning time/state** and provider `state` blobs on text items are
-///   dropped (v1 parts have no equivalent field).
+/// - Provider `state` blobs are dropped; reasoning timestamps and provider
+///   streaming timestamps are retained for the transcript's measured times.
 /// - **Streaming tool input** (`status: streaming`) maps to the v1
 ///   `pending` state with the raw JSON text as the pending input preview.
 /// - **User attachments** are rebuilt as `data:` URIs from the stored
@@ -423,7 +423,12 @@ MessageInfo _info(
   modelID: model?.id,
   cost: cost ?? 0,
   tokens: tokens == null ? null : mapApi2Tokens(tokens),
-  time: MsgTime(created: message.time.created, completed: completed),
+  time: MsgTime(
+    created: message.time.created,
+    firstToken: message.time.firstToken,
+    streamed: message.time.streamed,
+    completed: completed,
+  ),
   errorText: errorText,
   errorKind: errorKind,
   finish: finish,
@@ -511,6 +516,13 @@ List<Part> partsFromAssistantContent(
             type: 'reasoning',
             text: item.text,
             messageID: messageID,
+            startedAt: item.time?.created == null
+                ? null
+                : DateTime.fromMillisecondsSinceEpoch(item.time!.created!),
+            completedAt: item.time?.completed == null
+                ? null
+                : DateTime.fromMillisecondsSinceEpoch(item.time!.completed!),
+            ended: item.time?.completed != null,
           ),
         );
       case Api2ToolCallContent():

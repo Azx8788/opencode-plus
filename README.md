@@ -33,14 +33,14 @@ of losing its servers and its Ubuntu.
 ## Versioning
 
 `version:` in `pubspec.yaml` is the only version the APK carries
-(`0.3.23+31` is name 0.3.23, code 31). **A plain `flutter build apk` does not
+(`0.3.24+32` is name 0.3.24, code 32). **A plain `flutter build apk` does not
 move it**, so two builds of the same tree install as the same version and the
 phone has no reason to treat the second one as an upgrade. Use one of these
 (the numbers below are the current version and what each command makes of it):
 
 ```sh
-dart run tool/bump_version.dart              # 0.3.23+31 -> 0.3.23+32
-dart run tool/bump_version.dart --patch      # 0.3.23+31 -> 0.3.24+32
+dart run tool/bump_version.dart              # 0.3.24+32 -> 0.3.24+33
+dart run tool/bump_version.dart --patch      # 0.3.24+32 -> 0.3.25+33
 tool/build_apk.sh                            # bump, then build a release APK
 ```
 
@@ -65,6 +65,22 @@ crosses the Flutter/native boundary.
 
 [docs/BRANCH_INTEGRATION.md](docs/BRANCH_INTEGRATION.md) records the consolidated
 branches, conflict decisions and the validation gate before branch cleanup.
+
+## Conversation layout
+
+Reply prose stays on the page. Consecutive thoughts and tool operations sit
+in a collapsible process card, in their original order. Running cards open
+to the newest steps; a manual collapse or expansion is retained. Shell output
+starts with a short inset preview, with the full output available on demand.
+Cards follow the existing appearance settings; no background or theme is forced.
+
+Every reply has a separate statistics row for reported elapsed time, model
+steps, generation speed and the final model request's context/cache usage.
+Tap it for exact totals and definitions. Speed uses recorded streaming time,
+not time spent running tools. Missing data stays unknown. The timestamp
+preference controls timestamps only.
+
+Design reference and verification notes: [CONVERSATION_PROCESS_CARDS.md](CONVERSATION_PROCESS_CARDS.md).
 
 ## Reasoning levels
 
@@ -91,7 +107,10 @@ be removed without opening the editor.
 In a provider's configuration, name the first API key, then save (or fetch
 models). The named-key list lets you add other keys, select which one to use,
 rename a key, or remove an inactive key. There is no automatic key rotation or
-fallback. Names and file paths are kept in app preferences; key values are
+fallback. The last selected key is the default, and a newly added key becomes
+selected. Long-press a model → Switch API key to choose by name without leaving
+the model list. This changes the provider's key for all of its models, not a
+per-model or per-conversation override. Names and file paths are kept in app preferences; key values are
 stored in private server-side files. Switching reloads the current project;
 if reload fails the app says to restart after ongoing work finishes. Existing
 file-based and plaintext keys are retained, and shared/external files are not

@@ -2,6 +2,28 @@
 
 This project is in public alpha. Only the newest preview is supported.
 
+## 0.3.24+32 — 2026-11-16
+
+  * **Prose and process are separate.** Consecutive thoughts and tool calls
+    now sit in one collapsible card, including a lone thought or command.
+    Running work stays visible, shell output has a bounded inset preview,
+    and finishing a reply no longer hides or reorders its prose. The cards
+    use the app's existing theme, background and surface preferences.
+  * **Measurements under every reply.** Elapsed time, model steps,
+    generation speed and the final request's context/cache usage have their
+    own compact row, independent of timestamps. Tap for exact reported
+    totals. Tool waits are excluded from measured generation speed; missing
+    timing or usage is never guessed. Live events and refetches retain the
+    server's first-token, streaming and reasoning timestamps.
+  * **Switch named keys by long-pressing a model.** The conversation model
+    picker, the provider's model tab and the model-checks page now offer
+    "Switch API key". The list shows key names and checks the saved selection;
+    the header makes clear that the key applies to all models of that provider.
+  * **The default stays explicit.** The last selected key is retained across
+    app restarts; a newly added key becomes selected. There is no automatic
+    rotation or fallback. Switching keys does not switch the model or lower
+    its reasoning level, and reload failures remain visible.
+
 ## 0.3.23+31 — 2026-11-16
 
   * **Several named API keys per provider.** A saved provider keeps a list of

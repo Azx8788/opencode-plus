@@ -27,6 +27,7 @@ import '../kit_redact.dart';
 import '../kit_since.dart';
 import '../kit_status_mark.dart';
 import '../kit_surface.dart';
+import '../kit_surface_look.dart' show KitSurfaceRole;
 import '../kit_tappable.dart';
 import '../kit_task_mark.dart';
 import '../kit_text.dart';
@@ -320,8 +321,11 @@ String? _durationWords(AppLocalizations l10n, Duration? duration) {
   if (duration.inMinutes >= 1) {
     return l10n.kitToolTookMinutes(duration.inMinutes);
   }
-  if (duration.inSeconds >= 1) {
-    return l10n.kitToolTookSeconds(duration.inSeconds);
+  if (duration > Duration.zero) {
+    return l10n.chatStatsSeconds(
+      (duration.inMicroseconds / Duration.microsecondsPerSecond)
+          .toStringAsFixed(1),
+    );
   }
   return null;
 }
@@ -1410,73 +1414,76 @@ class _CommandBoxState extends State<_CommandBox> {
       setState(() => _all = true);
     }
 
-    return KitSurface(
+    return KeyedSubtree(
       key: const ValueKey('kit-step-command'),
-      level: KitSurfaceLevel.surface1,
-      shape: KitShape.code,
-      padding: KitSurfacePadding.none,
-      outlined: true,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: tokens.minTarget),
-        child: Stack(
-          children: [
-            Padding(
-              padding: EdgeInsetsDirectional.only(
-                start: tokens.space3,
-                top: tokens.space2,
-                // Clear of the copy icon's corner.
-                end: tokens.minTarget - tokens.space2,
-                bottom: tokens.space2,
-              ),
-              child: KitLtr(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    KitText.mono(
-                      '\$ $command',
-                      key: const ValueKey('kit-step-command-text'),
-                      tone: KitTextTone.primary,
-                    ),
-                    if (shown.isNotEmpty) SizedBox(height: tokens.space1),
-                    for (final line in shown)
+      child: kitSurfaceMaterial(
+        context,
+        level: KitSurfaceLevel.surface2,
+        role: KitSurfaceRole.code,
+        shape: tokens.shapeOf(KitShape.code),
+        fill: tokens.roles.surface2,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: tokens.minTarget),
+          child: Stack(
+            children: [
+              Padding(
+                padding: EdgeInsetsDirectional.only(
+                  start: tokens.space3,
+                  top: tokens.space2,
+                  // Clear of the copy icon's corner.
+                  end: tokens.minTarget - tokens.space2,
+                  bottom: tokens.space2,
+                ),
+                child: KitLtr(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       KitText.mono(
-                        line.isEmpty ? ' ' : line,
-                        tone: KitTextTone.tertiary,
-                        cut: KitMonoCut.end,
-                        maxLines: 1,
+                        '\$ $command',
+                        key: const ValueKey('kit-step-command-text'),
+                        tone: KitTextTone.primary,
                       ),
-                    if (caption != null && caption.isNotEmpty) ...[
-                      SizedBox(height: tokens.space1),
-                      KitText(
-                        caption,
-                        role: KitTextRole.caption,
-                        tone: KitTextTone.secondary,
-                      ),
-                    ],
-                    if (more)
-                      Align(
-                        alignment: AlignmentDirectional.centerStart,
-                        child: KitButton.tertiary(
-                          key: const ValueKey('kit-step-show-all'),
-                          label: l10n.kitCodeShowAll(total),
-                          onPressed: showAll,
+                      if (shown.isNotEmpty) SizedBox(height: tokens.space1),
+                      for (final line in shown)
+                        KitText.mono(
+                          line.isEmpty ? ' ' : line,
+                          tone: KitTextTone.secondary,
+                          cut: KitMonoCut.end,
+                          maxLines: 1,
                         ),
-                      ),
-                  ],
+                      if (caption != null && caption.isNotEmpty) ...[
+                        SizedBox(height: tokens.space1),
+                        KitText(
+                          caption,
+                          role: KitTextRole.caption,
+                          tone: KitTextTone.secondary,
+                        ),
+                      ],
+                      if (more)
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: KitButton.tertiary(
+                            key: const ValueKey('kit-step-show-all'),
+                            label: l10n.kitCodeShowAll(total),
+                            onPressed: showAll,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            PositionedDirectional(
-              top: 0,
-              end: 0,
-              child: KitIconButton.copy(
-                key: const ValueKey('kit-step-command-copy'),
-                text: () => command,
-                tooltip: data.copyLabel,
+              PositionedDirectional(
+                top: 0,
+                end: 0,
+                child: KitIconButton.copy(
+                  key: const ValueKey('kit-step-command-copy'),
+                  text: () => command,
+                  tooltip: data.copyLabel,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -99,6 +99,7 @@ enum Api2Phase {
   delta,
   ended,
   streamed,
+  firstToken,
   succeeded,
   failed,
   interrupted,
@@ -235,6 +236,8 @@ sealed class Api2Event {
         );
       case 'session.step.started':
         return _step(Api2Phase.started, d);
+      case 'session.step.first-token':
+        return _step(Api2Phase.firstToken, d);
       case 'session.step.streamed':
         return _step(Api2Phase.streamed, d);
       case 'session.step.ended':
