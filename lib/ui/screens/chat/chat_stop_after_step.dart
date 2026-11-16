@@ -152,7 +152,16 @@ extension _ChatStopAfterStep on _ChatScreenState {
         step: live.step,
         stuck: live.stuck,
         stuckCommand: _stuckName,
-        onTap: () => _setChatState(() => _liveStepsShown = !_liveStepsShown),
+        onTap: () => _setChatState(() {
+          _liveStepsShown = !_liveStepsShown;
+          final start = _messages.lastIndexWhere(_isPrompt) + 1;
+          _setTranscriptWorkExpanded(
+            _transcriptExpansion,
+            _messages.sublist(start),
+            _liveStepsShown,
+            reasoningExpanded: _conn.transcriptReasoningExpanded,
+          );
+        }),
         tapLabel: _liveStepsShown
             ? strings.chatLiveHideSteps
             : strings.chatLiveShowSteps,

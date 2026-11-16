@@ -46,8 +46,10 @@ Future<bool> showProviderKeySwitch(
 
   final strings = lookupAppLocalizations(Localizations.localeOf(context));
   final messenger = ScaffoldMessenger.maybeOf(context);
+  var showingProgress = false;
   void say(String message) {
     if (!sameScope()) return;
+    showingProgress = false;
     messenger
       ?..clearSnackBars()
       ..showSnackBar(SnackBar(content: Text(message)));
@@ -57,6 +59,7 @@ Future<bool> showProviderKeySwitch(
   final names = ProviderKeyRingStore(controller.store.prefs);
   var activated = false;
   try {
+    showingProgress = true;
     messenger?.showSnackBar(
       SnackBar(content: Text(strings.providerKeyLoading)),
     );
@@ -105,6 +108,7 @@ Future<bool> showProviderKeySwitch(
       activeID = legacyID;
     }
     messenger?.clearSnackBars();
+    showingProgress = false;
     if (keys.isEmpty) {
       say(strings.providerKeyConfigureFirst);
       return false;
@@ -130,6 +134,7 @@ Future<bool> showProviderKeySwitch(
     checkScope();
     final key = chosen;
     if (key == null || key.id == activeID) return false;
+    showingProgress = true;
     messenger?.showSnackBar(
       SnackBar(content: Text(strings.providerKeySwitching)),
     );
@@ -156,6 +161,7 @@ Future<bool> showProviderKeySwitch(
       profileID: profile.id,
       providerID: providerID,
       currentPath: latest.secretPath,
+      defaultName: strings.providerKeyDefaultName,
     );
     checkScope();
     final sameKeys =
@@ -232,11 +238,17 @@ Future<bool> showProviderKeySwitch(
     return true;
   } catch (_) {
     // Never echo transport or credential errors, which may contain a key.
-    say(activated ? strings.providerKeyReloadNeeded : strings.providerKeySwitchFailed);
+    say(
+      activated
+          ? strings.providerKeyReloadNeeded
+          : strings.providerKeySwitchFailed,
+    );
     return activated;
   } finally {
-    messenger?.clearSnackBars();
     _keySwitchesInProgress.remove(providerID);
+    if (showingProgress && messenger?.mounted == true) {
+      messenger!.clearSnackBars();
+    }
   }
 }
 

@@ -22,7 +22,16 @@ extension _ChatTopBar on _ChatScreenState {
 
   /// Folds every step, reasoning line and work fold that is open.
   void _collapseAllSteps() {
-    _setChatState(_transcriptExpansion.collapseAll);
+    _setChatState(() {
+      _liveStepsShown = false;
+      _setTranscriptWorkExpanded(
+        _transcriptExpansion,
+        _messages,
+        false,
+        reasoningExpanded: _conn.transcriptReasoningExpanded,
+      );
+      _transcriptExpansion.collapseAll();
+    });
   }
 
   Future<bool?> _setReasoningDisplay(bool expanded) async {

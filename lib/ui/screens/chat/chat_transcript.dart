@@ -24,14 +24,15 @@ class _ExpansionStore extends MapBase<String, bool> {
 
   final VoidCallback onOpenChanged;
   final Map<String, bool> _values = {};
+  final Set<String> _visibleOpen = {};
   bool _anyOpen = false;
 
   bool get anyOpen => _anyOpen;
 
   void _sync() {
-    final now = _values.entries.any(
-      (entry) => entry.value && !entry.key.contains('@'),
-    );
+    final now =
+        _visibleOpen.isNotEmpty ||
+        _values.entries.any((entry) => entry.value && !entry.key.contains('@'));
     if (now == _anyOpen) return;
     _anyOpen = now;
     onOpenChanged();
@@ -41,7 +42,22 @@ class _ExpansionStore extends MapBase<String, bool> {
   /// stays closed too.
   void collapseAll() {
     for (final key in _values.keys.toList()) {
+      // Metadata records which reasoning preference a choice belongs to.
+      // Clearing it would make a collapsed thought reopen on recycling.
+      if (!key.contains('@')) _values[key] = false;
+    }
+    for (final key in _visibleOpen) {
       _values[key] = false;
+    }
+    _visibleOpen.clear();
+    _sync();
+  }
+
+  void recordVisible(String key, bool open) {
+    if (open) {
+      _visibleOpen.add(key);
+    } else {
+      _visibleOpen.remove(key);
     }
     _sync();
   }
@@ -58,6 +74,7 @@ class _ExpansionStore extends MapBase<String, bool> {
   @override
   void clear() {
     _values.clear();
+    _visibleOpen.clear();
     _sync();
   }
 

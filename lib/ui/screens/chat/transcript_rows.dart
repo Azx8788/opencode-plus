@@ -373,14 +373,9 @@ class _WorkGroup extends StatefulWidget {
     required this.buildRun,
     this.waitingForYou = false,
     this.stopped = false,
-    this.openWhileRunning = false,
     this.reasoningExpanded = false,
     this.reasoningWorking = false,
   });
-
-  /// The person tapped the live line to see the steps: while this work
-  /// runs it is drawn opened.
-  final bool openWhileRunning;
 
   final bool reasoningExpanded;
   final bool reasoningWorking;
@@ -424,6 +419,13 @@ class _WorkGroupState extends State<_WorkGroup> {
       widget.expansionStore.remove(_storeKey);
       widget.expansionStore.remove(_defaultKey);
     }
+  }
+
+  @override
+  void dispose() {
+    final store = widget.expansionStore;
+    if (store is _ExpansionStore) store.recordVisible(_storeKey, false);
+    super.dispose();
   }
 
   /// Whether the work ended on a failure. Agents fail and retry all the
@@ -485,6 +487,9 @@ class _WorkGroupState extends State<_WorkGroup> {
         (widget.reasoningExpanded && hasReasoning) ||
         KitWorkLine.opensByDefault(state) ||
         _tools.any((part) => part.toolState.outputFiles.isNotEmpty);
+    final expanded = widget.expansionStore[_storeKey] ?? opensByDefault;
+    final store = widget.expansionStore;
+    if (store is _ExpansionStore) store.recordVisible(_storeKey, expanded);
     return KeyedSubtree(
       key: const Key('work-group'),
       child: KitWorkLine(
@@ -492,9 +497,7 @@ class _WorkGroupState extends State<_WorkGroup> {
         state: state,
         thinking: _tools.isEmpty && hasReasoning,
         now: now,
-        expanded: state == KitWorkState.running && widget.openWhileRunning
-            ? true
-            : widget.expansionStore[_storeKey] ?? opensByDefault,
+        expanded: expanded,
         onExpansionChanged: (open) => setState(() {
           widget.expansionStore[_storeKey] = open;
           widget.expansionStore[_defaultKey] = widget.reasoningExpanded;
@@ -726,6 +729,8 @@ class _ReasoningState extends State<_Reasoning> {
         widget.expansionStore?.remove(_defaultKey);
       }
       _open = widget.expanded;
+    } else if (_stored case final stored? when stored != _open) {
+      _open = stored;
     }
   }
 

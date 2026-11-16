@@ -245,6 +245,52 @@ String _workStoreKey(List<_AssistantPartRun> runs) {
   return 'work:${first.messageID ?? ''}/${first.id ?? first.callID}';
 }
 
+/// The header's collapse-all and the running turn's show/hide use the same
+/// per-block choices as taps on the cards. Default-open blocks are included.
+void _setTranscriptWorkExpanded(
+  Map<String, bool> store,
+  List<MessageWithParts> messages,
+  bool expanded, {
+  required bool reasoningExpanded,
+}) {
+  final display = _timelineDisplayParts(messages);
+  for (final parts in display) {
+    for (final stretch in _MessageView._stretches(
+      _groupAssistantParts(parts),
+    )) {
+      if (!_runIsWork(stretch.first)) continue;
+      final key = _workStoreKey(stretch);
+      store[key] = expanded;
+      store['$key@reasoning-default'] = reasoningExpanded;
+    }
+    if (!expanded) {
+      for (final part in parts) {
+        if (part.type == 'reasoning') {
+          final key = 'reasoning:${part.messageID ?? ''}/${part.id}';
+          store[key] = false;
+          store['$key@default'] = reasoningExpanded;
+        } else if (part.type == 'tool') {
+          store['tool:${part.messageID ?? ''}/${part.id ?? part.callID}'] =
+              false;
+        }
+      }
+    }
+  }
+}
+
+@visibleForTesting
+void debugSetTranscriptWorkExpanded(
+  Map<String, bool> store,
+  List<MessageWithParts> messages,
+  bool expanded, {
+  bool reasoningExpanded = false,
+}) => _setTranscriptWorkExpanded(
+  store,
+  messages,
+  expanded,
+  reasoningExpanded: reasoningExpanded,
+);
+
 /// The steps of a reply's work lines, and the step a jump asked to show
 /// ([_ChatScrollFields._highlightedStepID]): its work line opens and the
 /// step is marked for a moment.

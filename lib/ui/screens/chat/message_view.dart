@@ -539,7 +539,6 @@ class _MessageView extends StatelessWidget {
           ])
         : visibleParts;
     final runs = _withCards(_groupAssistantParts(shown), chat);
-    final stepsShown = chat?._liveStepsShown ?? false;
     final blocks = <Widget>[
       for (final stretch in _stretches(runs))
         if (_runIsWork(stretch.first))
@@ -549,7 +548,6 @@ class _MessageView extends StatelessWidget {
             expansionStore: _openedForStep(stretch, chat),
             waitingForYou: waiting,
             stopped: stopped,
-            openWhileRunning: live != null && stepsShown,
             reasoningExpanded: reasoningExpanded,
             reasoningWorking: stretch.any(
               (run) => run.parts.any(

@@ -352,7 +352,9 @@ class KitStepTimeline extends StatefulWidget {
   static double stepLineHeight(BuildContext context) {
     final tokens = KitTokens.of(context);
     final scaler = MediaQuery.textScalerOf(context);
-    return math.max(32.0, scaler.scale(20) + 2 * tokens.space1);
+    // Each operation owns a full touch target; adjacent folds must not
+    // compete for overlapping 48dp hit areas on a phone.
+    return math.max(tokens.minTarget, scaler.scale(20) + 2 * tokens.space1);
   }
 
   /// A sentence between steps (prose the agent said while it worked) with a

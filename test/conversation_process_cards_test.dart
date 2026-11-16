@@ -1,9 +1,15 @@
+import 'dart:io';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:opencode_mobile/domain/models.dart';
 import 'package:opencode_mobile/l10n/app_localizations.dart';
 import 'package:opencode_mobile/ui/kit/kit.dart';
 import 'package:opencode_mobile/ui/app_theme.dart';
+import 'package:opencode_mobile/ui/kit/style/kit_style_theme.dart';
 import 'package:opencode_mobile/ui/screens/chat_screen.dart' as chat;
 import 'package:opencode_mobile/ui/widgets/tool_card.dart';
 
@@ -71,6 +77,21 @@ Part _tool(
 );
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() async {
+    // The CI captures use the shipped fonts, rather than Flutter's Ahem test
+    // font. These are the same asset families AppTheme and KitText request.
+    for (final entry in const {
+      'AppSans': 'assets/fonts/geist/Geist-Variable.ttf',
+      'AppMono': 'assets/fonts/geist/GeistMono-Variable.ttf',
+      'AppPhosphorRegular': 'assets/fonts/phosphor/Phosphor.ttf',
+    }.entries) {
+      await (FontLoader(
+        entry.key,
+      )..addFont(rootBundle.load(entry.value))).load();
+    }
+  });
+
   Future<void> mount(
     WidgetTester tester,
     List<MessageWithParts> messages, {
@@ -80,12 +101,18 @@ void main() {
     bool dark = false,
     double scale = 1,
     double width = 390,
+    Locale locale = const Locale('en'),
+    KitTextSize textSize = KitTextSize.normal,
+    KitSurfaceStyle style = KitSurfaceStyle.solid,
   }) async {
+    final size = ValueNotifier(textSize);
+    addTearDown(size.dispose);
     await tester.pumpWidget(
       MaterialApp(
         // Use the same theme factory as the app; the transcript must follow
         // the selected roles/fonts/surface style rather than stock Material.
         theme: dark ? AppTheme.dark() : AppTheme.light(),
+        locale: locale,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         builder: (context, child) => MediaQuery(
@@ -93,20 +120,37 @@ void main() {
             disableAnimations: true,
             textScaler: TextScaler.linear(scale),
           ),
-          child: child!,
+          child: Theme(
+            data: AppTheme.forLocale(Theme.of(context), locale),
+            child: KitText.appScale(
+              size: size,
+              max: AppTheme.maxTextScale,
+              child: KitEffectsScope(
+                effects: KitEffects.defaults.copyWith(
+                  motion: KitMotionLevel.off,
+                  haptics: false,
+                  surfaceStyle: style,
+                ),
+                child: kitStyleTheme(child: child!),
+              ),
+            ),
+          ),
         ),
-        home: Scaffold(
-          body: Center(
-            child: SizedBox(
-              width: width,
-              child: SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: chat.debugConversationTranscript(
-                    messages: messages,
-                    expansionStore: expansions,
-                    running: running,
-                    reasoningExpanded: reasoningExpanded,
+        home: RepaintBoundary(
+          key: const ValueKey('conversation-preview'),
+          child: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: width,
+                child: SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: chat.debugConversationTranscript(
+                      messages: messages,
+                      expansionStore: expansions,
+                      running: running,
+                      reasoningExpanded: reasoningExpanded,
+                    ),
                   ),
                 ),
               ),
@@ -368,4 +412,138 @@ void main() {
     expect(find.text('output-line-11'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  testWidgets(
+    'show steps can be manually collapsed, collapse-all survives recycling',
+    (tester) async {
+      final expansions = <String, bool>{};
+      final messages = [
+        _message('a1', [
+          _thought('a1'),
+          _tool('a1', 'call-1'),
+          _text('a1', 'An answer.'),
+        ]),
+      ];
+      chat.debugSetTranscriptWorkExpanded(
+        expansions,
+        messages,
+        true,
+        reasoningExpanded: true,
+      );
+      await mount(
+        tester,
+        messages,
+        expansions: expansions,
+        reasoningExpanded: true,
+      );
+      expect(find.byType(ToolCard), findsOneWidget);
+      // The card's own tap must win after the global Show steps action.
+      await tester.tap(find.byKey(const Key('work-group-header')));
+      await tester.pumpAndSettle();
+      expect(find.byType(ToolCard), findsNothing);
+      chat.debugSetTranscriptWorkExpanded(
+        expansions,
+        messages,
+        false,
+        reasoningExpanded: true,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      await mount(
+        tester,
+        messages,
+        expansions: expansions,
+        reasoningExpanded: true,
+      );
+      expect(find.byType(ToolCard), findsNothing);
+      await tester.tap(find.byKey(const Key('work-group-header')));
+      await tester.pumpAndSettle();
+      final thought = tester.widget<KitMessage>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is KitMessage && widget.kind == KitMessageKind.thought,
+        ),
+      );
+      expect(thought.expanded, isFalse);
+      expect(find.byKey(const ValueKey('kit-step-command')), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  for (final style in KitSurfaceStyle.values) {
+    testWidgets(
+      'Chinese conversation follows the app $style style and text-size setting',
+      (tester) async {
+        await mount(
+          tester,
+          [
+            _message('a1', [
+              _thought('a1'),
+              _tool('a1', 'call-1'),
+              _text('a1', '检查完成，正文独立展示。'),
+            ]),
+          ],
+          locale: const Locale('zh'),
+          textSize: KitTextSize.large,
+          style: style,
+          reasoningExpanded: true,
+        );
+        final context = tester.element(find.byType(KitTurnStatistics));
+        expect(KitEffects.of(context).surfaceStyle, style);
+        expect(MediaQuery.textScalerOf(context).scale(1), closeTo(1.15, .001));
+        expect(
+          KitText.styleOf(context, KitTextRole.body).fontFamily,
+          AppTheme.sansFamily,
+        );
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
+
+  for (final dark in [false, true]) {
+    testWidgets(
+      'capture process-card layout with the shipped app theme, dark=$dark',
+      (tester) async {
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        await mount(
+          tester,
+          [
+            _message('u1', [
+              _text('u1', 'Run the checks and explain the result.'),
+            ], role: 'user'),
+            _message('a1', [
+              _text('a1', 'The reply stays readable above the process card.'),
+              _thought('a1'),
+              _tool('a1', 'call-1', output: 'All 12 checks passed.\nexit 0'),
+              _text('a1', 'Done. The result is ready to review.'),
+            ]),
+          ],
+          dark: dark,
+          reasoningExpanded: true,
+        );
+        final boundary = tester.renderObject<RenderRepaintBoundary>(
+          find.byKey(const ValueKey('conversation-preview')),
+        );
+        await tester.runAsync(() async {
+          final image = await boundary.toImage(pixelRatio: 2);
+          try {
+            final bytes = await image.toByteData(
+              format: ui.ImageByteFormat.png,
+            );
+            final output = File(
+              'build/qa/conversation-${dark ? 'dark' : 'light'}.png',
+            );
+            await output.parent.create(recursive: true);
+            await output.writeAsBytes(bytes!.buffer.asUint8List());
+          } finally {
+            image.dispose();
+          }
+        });
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
 }

@@ -560,7 +560,12 @@ class _KitToolRowState extends State<KitToolRow>
         : _stepWords(status, word, durationWords, maxLines: wide ? 2 : 1);
     // Only the group's line has a chevron; a step that opens another page
     // keeps its forward arrow (it leaves this list).
-    final Widget? forward = row.onOpen != null && !_opens
+    final Widget? forward = _opens
+        ? SizedBox.square(
+            dimension: tokens.smallIconSize,
+            child: KitSpin.chevron(expanded: open),
+          )
+        : row.onOpen != null
         ? const _ForwardChevron()
         : null;
 

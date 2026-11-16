@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+
 // One piece of a transcript that is words (docs/ux-system/kit-api/
 // KitMessage.md; STATE-16, KIT-41, LOOK-26, LOOK-5, KIT-28, A11Y-5, COPY-2,
 // KIT-32): the person's prompt as an end-aligned bubble, the agent's reply
@@ -640,9 +641,8 @@ class _BubbleState extends State<_Bubble> {
       child: CustomPaint(
         foregroundPainter: _focusRingVisible
             ? _BubbleRingPainter(
-                radius: _bubbleRadius(
-                  tokens,
-                ).resolve(Directionality.of(context)),
+                radius: _bubbleRadius(tokens)
+                    .resolve(Directionality.of(context)),
                 color: roles.accent,
                 width: ringWidth,
               )
@@ -900,22 +900,20 @@ class _FoldState extends State<_Fold> with SingleTickerProviderStateMixin {
             shape: KitShape.tile,
             surface: KitSurfaceLevel.ground,
             child: lineBox(
-              onRail
-                  ? widget.line
-                  : Row(
-                      children: [
-                        Expanded(child: widget.line),
-                        SizedBox(width: tokens.space1),
-                        _FirstLine(
-                          child: ExcludeSemantics(
-                            child: SizedBox.square(
-                              dimension: tokens.smallIconSize,
-                              child: KitSpin.chevron(expanded: open),
-                            ),
-                          ),
-                        ),
-                      ],
+              Row(
+                children: [
+                  Expanded(child: widget.line),
+                  SizedBox(width: tokens.space1),
+                  _FirstLine(
+                    child: ExcludeSemantics(
+                      child: SizedBox.square(
+                        dimension: tokens.smallIconSize,
+                        child: KitSpin.chevron(expanded: open),
+                      ),
                     ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
