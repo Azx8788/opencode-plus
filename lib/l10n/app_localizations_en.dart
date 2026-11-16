@@ -19388,6 +19388,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatErrorModelNotFound => 'The server doesn\'t have this model.';
 
   @override
+  String get chatErrorVariantUnavailable =>
+      'That reasoning level is no longer available. The next send will use the model default.';
+
+  @override
   String get chatErrorContextOverflow =>
       'This conversation is too long for the model.';
 

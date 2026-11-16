@@ -18286,6 +18286,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get chatErrorModelNotFound => '服务器上没有这个模型。';
 
   @override
+  String get chatErrorVariantUnavailable => '该思考等级已不可用。下次发送时将使用模型默认等级。';
+
+  @override
   String get chatErrorContextOverflow => '这段对话对模型来说太长了。';
 
   @override

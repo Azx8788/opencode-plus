@@ -1128,6 +1128,7 @@ String? _paseoErrorName(MessageErrorKind? kind) => switch (kind) {
   MessageErrorKind.contentFilter => 'ContentFilterError',
   MessageErrorKind.aborted => 'AbortedError',
   MessageErrorKind.modelNotFound => 'ModelNotFoundError',
+  MessageErrorKind.variantUnavailable => 'VariantUnavailableError',
   MessageErrorKind.unknown || null => null,
 };
 

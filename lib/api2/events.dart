@@ -399,6 +399,8 @@ sealed class Api2Event {
       case 'skill.updated':
       case 'catalog.updated':
       case 'models-dev.refreshed':
+      case 'provider.updated':
+      case 'model.updated':
       case 'integration.updated':
       case 'credential.updated':
       case 'credential.switched':

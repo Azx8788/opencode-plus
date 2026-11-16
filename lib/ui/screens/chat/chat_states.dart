@@ -192,6 +192,7 @@ String _plainErrorHeadline(
     MessageErrorKind.providerAuth => l10n.chatErrorProviderAuth,
     MessageErrorKind.outputLength => l10n.chatErrorOutputLength,
     MessageErrorKind.contentFilter => l10n.chatErrorContentFilter,
+    MessageErrorKind.variantUnavailable => l10n.chatErrorVariantUnavailable,
     MessageErrorKind.aborted ||
     MessageErrorKind.unknown => l10n.chatErrorUnknown,
   };

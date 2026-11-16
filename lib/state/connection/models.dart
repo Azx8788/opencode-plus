@@ -5,6 +5,36 @@ part of '../connection.dart';
 String _providerSetKey(Set<String> providers) =>
     (providers.toList()..sort()).join(',');
 
+/// The catalog's row for [model], if present. Pure for focused tests.
+@visibleForTesting
+CatalogModel? catalogModelForSessionVariant(
+  CatalogSnapshot? catalog,
+  ModelRef? model,
+) {
+  if (catalog == null || model == null) return null;
+  return catalog.models.where(
+    (candidate) =>
+        candidate.providerID == model.providerID &&
+        candidate.id == model.modelID,
+  ).firstOrNull;
+}
+
+/// Whether [variant] is present and enabled for [model] in [catalog]. Empty
+/// means the server default and is always valid.
+@visibleForTesting
+bool catalogOffersSessionVariant(
+  CatalogSnapshot? catalog,
+  ModelRef? model,
+  String variant,
+) {
+  if (variant.isEmpty) return true;
+  final matching = catalogModelForSessionVariant(catalog, model);
+  return matching?.variants.any(
+        (candidate) => candidate.id == variant && !candidate.disabled,
+      ) ??
+      false;
+}
+
 /// [ConnectionController]'s model, agent and variant selection.
 mixin _ConnectionControllerModels on ChangeNotifier {
   ConnectionController get _self;
@@ -282,6 +312,24 @@ mixin _ConnectionControllerModels on ChangeNotifier {
     ServerGateway? expectedApi,
   }) => _self._waitForSessionSelection(sessionID, expectedApi: expectedApi);
 
+  /// Clears a session's reasoning variant when a refreshed server catalog no
+  /// longer offers it. The model itself is retained. This is deliberately
+  /// capability-driven: it works for every provider without inventing a
+  /// provider-specific list of "Max" models.
+  Future<bool> reconcileSessionVariant(
+    String sessionID, {
+    bool refreshCatalog = false,
+  }) => _self._reconcileSessionVariant(
+    sessionID,
+    refreshCatalog: refreshCatalog,
+  );
+
+  /// Reconciles selections already loaded after a catalog refresh. OpenCode 2
+  /// owns these selections on the server, so clearing a removed variant here
+  /// prevents the next turn from failing later with VariantUnavailableError.
+  void reconcileLoadedSessionVariants() =>
+      _self._reconcileLoadedSessionVariants();
+
   Future<void> selectAgentForSession(String sessionID, String name) =>
       _self._selectAgentForSession(sessionID, name);
 
@@ -406,6 +454,102 @@ extension _ConnectionControllerModelsImpl on ConnectionController {
       );
     }
     await ensureInteractiveSendAllowed(expectedApi: expectedApi);
+    // A config/model.updated event can race Send. Join its catalog load (or
+    // refresh stale data) before deciding whether this session's server-owned
+    // variant still exists.
+    await _ensureCatalog();
+    if (expectedApi != null && !identical(api, expectedApi)) {
+      throw const ProductException(
+        'The connection changed. Reopen the session and try again.',
+      );
+    }
+    await _reconcileSessionVariant(sessionID);
+  }
+
+  Future<bool> _reconcileSessionVariant(
+    String sessionID, {
+    bool refreshCatalog = false,
+  }) async {
+    if (refreshCatalog) await _loadCatalog(announce: false);
+    final currentApi = api;
+    if (currentApi == null) return false;
+    final selection = selectionForSession(sessionID);
+    final model = selection.model;
+    final variant = selection.variant;
+    if (!selection.modelKnown || model == null || variant.isEmpty) return false;
+
+    final snapshot = catalogForSession(sessionID);
+    final selectedModel = catalogModelForSessionVariant(snapshot, model);
+    if (selectedModel == null ||
+        selectedModel.variants.any(
+          (candidate) => candidate.id == variant && !candidate.disabled,
+        )) return false;
+
+    AppLog.info('catalog', 'session reasoning variant removed', {
+      'provider': model.providerID,
+      'model': model.modelID,
+      'variant': variant,
+    });
+
+    if (currentApi is SessionSelectionGateway) {
+      await _mutateSessionSelection(
+        sessionID,
+        (gateway) async {
+          final latest = selectionForSession(sessionID);
+          if (!latest.modelKnown ||
+              latest.model == null ||
+              latest.variant.isEmpty ||
+              !ModelLibrary.sameModel(latest.model, model)) {
+            return false;
+          }
+          final latestCatalog = catalogForSession(sessionID);
+          final latestModel = catalogModelForSessionVariant(
+            latestCatalog,
+            latest.model,
+          );
+          if (latestModel == null ||
+              latestModel.variants.any(
+                (candidate) =>
+                    candidate.id == latest.variant && !candidate.disabled,
+              )) {
+            return false;
+          }
+          await gateway.setSessionModel(sessionID, latest.model!, '');
+          return true;
+        },
+        requireConfirmation: false,
+      );
+      return true;
+    }
+
+    final existing = sessionModels[sessionID];
+    if (existing == null || existing.variant.isEmpty) return false;
+    sessionModels[sessionID] = SessionModelChoice(
+      model: existing.model,
+      variant: '',
+    );
+    final owner = profile;
+    if (owner != null) await store.setSessionModels(owner.id, sessionModels);
+    _notifyListeners();
+    return true;
+  }
+
+  void _reconcileLoadedSessionVariants() {
+    final ids = <String>{
+      for (final session in sessionsById.values)
+        if (session.selection?.variant.isNotEmpty == true) session.id,
+      for (final entry in sessionModels.entries)
+        if (entry.value.variant.isNotEmpty) entry.key,
+    };
+    for (final id in ids) {
+      unawaited(
+        _reconcileSessionVariant(id).catchError((Object _) {
+          // A failed reconciliation remains recoverable at the next send;
+          // do not turn a successful catalog refresh into an error.
+          return false;
+        }),
+      );
+    }
   }
 
   Future<void> _mutateSessionSelection(

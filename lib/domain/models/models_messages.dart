@@ -62,6 +62,7 @@ enum MessageErrorKind {
   contentFilter,
   aborted,
   modelNotFound,
+  variantUnavailable,
   unknown;
 
   /// Maps a v1 error `name` or v2 error `type` string to a kind; null when
@@ -83,6 +84,10 @@ enum MessageErrorKind {
     if (key.contains('contentfilter')) return contentFilter;
     if (key.contains('abort')) return aborted;
     if (key.contains('modelnotfound')) return modelNotFound;
+    if (key.contains('variantunavailable') ||
+        key.contains('effortunavailable')) {
+      return variantUnavailable;
+    }
     return unknown;
   }
 
@@ -91,6 +96,12 @@ enum MessageErrorKind {
   /// kind from the text when the name gave nothing better.
   static MessageErrorKind refineFromText(MessageErrorKind kind, String? text) {
     if (kind != unknown || text == null) return kind;
+    if (RegExp(
+      r'\b(?:variant|reasoning\s+effort)\s+unavailable\b',
+      caseSensitive: false,
+    ).hasMatch(text)) {
+      return variantUnavailable;
+    }
     // A sign-in the agent can no longer use, in its own words ("Not logged
     // in · Please run /login", "OAuth session expired"): the person signs in
     // again. Not the transient "another process is refreshing it".
@@ -133,7 +144,10 @@ String sessionErrorFallbackText(String? name) {
     MessageErrorKind.aborted => 'The run was stopped before it finished.',
     MessageErrorKind.modelNotFound =>
       'The selected model is not available on this server. Choose another '
-          'model.',
+      'model.',
+    MessageErrorKind.variantUnavailable =>
+      'The selected reasoning level is no longer available for this model. '
+          'The next send will use the model default.',
     MessageErrorKind.unknown =>
       name == null || name.trim().isEmpty
           ? 'The session run failed.'

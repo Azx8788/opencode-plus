@@ -290,7 +290,26 @@ extension _ConnectionControllerCatalogImpl on ConnectionController {
   /// pickers come through here.
   Future<void> _ensureCatalog() {
     final running = _currentCatalogLoad;
-    if (running != null) return running;
+    if (running != null) {
+      // If a config/provider/catalog invalidation arrived during this read,
+      // _loadCatalog queued one trailing read behind it. A caller that is
+      // about to send must join that trailing read too: the first response is
+      // explicitly stale and may still advertise a variant just removed.
+      final followUp = _catalogFollowUp;
+      if (followUp != null && identical(_catalogFollowUpAfter, running)) {
+        return followUp;
+      }
+      return running.then((_) async {
+        final queued = _catalogFollowUp;
+        if (queued != null && identical(_catalogFollowUpAfter, running)) {
+          await queued;
+        } else if (!_catalogFresh && !_catalogRecent) {
+          // An invalidation may have arrived just as the original read was
+          // completing, before its follow-up slot was observable above.
+          await _ensureCatalog();
+        }
+      });
+    }
     if (_catalogFresh || _catalogRecent) return Future<void>.value();
     return _startCatalogLoad(announce: catalog == null);
   }
@@ -775,6 +794,10 @@ extension _ConnectionControllerCatalogImpl on ConnectionController {
       _catalogReuseKey = scope;
       _catalogReuseInvalidations = invalidations;
       _notifyListeners();
+      // Session selections are server-owned on OpenCode 2 and can outlive a
+      // provider/config refresh. Reconcile them after this catalog is marked
+      // fresh, rather than waiting for the next prompt to fail.
+      _reconcileLoadedSessionVariants();
     } catch (error) {
       if (!_isCurrentCatalogRefresh(
         generation,

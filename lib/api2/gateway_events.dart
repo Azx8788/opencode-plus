@@ -629,6 +629,9 @@ class Api2EventAdapter {
           case 'catalog.updated':
           case 'models-dev.refreshed':
             return [_env('catalog.updated', const {})];
+          case 'provider.updated':
+          case 'model.updated':
+            return [_env('catalog.updated', const {})];
           case 'integration.updated':
           case 'credential.updated':
             return [_env('integration.connection.updated', const {})];

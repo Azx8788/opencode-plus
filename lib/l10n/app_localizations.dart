@@ -30736,6 +30736,12 @@ abstract class AppLocalizations {
   /// **'The server doesn\'t have this model.'**
   String get chatErrorModelNotFound;
 
+  /// The saved reasoning level disappeared after the server's model catalog changed.
+  ///
+  /// In en, this message translates to:
+  /// **'That reasoning level is no longer available. The next send will use the model default.'**
+  String get chatErrorVariantUnavailable;
+
   /// Chat: an agent error of the context-overflow kind; the server's text is under Details
   ///
   /// In en, this message translates to:

@@ -2,6 +2,17 @@
 
 This project is in public alpha. Only the newest preview is supported.
 
+## 0.3.20+28 — 2026-11-16
+
+  * **A reasoning level that disappears no longer breaks the next prompt.**
+    Catalog refreshes and sends reconcile the current conversation's variant
+    against the model it actually uses. If a provider configuration removes
+    `Max`, `xhigh` or another level, the model stays selected and the next send
+    uses its default instead of failing with `VariantUnavailableError`.
+  * **Provider and model update events refresh the catalog.** Already-running
+    conversations are corrected before their next turn; an error that races a
+    refresh is recognised and repaired before retry.
+
 ## 0.3.19+27 — 2026-11-15
 
   * **A thought can stay in the transcript.** The transcript's "Reasoning"

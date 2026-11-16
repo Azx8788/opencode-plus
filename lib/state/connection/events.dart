@@ -269,6 +269,8 @@ extension _ConnectionControllerEventsImpl on ConnectionController {
       case 'installation.updated':
       case 'integration.connection.updated':
       case 'catalog.updated':
+      case 'provider.updated':
+      case 'model.updated':
       case 'agent.updated':
       case 'config.updated':
         _onServerEvent(env, props);

@@ -23082,6 +23082,7 @@
     }
   },
   "chatErrorModelNotFound": "The server doesn't have this model.",
+  "chatErrorVariantUnavailable": "That reasoning level is no longer available. The next send will use the model default.",
   "@chatErrorModelNotFound": {
     "description": "Chat: an agent error of the model-not-found kind whose server text the app does not recognise; the server's text is under Details"
   },
