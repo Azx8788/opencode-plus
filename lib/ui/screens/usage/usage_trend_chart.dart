@@ -158,8 +158,9 @@ class _UsageTrendCardState extends State<_UsageTrendCard> {
                     onTapUp: (tap) {
                       if (points.isEmpty ||
                           tap.localPosition.dx < left ||
-                          width <= left)
+                          width <= left) {
                         return;
+                      }
                       final index =
                           ((tap.localPosition.dx - left) /
                                   (width - left) *
@@ -347,10 +348,9 @@ class _UsageTrendPainter extends CustomPainter {
         ).format(date),
       );
       final center = left + (index + .5) * slot;
-      final x = (center - label.width / 2).clamp(
-        left,
-        math.max(left, size.width - label.width),
-      );
+      final x = (center - label.width / 2)
+          .clamp(left, math.max(left, size.width - label.width))
+          .toDouble();
       if (x >= end) {
         label.paint(canvas, Offset(x, bottom + 6));
         end = x + label.width + 6;

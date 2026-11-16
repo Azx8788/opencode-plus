@@ -66,6 +66,16 @@ crosses the Flutter/native boundary.
 [docs/BRANCH_INTEGRATION.md](docs/BRANCH_INTEGRATION.md) records the consolidated
 branches, conflict decisions and the validation gate before branch cleanup.
 
+## Local usage
+
+Usage → Local usage shows an activity heatmap, overview cards, 7/30/90-day
+and all-time token metrics, a selectable daily/monthly trend and a model
+ranking. It follows the app's existing appearance settings. Exact costs,
+budgets and the previous detailed report remain one tap away. Unreported
+source breakdowns and message counts are not invented; app launches begin
+counting with this version. See [LOCAL_USAGE_DASHBOARD.md](LOCAL_USAGE_DASHBOARD.md)
+for measurements, bounded reads and verification.
+
 ## Conversation layout
 
 Reply prose stays on the page. Consecutive thoughts and tool operations sit

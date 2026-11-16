@@ -10,11 +10,22 @@ class AppLaunchStatistics {
   static bool _recordedThisProcess = false;
 
   static AppLaunchStatistics? read(SharedPreferences prefs) {
-    final data = prefs.getStringList(_key);
+    List<String>? data;
+    try {
+      data = prefs.getStringList(_key);
+    } catch (_) {
+      return null;
+    }
     if (data == null || data.length != 2) return null;
     final count = int.tryParse(data[0]);
     final since = int.tryParse(data[1]);
-    if (count == null || count < 1 || since == null || since <= 0) return null;
+    if (count == null ||
+        count < 1 ||
+        since == null ||
+        since <= 0 ||
+        since > 8640000000000000) {
+      return null;
+    }
     return AppLaunchStatistics(
       count: count,
       since: DateTime.fromMillisecondsSinceEpoch(since),

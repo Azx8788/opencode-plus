@@ -44,8 +44,9 @@ class _UsageActivityHeatmapState extends State<_UsageActivityHeatmap> {
     if (stats != null && _calendar != calendar) {
       _calendar = calendar;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _scroll.hasClients)
+        if (mounted && _scroll.hasClients) {
           _scroll.jumpTo(_scroll.position.maxScrollExtent);
+        }
       });
     }
     final scaler = MediaQuery.textScalerOf(context);
@@ -54,12 +55,18 @@ class _UsageActivityHeatmapState extends State<_UsageActivityHeatmap> {
     final slot = cell + gap;
     final labelHeight = scaler.scale(16) + t.space2;
     final height = labelHeight + slot * 7;
+    final recordedDays = days
+        .where((day) => !day.isAfter(widget.now))
+        .toList()
+        .reversed
+        .toList();
     int? value(DateTime day) {
       if (stats == null || day.isAfter(widget.now)) return null;
       final next = DateTime(day.year, day.month, day.day + 1);
       if (next.millisecondsSinceEpoch <= stats.from ||
-          day.millisecondsSinceEpoch >= stats.to)
+          day.millisecondsSinceEpoch >= stats.to) {
         return null;
+      }
       return activity[usageDateKey(day)] ?? 0;
     }
 
@@ -124,8 +131,9 @@ class _UsageActivityHeatmapState extends State<_UsageActivityHeatmap> {
                           final day =
                               ((tap.localPosition.dy - labelHeight) / slot)
                                   .floor();
-                          if (week < 0 || week >= 53 || day < 0 || day > 6)
+                          if (week < 0 || week >= 53 || day < 0 || day > 6) {
                             return;
+                          }
                           setState(() => _selected = days[week * 7 + day]);
                         },
                         child: SizedBox(
@@ -197,13 +205,9 @@ class _UsageActivityHeatmapState extends State<_UsageActivityHeatmap> {
               onPressed: () => showKitSheet<void>(
                 context,
                 title: l.statsHeatmap,
-                itemCount: days.where((day) => !day.isAfter(widget.now)).length,
+                itemCount: recordedDays.length,
                 itemBuilder: (context, index) {
-                  final day = days
-                      .where((day) => !day.isAfter(widget.now))
-                      .toList()
-                      .reversed
-                      .elementAt(index);
+                  final day = recordedDays[index];
                   return KitRow(
                     title: DateFormat.yMMMd(locale).format(day),
                     supporting: TextSpan(
@@ -257,8 +261,9 @@ class _HeatmapPainter extends CustomPainter {
       if (count == null || count == 0) return 0;
       if (active.isEmpty) return 0;
       for (var q = 1; q <= 3; q++) {
-        if (count <= active[((active.length - 1) * q / 4).floor()])
+        if (count <= active[((active.length - 1) * q / 4).floor()]) {
           return q / 4;
+        }
       }
       return 1;
     }

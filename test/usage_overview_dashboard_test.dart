@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:opencode_mobile/background/live_background.dart';
-import 'package:opencode_mobile/domain/models.dart';
 import 'package:opencode_mobile/domain/server_gateway.dart';
 import 'package:opencode_mobile/state/app_launch_statistics.dart';
 import 'package:opencode_mobile/state/connection.dart';
@@ -172,6 +171,36 @@ void main() {
     expect(overview.trend.length, 7);
     expect(repository.maxBuckets, lessThanOrEqualTo(2));
     expect(overview.trend.first.bucket.from, DateTime(2026, 11, 10));
+  });
+
+  test(
+    'changing location discards the whole page and ignores outstanding reads',
+    () async {
+      repository.hold = Completer<void>();
+      await overview.refresh();
+      connection.locationRevision++;
+      connection.locationNotice = 'fixture location changed';
+      connection.dismissLocationNotice();
+      expect(overview.detached, isTrue);
+      expect(overview.snapshot, isNull);
+      expect(overview.lifetime, isNull);
+      expect(overview.trend, isEmpty);
+      repository.hold!.complete();
+      repository.hold = null;
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(overview.trend, isEmpty);
+      expect(overview.lifetime, isNull);
+    },
+  );
+
+  test('corrupt optional launch metadata cannot break the dashboard', () async {
+    await prefs.setString('oc.appLaunchStatistics.v1', 'not a list');
+    expect(AppLaunchStatistics.read(prefs), isNull);
+    await prefs.setStringList('oc.appLaunchStatistics.v1', [
+      '5',
+      '999999999999999999',
+    ]);
+    expect(AppLaunchStatistics.read(prefs), isNull);
   });
 
   test(

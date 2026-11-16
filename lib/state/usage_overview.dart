@@ -294,8 +294,9 @@ class UsageOverview extends ChangeNotifier {
       );
       final statistics = await gateway.loadUsageStatistics(query);
       if (_disposed || detached || request != _summaryRequest) return;
-      if (!identical(gateway, connection.repository))
+      if (!identical(gateway, connection.repository)) {
         throw const UsageRefreshInterrupted();
+      }
       lifetime = UsageSnapshot(
         statistics: statistics,
         query: query,
@@ -305,8 +306,9 @@ class UsageOverview extends ChangeNotifier {
         fetchedAt: clock(),
       );
     } catch (failure) {
-      if (!_disposed && !detached && request == _summaryRequest)
+      if (!_disposed && !detached && request == _summaryRequest) {
         lifetimeError = failure;
+      }
     } finally {
       if (!_disposed && !detached && request == _summaryRequest) {
         lifetimeLoading = false;
@@ -357,8 +359,9 @@ class UsageOverview extends ChangeNotifier {
     if (_disposed ||
         detached ||
         current == null ||
-        gateway is! UsageStatisticsGateway)
+        gateway is! UsageStatisticsGateway) {
       return;
+    }
     final request = ++_trendRequest;
     final plan = UsageTrendPlan.forStatistics(
       current.statistics,
@@ -386,9 +389,9 @@ class UsageOverview extends ChangeNotifier {
         final key = (query.from!, query.to, query.projectID, query.timezone);
         try {
           final cached = _trendCache[key];
-          final stats =
+          final UsageStatistics stats =
               cached ??
-              await _limited(() async {
+              await _limited<UsageStatistics>(() async {
                 if (!valid()) throw const UsageRefreshInterrupted();
                 return (gateway as UsageStatisticsGateway).loadUsageStatistics(
                   query,
@@ -400,8 +403,9 @@ class UsageOverview extends ChangeNotifier {
             throw const FormatException('Incomplete usage bucket');
           }
           _trendCache[key] = stats;
-          while (_trendCache.length > 96)
+          while (_trendCache.length > 96) {
             _trendCache.remove(_trendCache.keys.first);
+          }
           trend[index] = UsageTrendPoint(bucket: bucket, statistics: stats);
         } catch (_) {
           if (!valid()) return;

@@ -38,8 +38,9 @@ class UsageTrendPlan {
   ) {
     final from = DateTime.fromMillisecondsSinceEpoch(stats.from).toLocal();
     final to = DateTime.fromMillisecondsSinceEpoch(stats.to).toLocal();
-    if (!to.isAfter(from) || stats.tokens.total == 0)
+    if (!to.isAfter(from) || stats.tokens.total == 0) {
       return const UsageTrendPlan(buckets: []);
+    }
     final last = to.subtract(const Duration(milliseconds: 1));
     final buckets = <UsageBucket>[];
     final monthly = range == UsageRange.allTime;
