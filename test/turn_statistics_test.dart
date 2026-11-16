@@ -222,7 +222,7 @@ void main() {
       ) => adapter.adapt(
         Api2EventEnvelope.fromJson({
           'type': type,
-          if (time != null) 'created': time,
+          'created': ?time,
           'data': {'sessionID': 'session', 'assistantMessageID': 'a1', ...data},
         }),
       );

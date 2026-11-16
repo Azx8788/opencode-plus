@@ -472,7 +472,7 @@ class _WorkGroupState extends State<_WorkGroup> {
               ? strings.kitMessageThinking
               : liveRun!.heading ??
                     runningToolTicker(
-                      livePart!.toolName ?? 'tool',
+                      livePart.toolName ?? 'tool',
                       livePart.toolState,
                       l10n: strings,
                     )

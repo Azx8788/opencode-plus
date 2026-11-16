@@ -178,8 +178,8 @@ void main() {
       );
       expect(stats.items.map((item) => item.text), contains('2 steps'));
       expect(stats.items.map((item) => item.text), contains('1.1k context'));
-      expect(find.byKey(const ValueKey('message-actions-a1')), findsNothing);
-      expect(find.byKey(const ValueKey('message-actions-a2')), findsOneWidget);
+      expect(find.byKey(const ValueKey('message-meta-a1')), findsNothing);
+      expect(find.byKey(const ValueKey('message-meta-a2')), findsOneWidget);
       final header = find.descendant(
         of: cards.first,
         matching: find.byKey(const Key('work-group-header')),

@@ -134,7 +134,7 @@ void main() {
             variants: [CatalogVariant(id: 'max', options: {'reasoningEffort': 'max'})]),
         CatalogModel(id: 'other-model', providerID: 'gateway', name: 'Other model',
             enabled: true, status: 'active', contextLimit: 200000, outputLimit: 32000,
-            reasoning: true, attachments: false, tools: true),
+            reasoning: true, attachments: false, tools: true, variants: []),
       ],
     );
     controller.selectedModel = ModelRef(providerID: 'gateway', modelID: 'opaque-model');
