@@ -113,6 +113,22 @@ class ProviderKeyRecord {
   final String filePath;
 }
 
+/// A file reference may be retained without granting permission to delete it.
+/// Reject config substitution and shell control characters before the path is
+/// ever used in a server-side read.
+bool validProviderKeyPath(String path) =>
+    path.startsWith('/') &&
+    path.length <= 512 &&
+    !RegExp(r'[\x00-\x1f\x7f{}]').hasMatch(path) &&
+    !path.split('/').any((segment) => segment == '.' || segment == '..');
+
+bool managedProviderKeyPath(String path, String providerID) =>
+    validProviderKeyPath(path) &&
+    CustomProviderDraft.normalizeProviderId(providerID) == providerID &&
+    path.startsWith('/root/.secrets/opencode-plus/$providerID/') &&
+    RegExp(r'^[a-zA-Z0-9_-]{1,48}\.key$').hasMatch(path.split('/').last) &&
+    path.split('/').length == 6;
+
 /// Which config dialect to write.
 enum ProviderConfigFormat {
   /// `provider` / `npm` / `options` / `tool_call`.
@@ -262,8 +278,6 @@ class CustomProviderDraft {
     List<String> disabledModelIDs = const [],
     this.timeoutMs = 600000,
     String? keyFile,
-    this.keyRing = const [],
-    this.activeKeyID,
     this.keyPlaceholder,
   }) : id = normalizeProviderId(id),
        baseUrl = normalizeBaseUrl(baseUrl, protocol),
@@ -298,8 +312,6 @@ class CustomProviderDraft {
   /// uses the standard location. An entry read back from the config may
   /// point anywhere, and moving it on edit would leave the key behind.
   final String? _keyFile;
-  final List<ProviderKeyRecord> keyRing;
-  final String? activeKeyID;
 
   /// The original `{env:…}`-style reference an entry used instead of a key
   /// of its own. Kept so editing an entry does not silently drop it.
@@ -482,8 +494,6 @@ class CustomProviderDraft {
       disabledModelIDs: disabledModelIDs,
       timeoutMs: timeoutMs,
       keyFile: _keyFile,
-      keyRing: keyRing,
-      activeKeyID: activeKeyID,
       keyPlaceholder: keyPlaceholder,
     );
   }

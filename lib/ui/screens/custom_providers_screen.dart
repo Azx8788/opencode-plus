@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../api2/server_config_reload.dart';
 import '../../builtin/builtin_linux.dart';
 import '../../builtin/builtin_provider_store.dart';
 import '../../builtin/builtin_provider_templates.dart';
@@ -71,6 +72,8 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
   bool _busy = false;
   bool _initialOpened = false;
   Set<String> _hidden = const {};
+  late final String? _profileID;
+  bool get _sameServer => mounted && widget.controller.profile?.id == _profileID;
 
   /// True when this profile is the server the app itself runs, whose files
   /// this app may write.
@@ -80,6 +83,7 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
   void initState() {
     super.initState();
     final profileID = widget.controller.profile?.id;
+    _profileID = profileID;
     if (profileID != null) _hidden = _visibility.load(profileID);
     unawaited(_load());
   }
@@ -100,6 +104,7 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
       setState(() {
         _resolved = resolved;
         _catalogue = catalogue;
+        if (_profileID != null) _hidden = _visibility.load(_profileID!);
         _loading = false;
       });
       _openInitialOnce();
@@ -148,7 +153,7 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
     CustomProviderRecord? record, {
     BuiltinProviderTemplate? template,
   }) async {
-    final saved = await Navigator.of(context).push<bool>(
+    await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => CustomProviderScreen(
           controller: widget.controller,
@@ -158,7 +163,7 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
         ),
       ),
     );
-    if (saved == true && mounted) await _load();
+    if (_sameServer) await _load();
   }
 
   /// Tests the saved provider with a real turn inside the server.
@@ -186,6 +191,7 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
   }
 
   Future<void> _delete(CustomProviderRecord record) async {
+    if (_busy || !_writable || !_sameServer) return;
     final l10n = _l10nOf(context);
     final agreed = await showKitConfirm(
       context,
@@ -196,13 +202,14 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
       icon: AppIconography.delete,
       confirmKey: const ValueKey('provider-delete-confirm'),
     );
-    if (!agreed || !mounted) return;
+    if (!agreed || !_sameServer) return;
     await _removeProvider(record.id, record.name, currentPath: record.secretPath);
   }
 
   /// Removes an entry the form cannot open. Its shape is unknown, but its id
   /// is enough for a config-level removal, and the backup still protects it.
   Future<void> _deleteUnreadable(String id) async {
+    if (_busy || !_writable || !_sameServer) return;
     final l10n = _l10nOf(context);
     final agreed = await showKitConfirm(
       context,
@@ -213,7 +220,7 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
       icon: AppIconography.delete,
       confirmKey: const ValueKey('provider-unreadable-delete-confirm'),
     );
-    if (!agreed || !mounted) return;
+    if (!agreed || !_sameServer) return;
     await _removeProvider(id, id);
   }
 
@@ -250,9 +257,14 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
           // Stale display names cannot make a removed provider usable again.
         }
       }
+      if (profileID != null && providerTemplateFor(id) != null) {
+        await _visibility.hide(profileID, id);
+        if (_sameServer) _hidden = _visibility.load(profileID);
+      }
+      final reloaded = await _reloadRuntime();
       if (!mounted) return;
       setState(() => _busy = false);
-      _say(l10n.providerManageDeleted(name));
+      _say(reloaded ? l10n.providerManageDeleted(name) : l10n.providerKeyReloadNeeded);
       await _load();
     } catch (error) {
       if (!mounted) return;
@@ -267,6 +279,22 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
     ScaffoldMessenger.maybeOf(
       context,
     )?.showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<bool> _reloadRuntime() async {
+    final profile = widget.controller.profile;
+    if (!_sameServer || profile == null) return false;
+    final reloaded = await reloadServerConfig(
+      baseUrl: profile.baseUrl,
+      password: profile.password,
+      username: profile.username.isEmpty ? 'opencode' : profile.username,
+      cleartextConfirmedOrigin: profile.cleartextConfirmedOrigin,
+      certificatePinSha256: profile.certificatePinSha256,
+      directory: widget.controller.directory,
+      workspace: widget.controller.workspace,
+    );
+    if (_sameServer && reloaded) await widget.controller.refreshCatalog();
+    return reloaded;
   }
 
   Future<void> _hide(ProviderListEntry entry) async {
@@ -539,6 +567,13 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
     title: id,
     supporting: TextSpan(text: l10n.providerManageUnreadableBody),
     supportingMaxLines: 3,
+    action: KitAction(
+      key: ValueKey('provider-delete-visible-$id'),
+      label: l10n.providerManageDelete,
+      icon: AppIconography.delete,
+      destructive: true,
+      onPressed: _busy ? null : () => _deleteUnreadable(id),
+    ),
     menuLabel: l10n.providerManageMenu(id),
     menu: [
       KitMenuItem(
@@ -564,31 +599,7 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
       ProviderProtocol.anthropic => l10n.providerAddProtocolAnthropic,
       ProviderProtocol.google => 'Google',
     };
-    return KitRow(
-      key: ValueKey('provider-row-${entry.id}'),
-      title: entry.name,
-      supporting: TextSpan(
-        text: [
-          entry.id,
-          protocol,
-          if (record == null)
-            entry.blocked
-                ? l10n.providerManageUnreadableBody
-                : l10n.providerNotConfigured
-          else
-            l10n.providerManageModels(record.models.length),
-        ].join(' · '),
-      ),
-      supportingMaxLines: 3,
-      trailing: entry.blocked ? null : const KitChevron(),
-      onTap: entry.blocked
-          ? null
-          : () => _openForm(
-              record,
-              template: record == null ? entry.template : null,
-            ),
-      menuLabel: l10n.providerManageMenu(entry.name),
-      menu: [
+    final menu = [
         if (entry.blocked)
           KitMenuItem(
             key: ValueKey('provider-delete-${entry.id}'),
@@ -631,7 +642,42 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
             onSelected: () => _delete(record),
           ),
         ],
-      ],
+      ];
+    return KitRow(
+      key: ValueKey('provider-row-${entry.id}'),
+      title: entry.name,
+      supporting: TextSpan(
+        text: [
+          entry.id,
+          protocol,
+          if (record == null)
+            entry.blocked
+                ? l10n.providerManageUnreadableBody
+                : l10n.providerNotConfigured
+          else
+            l10n.providerManageModels(record.models.length),
+        ].join(' · '),
+      ),
+      supportingMaxLines: 3,
+      enabled: !_busy,
+      disabledReason: _busy ? l10n.providerManageWorking : null,
+      action: KitAction(
+        key: ValueKey('provider-actions-${entry.id}'),
+        label: l10n.providerActions,
+        onPressed: _busy ? null : () => showKitMenu(
+          context,
+          items: menu,
+          semanticsLabel: l10n.providerManageMenu(entry.name),
+        ),
+      ),
+      onTap: entry.blocked || _busy
+          ? null
+          : () => _openForm(
+              record,
+              template: record == null ? entry.template : null,
+            ),
+      menuLabel: l10n.providerManageMenu(entry.name),
+      menu: menu,
       below: Padding(
         padding: EdgeInsetsDirectional.only(top: tokens.space1),
         child: Text(

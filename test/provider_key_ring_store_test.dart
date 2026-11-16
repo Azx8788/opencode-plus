@@ -107,7 +107,7 @@ void main() {
         ProviderKeyRecord(
           id: 'x',
           name: 'Outside',
-          filePath: '/root/.ssh/id_ed25519',
+          filePath: '/root/../.ssh/id_ed25519',
         ),
       ],
     ]) {
@@ -122,5 +122,36 @@ void main() {
       );
     }
     expect(prefs.getKeys().where((key) => key.startsWith('oc.providerKeys')), isEmpty);
+  });
+
+  test('a renamed external key remains named when it is no longer active', () async {
+    await store.save(
+      profileID: 'phone',
+      providerID: 'my-gateway',
+      keys: const [
+        ProviderKeyRecord(id: 'legacy', name: 'Old personal key', filePath: '/root/custom/key.txt'),
+        ProviderKeyRecord(id: 'work', name: 'Work', filePath: '/root/.secrets/opencode-plus/my-gateway/work.key'),
+      ],
+      activeID: 'work',
+    );
+    final loaded = await store.load(
+      profileID: 'phone',
+      providerID: 'my-gateway',
+      currentPath: '/root/.secrets/opencode-plus/my-gateway/work.key',
+    );
+    expect(loaded.keys.first.name, 'Old personal key');
+    expect(loaded.activeID, 'work');
+  });
+
+  test('adopting a new external path cannot create duplicate legacy IDs', () async {
+    await store.save(
+      profileID: 'phone', providerID: 'my-gateway', activeID: 'legacy',
+      keys: const [ProviderKeyRecord(id: 'legacy', name: 'Old', filePath: '/root/old.key')],
+    );
+    final loaded = await store.load(
+      profileID: 'phone', providerID: 'my-gateway', currentPath: '/root/new.key',
+    );
+    expect(loaded.keys.map((key) => key.id).toSet().length, 2);
+    expect(loaded.activeID, 'legacy-2');
   });
 }

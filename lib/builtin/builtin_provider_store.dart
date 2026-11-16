@@ -72,6 +72,7 @@ class ProviderWriteReceipt {
     required this.keyFileWritten,
     required this.providerID,
     required this.format,
+    this.keyFileRetained = false,
   });
 
   /// Absolute path inside the server, for the confirmation line.
@@ -80,6 +81,7 @@ class ProviderWriteReceipt {
   final bool keyFileWritten;
   final String providerID;
   final ProviderConfigFormat format;
+  final bool keyFileRetained;
 }
 
 /// Which file this server actually reads.
@@ -360,6 +362,7 @@ fi
     ResolvedProviderConfig? resolved,
     bool replace = false,
     bool requireModels = true,
+    Future<void> Function()? beforeConfigWrite,
   }) async {
     final target = resolved ?? await resolve();
     final snapshot = await read(target);
@@ -381,13 +384,6 @@ fi
     } on Exception catch (error) {
       throw ProviderWriteRefused('$error', reason: 'merge');
     }
-    final backup = await _writeDocument(
-      merged,
-      path: snapshot.path,
-      exists: snapshot.exists,
-      previous: snapshot.raw,
-    );
-
     var keyWritten = false;
     if (draft.keyMode == ProviderKeyMode.secretFile && draft.hasKey) {
       final secret = draft.secretPath!;
@@ -398,11 +394,22 @@ fi
         await _writeFile(_relative(secret), draft.apiKey!.trim());
         keyWritten = true;
       } on Object {
-        AppLog.warn('provider', 'key file could not be written', {
-          'provider': draft.id,
-        });
+        throw const ProviderWriteRefused(
+          'The key file could not be saved; the configuration was not changed',
+          reason: 'key-write',
+        );
       }
     }
+    // File and metadata failures must leave the active config untouched. New
+    // named files have unique IDs, so a failed activation cannot replace a
+    // previously active key's bytes.
+    await beforeConfigWrite?.call();
+    final backup = await _writeDocument(
+      merged,
+      path: snapshot.path,
+      exists: snapshot.exists,
+      previous: snapshot.raw,
+    );
 
     AppLog.info('provider', 'custom provider saved', {
       'provider': draft.id,
@@ -511,15 +518,17 @@ fi
     required String? activeKeyID,
     required List<ProviderKeyRecord> keys,
     ResolvedProviderConfig? resolved,
+    Future<void> Function()? beforeConfigWrite,
   }) async {
-    if (!RegExp(r'^[a-zA-Z0-9._-]{1,48}$').hasMatch(providerID) ||
+    if (CustomProviderDraft.normalizeProviderId(providerID) != providerID ||
         !RegExp(r'^[a-zA-Z0-9_-]{1,48}$').hasMatch(keyID) ||
         name.trim().isEmpty ||
+        name.trim().length > 80 ||
+        keys.any((key) => key.id == keyID) ||
         secret.trim().isEmpty) {
       throw const ProviderWriteRefused('The key details are incomplete');
     }
     final path = '/root/.secrets/opencode-plus/$providerID/$keyID.key';
-    await _writeFile(_relative(path), secret.trim());
     final nextKeys = <ProviderKeyRecord>[
       for (final key in keys)
         if (key.id != keyID) key,
@@ -533,7 +542,10 @@ fi
     }
     final root = target.format == ProviderConfigFormat.v1 ? 'provider' : 'providers';
     final providers = document[root];
-    final provider = providers is Map ? providers[providerID] : null;
+    if (providers is! Map) {
+      throw const ProviderWriteRefused('The provider list is unreadable');
+    }
+    final provider = providers[providerID];
     final settingsKey = target.format == ProviderConfigFormat.v1 ? 'options' : 'settings';
     final oldSettings = provider is Map ? provider[settingsKey] : null;
     if (provider is! Map || oldSettings is! Map) {
@@ -544,6 +556,9 @@ fi
       throw const ProviderWriteRefused('Select a saved key first');
     }
     final active = nextKeys.firstWhere((key) => key.id == chosenID);
+    if (!validProviderKeyPath(active.filePath)) {
+      throw const ProviderWriteRefused('A saved key entry is invalid');
+    }
     final settings = <String, Object?>{
       ...oldSettings.cast<String, Object?>(),
       'apiKey': '{file:${active.filePath}}',
@@ -557,6 +572,15 @@ fi
       providerID: entry,
     };
     final next = <String, Object?>{...document, root: nextProviders};
+    try {
+      await _writeFile(_relative(path), secret.trim());
+    } on Object {
+      throw const ProviderWriteRefused(
+        'The key file could not be saved; the configuration was not changed',
+        reason: 'key-write',
+      );
+    }
+    await beforeConfigWrite?.call();
     final backup = await _writeDocument(
       next,
       path: snapshot.path,
@@ -579,11 +603,13 @@ fi
     required List<ProviderKeyRecord> keys,
     required String? activeKeyID,
     ResolvedProviderConfig? resolved,
+    Future<void> Function()? beforeConfigWrite,
   }) => _writeKeyRingConfig(
     providerID: providerID,
     activeKeyID: activeKeyID,
     keys: keys,
     resolved: resolved,
+    beforeConfigWrite: beforeConfigWrite,
   );
 
   Future<ProviderWriteReceipt> _writeKeyRingConfig({
@@ -591,6 +617,7 @@ fi
     required List<ProviderKeyRecord> keys,
     required String? activeKeyID,
     ResolvedProviderConfig? resolved,
+    Future<void> Function()? beforeConfigWrite,
   }) async {
     final target = resolved ?? await resolve();
     final snapshot = await read(target);
@@ -605,7 +632,13 @@ fi
         ? 'provider'
         : 'providers';
     final providers = document[root];
-    if (providers is! Map || providers[providerID] is! Map) {
+    if (providers is! Map) {
+      throw const ProviderWriteRefused(
+        'The provider list is unreadable',
+        reason: 'missing',
+      );
+    }
+    if (providers[providerID] is! Map) {
       throw ProviderWriteRefused(
         'No provider named "$providerID" is in the configuration',
         reason: 'missing',
@@ -623,7 +656,7 @@ fi
       throw const ProviderWriteRefused('Select a saved key first');
     }
     for (final key in keys) {
-      if (!_safeKeyPath(key.filePath, providerID) || key.name.trim().isEmpty) {
+      if (!validProviderKeyPath(key.filePath) || key.name.trim().isEmpty) {
         throw const ProviderWriteRefused('A saved key entry is invalid');
       }
     }
@@ -641,10 +674,11 @@ fi
       settingsKey: settings,
     };
     final nextProviders = <String, Object?>{
-      for (final item in (providers as Map).entries) '${item.key}': item.value,
+      for (final item in providers.entries) '${item.key}': item.value,
       providerID: entry,
     };
     final next = <String, Object?>{...document, root: nextProviders};
+    await beforeConfigWrite?.call();
     final backup = await _writeDocument(
       next,
       path: snapshot.path,
@@ -669,23 +703,47 @@ fi
     required String activeKeyID,
     String? removedPath,
     ResolvedProviderConfig? resolved,
+    Future<void> Function()? beforeDelete,
   }) async {
     final target = resolved ?? await resolve();
-    final receipt = await _writeKeyRingConfig(
-      providerID: providerID,
-      keys: remaining,
-      activeKeyID: activeKeyID,
-      resolved: target,
-    );
-    if (removedPath != null && _managedKeyPath(removedPath, providerID)) {
+    final snapshot = await read(target);
+    if (!snapshot.canMerge || snapshot.document == null ||
+        removedPath == null ||
+        remaining.any((key) => key.id == keyID || key.filePath == removedPath) ||
+        !remaining.any((key) => key.id == activeKeyID)) {
+      throw const ProviderWriteRefused('That saved key cannot be removed');
+    }
+    final root = target.format == ProviderConfigFormat.v1 ? 'provider' : 'providers';
+    final providers = snapshot.document![root];
+    final provider = providers is Map ? providers[providerID] : null;
+    final settings = provider is Map
+        ? provider[target.format == ProviderConfigFormat.v1 ? 'options' : 'settings']
+        : null;
+    if (settings is! Map || settings['apiKey'] == '{file:$removedPath}') {
+      throw const ProviderWriteRefused('Choose another key before removing the active key');
+    }
+    // This is removal from the named-key list, not a change to the active
+    // provider. Commit metadata first, and never re-select a stale active ID.
+    await beforeDelete?.call();
+    var retained = true;
+    if (managedProviderKeyPath(removedPath, providerID) &&
+        !_referencesKey(snapshot.document, removedPath)) {
       try {
         await _deleteFile(_relative(removedPath));
+        retained = false;
       } catch (_) {
-        // The config no longer references the file; a failed unlink must not
-        // turn a successful removal back into an error.
+        // Tell the caller that the private file was retained rather than
+        // claiming that the credential was erased.
       }
     }
-    return receipt;
+    return ProviderWriteReceipt(
+      configPath: snapshot.path,
+      backupPath: null,
+      keyFileWritten: false,
+      providerID: providerID,
+      format: target.format,
+      keyFileRetained: retained,
+    );
   }
 
   /// Deletes the key files this app created for a provider that is being
@@ -695,8 +753,12 @@ fi
     String providerID,
     Iterable<String> paths,
   ) async {
+    final target = await resolve();
+    final snapshot = await read(target);
+    if (!snapshot.canMerge) return;
     for (final path in paths) {
-      if (!_managedKeyPath(path, providerID)) continue;
+      if (!managedProviderKeyPath(path, providerID) ||
+          _referencesKey(snapshot.document, path)) continue;
       try {
         await _deleteFile(_relative(path));
       } catch (_) {
@@ -705,15 +767,12 @@ fi
     }
   }
 
-  static bool _managedKeyPath(String path, String providerID) => RegExp(
-    '^/root/\\.secrets/opencode-plus/${RegExp.escape(providerID)}/[a-zA-Z0-9_-]{1,48}\\.key\$',
-  ).hasMatch(path);
-
-  static bool _safeKeyPath(String path, String providerID) =>
-      path == '/root/.secrets/$providerID.key' ||
-      RegExp(
-        '^/root/\\.secrets/opencode-plus/${RegExp.escape(providerID)}/[a-zA-Z0-9_-]{1,48}\\.key\$',
-      ).hasMatch(path);
+  static bool _referencesKey(Object? value, String path) => switch (value) {
+    String text => text.contains(path),
+    Map map => map.values.any((item) => _referencesKey(item, path)),
+    List list => list.any((item) => _referencesKey(item, path)),
+    _ => false,
+  };
 
   /// Writes one model's context window into an entry that is already on disk.
   ///
@@ -823,10 +882,14 @@ fi
   /// Only the list's explicit "test" action asks for this: a key that cannot
   /// be read means the test cannot run, not that the provider is broken.
   Future<String?> readSecret(String path) async {
+    if (!validProviderKeyPath(path)) {
+      throw const ProviderWriteRefused('The key file path is invalid');
+    }
+    final quotedPath = "'${path.replaceAll("'", "'\"'\"'")}'";
     final script =
         '''
 set -u
-f='$path'
+f=$quotedPath
 if [ -f "\$f" ]; then
   printf 'KEY:'
   base64 "\$f" | tr -d '\\n'

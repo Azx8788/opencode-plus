@@ -36104,6 +36104,8 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get providerKeyNameRequired => 'Give this key a name.';
   @override
+  String get providerKeyNameExists => 'Use a different name for each key.';
+  @override
   String get providerKeySecret => 'API key';
   @override
   String get providerKeySecretHint => 'Stored in a private server-side file. It is not kept in app preferences.';
@@ -36124,7 +36126,13 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String providerKeyDeleteTitle(String name) => 'Remove key “$name”?';
   @override
-  String get providerKeyDeleteBody => 'The key file is kept safely but this provider will no longer use it. You can add it again later.';
+  String get providerKeyDeleteBody => 'Remove this saved key. App-managed files are deleted when not referenced by another configured provider. External or shared files are kept.';
+  @override
+  String get providerKeyFileRetained => 'Removed from the list. The external, shared or undeletable key file was kept.';
+  @override
+  String get providerKeyReloadNeeded => 'Configuration saved. Reload did not complete; restart the built-in server after its current work finishes.';
+  @override
+  String get providerActions => 'Actions';
   @override
   String get providerKeyCannotDeleteLast => 'Keep at least one named key for this provider.';
   @override

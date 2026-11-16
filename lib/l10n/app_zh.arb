@@ -8730,6 +8730,7 @@
   "providerKeyNameHint": "个人、工作、备用……",
   "providerKeyDefaultName": "默认",
   "providerKeyNameRequired": "请为密钥填写名称。",
+  "providerKeyNameExists": "请为每个密钥使用不同的名称。",
   "providerKeySecret": "API 密钥",
   "providerKeySecretHint": "保存在服务端私有文件中，不会保存到应用偏好设置。",
   "providerKeySecretRequired": "请输入 API 密钥。",
@@ -8755,7 +8756,10 @@
   "@providerKeyDeleteTitle": {
     "placeholders": {"name": {"type": "String"}}
   },
-  "providerKeyDeleteBody": "密钥文件会安全保留，但此供应商将不再使用它。之后可以再次添加。",
+  "providerKeyDeleteBody": "移除此密钥。应用管理且未被其他已配置供应商引用的文件会被删除；外部或共享文件会保留。",
+  "providerKeyFileRetained": "已从列表移除；外部、共享或无法删除的密钥文件已保留。",
+  "providerKeyReloadNeeded": "配置已保存，但重载尚未完成；请在当前任务结束后重启内置服务器。",
+  "providerActions": "操作",
   "providerKeyCannotDeleteLast": "请至少为此供应商保留一个命名密钥。",
   "providerKeyCannotDeleteActive": "请先切换到其他密钥，再移除当前密钥。",
   "providerAddFetch": "获取模型",

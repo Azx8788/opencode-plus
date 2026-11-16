@@ -78,7 +78,7 @@ void main() {
     );
     final openai = entries.firstWhere((entry) => entry.id == 'openai');
     expect(openai.blocked, isTrue);
-    expect(openai.configured, isFalse);
+    expect(openai.configured, isTrue);
     // The rest of the list is unaffected.
     final gemini = entries.firstWhere((entry) => entry.id == 'gemini');
     expect(gemini.blocked, isFalse);

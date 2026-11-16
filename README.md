@@ -81,6 +81,22 @@ its current work finishes, so configuration reload uses the live file instead
 of a frozen startup snapshot. Remote servers require their owner to edit the
 server configuration; this phone does not silently write to another machine.
 
+## Provider keys
+
+The built-in server's Providers page has an Actions button on every row.
+Configured providers can be deleted with a backup; unused, unconfigured
+templates can be hidden and restored. An unsupported config entry can still
+be removed without opening the editor.
+
+In a provider's configuration, name the first API key, then save (or fetch
+models). The named-key list lets you add other keys, select which one to use,
+rename a key, or remove an inactive key. There is no automatic key rotation or
+fallback. Names and file paths are kept in app preferences; key values are
+stored in private server-side files. Switching reloads the current project;
+if reload fails the app says to restart after ongoing work finishes. Existing
+file-based and plaintext keys are retained, and shared/external files are not
+silently erased.
+
 ## Differences from upstream
 
 Full list in [UPSTREAM.md](UPSTREAM.md). In short:

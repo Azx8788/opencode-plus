@@ -87,8 +87,6 @@ class CustomProviderRecord {
     disabledModelIDs: disabledModels,
     headers: headers,
     keyFile: secretPath,
-    keyRing: keyRing,
-    activeKeyID: activeKeyID,
   );
 
   CustomProviderRecord withKeyRing(

@@ -231,4 +231,68 @@ class GuestFileWriterTest {
         }
         assertTrue(target.exists())
     }
+
+    @Test
+    fun `removes only an exact owner-only regular key file`() {
+        val root = temp()
+        val path = ".secrets/opencode-plus/gateway/work.key"
+        GuestFileWriter.write(root, path, "fixture-key".toByteArray())
+        GuestFileWriter.write(root, ".secrets/opencode-plus/gateway/other.key", "other".toByteArray())
+        assertTrue(GuestFileWriter.removeOwned(root, path))
+        assertFalse(File(root, path).exists())
+        assertFalse(GuestFileWriter.removeOwned(root, path))
+        assertTrue(File(root, ".secrets/opencode-plus/gateway/other.key").exists())
+    }
+
+    @Test
+    fun `key deletion refuses symlinks traversal and shared hardlinks`() {
+        val root = temp()
+        val path = ".secrets/opencode-plus/gateway/work.key"
+        GuestFileWriter.write(root, path, "fixture-key".toByteArray())
+        val key = File(root, path)
+        val linked = File(root, ".secrets/opencode-plus/gateway/link.key")
+        Files.createSymbolicLink(linked.toPath(), key.toPath())
+        for (candidate in listOf("../outside", "/etc/passwd", ".secrets/opencode-plus/gateway/link.key")) {
+            try {
+                GuestFileWriter.removeOwned(root, candidate)
+                fail("accepted $candidate")
+            } catch (_: GuestFileWriter.Refused) {
+                // expected
+            }
+        }
+        val hard = File(root, ".secrets/opencode-plus/gateway/hard.key")
+        Files.createLink(hard.toPath(), key.toPath())
+        try {
+            GuestFileWriter.removeOwned(root, path)
+            fail("removed a shared file")
+        } catch (_: GuestFileWriter.Refused) {
+            // expected
+        }
+        assertTrue(key.exists())
+        assertTrue(hard.exists())
+    }
+
+    @Test
+    fun `key deletion refuses unsafe permissions and linked folders`() {
+        val root = temp()
+        val key = File(root, "public.key").also { it.writeText("fixture") }
+        Files.setPosixFilePermissions(key.toPath(), PosixFilePermissions.fromString("rw-r--r--"))
+        try {
+            GuestFileWriter.removeOwned(root, "public.key")
+            fail("removed a non-private key")
+        } catch (_: GuestFileWriter.Refused) {
+            // expected
+        }
+        val outside = temp()
+        GuestFileWriter.write(outside, "work.key", "other".toByteArray())
+        Files.createSymbolicLink(File(root, "linked").toPath(), outside.toPath())
+        try {
+            GuestFileWriter.removeOwned(root, "linked/work.key")
+            fail("removed through a folder link")
+        } catch (_: GuestFileWriter.Refused) {
+            // expected
+        }
+        assertTrue(key.exists())
+        assertTrue(File(outside, "work.key").exists())
+    }
 }

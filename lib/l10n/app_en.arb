@@ -44126,6 +44126,7 @@
   "providerKeyNameHint": "Personal, work, backup…",
   "providerKeyDefaultName": "Default",
   "providerKeyNameRequired": "Give this key a name.",
+  "providerKeyNameExists": "Use a different name for each key.",
   "providerKeySecret": "API key",
   "providerKeySecretHint": "Stored in a private server-side file. It is not kept in app preferences.",
   "providerKeySecretRequired": "Enter an API key.",
@@ -44151,7 +44152,10 @@
   "@providerKeyDeleteTitle": {
     "placeholders": {"name": {"type": "String"}}
   },
-  "providerKeyDeleteBody": "The key file is kept safely but this provider will no longer use it. You can add it again later.",
+  "providerKeyDeleteBody": "Remove this saved key. App-managed files are deleted when not referenced by another configured provider. External or shared files are kept.",
+  "providerKeyFileRetained": "Removed from the list. The external, shared or undeletable key file was kept.",
+  "providerKeyReloadNeeded": "Configuration saved. Reload did not complete; restart the built-in server after its current work finishes.",
+  "providerActions": "Actions",
   "providerKeyCannotDeleteLast": "Keep at least one named key for this provider.",
   "providerKeyCannotDeleteActive": "Choose another key before removing the active one.",
   "providerAddFetch": "Fetch models",

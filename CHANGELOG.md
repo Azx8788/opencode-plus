@@ -10,6 +10,8 @@ This project is in public alpha. Only the newest preview is supported.
     themselves stay in owner-only files on the server, and only the selected
     key is referenced by `opencode.json`. An older single key file is shown as
     "Default" and can be renamed or kept beside new ones.
+    Older plaintext keys are preserved when adding a second key. Renaming a
+    saved key changes only its name, not the provider's active key or models.
   * **A new provider's first key becomes a named key.** Saving a typed key now
     writes it to the same private per-provider folder instead of leaving a
     plaintext value in the provider settings.
@@ -17,7 +19,9 @@ This project is in public alpha. Only the newest preview is supported.
     never configured is only a starting point, so it is hidden from this list
     rather than pretending to delete a server entry that does not exist. The
     "show hidden providers" row restores them; configured providers keep their
-    real delete, confirmed and backed up.
+    real delete, confirmed and backed up. Every provider row now has a visible
+    Actions button; even an entry whose shape cannot be edited can be removed
+    safely by ID without rebuilding its settings.
 
 ## 0.3.22+30 — 2026-11-16
 

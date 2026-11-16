@@ -273,7 +273,7 @@ class ProviderListEntry {
   /// read. The row is then a signpost, not a form.
   final bool blocked;
 
-  bool get configured => record != null;
+  bool get configured => record != null || blocked;
 }
 
 /// The rows the provider list shows: every shipped provider in shipped

@@ -20,10 +20,10 @@ class ProviderKeyRingStore {
     required String profileID,
     required String providerID,
     required String? currentPath,
+    String defaultName = 'Default',
   }) async {
     final raw = preferences.getString(_key(profileID, providerID));
     final keys = <ProviderKeyRecord>[];
-    String? storedActive;
     if (raw != null) {
       try {
         final value = jsonDecode(raw);
@@ -38,7 +38,7 @@ class ProviderKeyRingStore {
                 name is! String ||
                 name.trim().isEmpty ||
                 path is! String ||
-                !_managedPath(path, providerID)) {
+                !validProviderKeyPath(path)) {
               continue;
             }
             if (keys.any((key) => key.id == id || key.filePath == path)) {
@@ -46,24 +46,33 @@ class ProviderKeyRingStore {
             }
             keys.add(ProviderKeyRecord(id: id, name: name.trim(), filePath: path));
           }
-          final active = value['active'];
-          if (active is String) storedActive = active;
         }
       } on FormatException {
         // Bad app-owned metadata is ignored; the active config path remains
         // authoritative and can still be adopted below.
       }
     }
-    if (currentPath != null && !keys.any((key) => key.filePath == currentPath)) {
+    if (currentPath != null &&
+        validProviderKeyPath(currentPath) &&
+        !keys.any((key) => key.filePath == currentPath)) {
+      var id = 'legacy';
+      var suffix = 2;
+      while (keys.any((key) => key.id == id)) {
+        id = 'legacy-${suffix++}';
+      }
+      var name = defaultName;
+      var number = 2;
+      while (keys.any((key) => key.name.toLowerCase() == name.toLowerCase())) {
+        name = '$defaultName ${number++}';
+      }
       keys.insert(
         0,
-        ProviderKeyRecord(id: 'legacy', name: 'Default', filePath: currentPath),
+        ProviderKeyRecord(id: id, name: name, filePath: currentPath),
       );
     }
     final active = currentPath == null
         ? null
-        : keys.where((key) => key.filePath == currentPath).firstOrNull?.id ??
-              (keys.any((key) => key.id == storedActive) ? storedActive : null);
+        : keys.where((key) => key.filePath == currentPath).firstOrNull?.id;
     return (keys: List<ProviderKeyRecord>.unmodifiable(keys), activeID: active);
   }
 
@@ -76,12 +85,15 @@ class ProviderKeyRingStore {
     final normalized = <ProviderKeyRecord>[];
     final ids = <String>{};
     final paths = <String>{};
+    final names = <String>{};
     for (final key in keys) {
       if (!RegExp(r'^[a-zA-Z0-9_-]{1,48}$').hasMatch(key.id) ||
           key.name.trim().isEmpty ||
-          !_managedPath(key.filePath, providerID) && key.id != 'legacy' ||
+          key.name.trim().length > 80 ||
+          !validProviderKeyPath(key.filePath) ||
           !ids.add(key.id) ||
-          !paths.add(key.filePath)) {
+          !paths.add(key.filePath) ||
+          !names.add(key.name.trim().toLowerCase())) {
         throw const FormatException('Invalid named provider key');
       }
       normalized.add(
@@ -107,7 +119,4 @@ class ProviderKeyRingStore {
     }
   }
 
-  static bool _managedPath(String path, String providerID) => RegExp(
-    '^/root/\\.secrets/opencode-plus/${RegExp.escape(providerID)}/[a-zA-Z0-9_-]{1,48}\\.key\$',
-  ).hasMatch(path);
 }

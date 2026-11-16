@@ -419,7 +419,7 @@ void main() {
         keyID: 'backup',
         name: 'Backup',
         secret: 'sk-backup',
-        activeKeyID: null,
+        activeKeyID: 'work',
         keys: const [work],
         resolved: resolved,
       );
@@ -445,6 +445,83 @@ void main() {
         '/root/.secrets/opencode-plus/my-gateway/work.key',
       ]);
       expect(fake.deleted, ['.secrets/opencode-plus/my-gateway/work.key']);
+    });
+
+    test('a failed secret write leaves the active config unchanged', () async {
+      final before = jsonEncode(_draft().toDocument(ProviderConfigFormat.v2));
+      final fake = _FakeServer()..fileBody = base64Encode(utf8.encode(before));
+      final store = BuiltinProviderStore(
+        run: fake.run,
+        writeFile: (path, content) async {
+          if (path.startsWith('.secrets/')) throw StateError('fixture refusal');
+          await fake.write(path, content);
+        },
+      );
+      await expectLater(store.save(_draft(), replace: true), throwsA(isA<ProviderWriteRefused>()));
+      expect(fake.configFile, isNull);
+      expect(utf8.decode(base64Decode(fake.fileBody!)), before);
+    });
+
+    test('failed metadata does not activate a newly added key', () async {
+      final before = jsonEncode(_draft().toDocument(ProviderConfigFormat.v2));
+      final fake = _FakeServer()..fileBody = base64Encode(utf8.encode(before));
+      await expectLater(_store(fake).saveNamedKey(
+        providerID: 'my-gateway', keyID: 'work', name: 'Work',
+        secret: 'fixture-new-key', keys: const [], activeKeyID: null,
+        beforeConfigWrite: () async => throw StateError('fixture metadata failure'),
+      ), throwsStateError);
+      expect(fake.configFile, isNull);
+      expect(utf8.decode(base64Decode(fake.fileBody!)), before);
+    });
+
+    test('JSONC refusal does not leave a newly written secret', () async {
+      final fake = _FakeServer(resolveAnswer: 'JSONC:/root/.oc-opencode2/config/opencode/opencode.jsonc');
+      await expectLater(_store(fake).saveNamedKey(
+        providerID: 'my-gateway', keyID: 'work', name: 'Work',
+        secret: 'fixture-new-key', keys: const [], activeKeyID: null,
+      ), throwsA(isA<ProviderWriteRefused>()));
+      expect(fake.files, isEmpty);
+    });
+
+    test('removing a key cannot reselect a stale active ID or erase a shared file', () async {
+      const path = '/root/.secrets/opencode-plus/my-gateway/backup.key';
+      const work = ProviderKeyRecord(id: 'work', name: 'Work', filePath: '/root/.secrets/opencode-plus/my-gateway/work.key');
+      final document = _draft().toDocument(ProviderConfigFormat.v2);
+      final providers = document['providers'] as Map;
+      final settings = (providers['my-gateway'] as Map)['settings'] as Map;
+      settings['apiKey'] = '{file:$path}';
+      final before = jsonEncode(document);
+      final fake = _FakeServer()..fileBody = base64Encode(utf8.encode(before));
+      await expectLater(_store(fake).removeNamedKey(
+        providerID: 'my-gateway', keyID: 'backup', remaining: const [work],
+        activeKeyID: 'work', removedPath: path,
+      ), throwsA(isA<ProviderWriteRefused>()));
+      expect(fake.configFile, isNull);
+      expect(fake.deleted, isEmpty);
+
+      settings['apiKey'] = '{file:${work.filePath}}';
+      providers['other-provider'] = {'settings': {'apiKey': '{file:$path}'}};
+      fake.fileBody = base64Encode(utf8.encode(jsonEncode(document)));
+      final receipt = await _store(fake).removeNamedKey(
+        providerID: 'my-gateway', keyID: 'backup', remaining: const [work],
+        activeKeyID: 'work', removedPath: path,
+      );
+      expect(receipt.keyFileRetained, isTrue);
+      expect(fake.configFile, isNull, reason: 'removal must not rewrite the active provider');
+      expect(fake.deleted, isEmpty);
+    });
+
+    test('a key file path containing quotes is never interpreted as shell', () async {
+      final folder = await Directory.systemTemp.createTemp('provider-key-test-');
+      addTearDown(() => folder.delete(recursive: true));
+      final file = File("${folder.path}/a'quoted.key");
+      await file.writeAsString('fixture-key');
+      final store = BuiltinProviderStore(run: (script, timeout) async {
+        expect(await _syntaxError(script), isNull);
+        final result = await Process.run('sh', ['-c', script]);
+        return BuiltinLinuxRunResult(exitCode: result.exitCode, output: '${result.stdout}');
+      });
+      expect(await store.readSecret(file.path), 'fixture-key');
     });
   });
 }

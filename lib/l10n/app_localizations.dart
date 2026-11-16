@@ -56722,6 +56722,7 @@ abstract class AppLocalizations {
   String get providerKeyNameHint;
   String get providerKeyDefaultName;
   String get providerKeyNameRequired;
+  String get providerKeyNameExists;
   String get providerKeySecret;
   String get providerKeySecretHint;
   String get providerKeySecretRequired;
@@ -56733,6 +56734,9 @@ abstract class AppLocalizations {
   String providerKeyDeleted(String name);
   String providerKeyDeleteTitle(String name);
   String get providerKeyDeleteBody;
+  String get providerKeyFileRetained;
+  String get providerKeyReloadNeeded;
+  String get providerActions;
   String get providerKeyCannotDeleteLast;
   String get providerKeyCannotDeleteActive;
 

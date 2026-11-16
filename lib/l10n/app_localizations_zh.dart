@@ -34100,6 +34100,8 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get providerKeyNameRequired => '请为密钥填写名称。';
   @override
+  String get providerKeyNameExists => '请为每个密钥使用不同的名称。';
+  @override
   String get providerKeySecret => 'API 密钥';
   @override
   String get providerKeySecretHint => '保存在服务端私有文件中，不会保存到应用偏好设置。';
@@ -34120,7 +34122,13 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String providerKeyDeleteTitle(String name) => '移除密钥“$name”？';
   @override
-  String get providerKeyDeleteBody => '密钥文件会安全保留，但此供应商将不再使用它。之后可以再次添加。';
+  String get providerKeyDeleteBody => '移除此密钥。应用管理且未被其他已配置供应商引用的文件会被删除；外部或共享文件会保留。';
+  @override
+  String get providerKeyFileRetained => '已从列表移除；外部、共享或无法删除的密钥文件已保留。';
+  @override
+  String get providerKeyReloadNeeded => '配置已保存，但重载尚未完成；请在当前任务结束后重启内置服务器。';
+  @override
+  String get providerActions => '操作';
   @override
   String get providerKeyCannotDeleteLast => '请至少为此供应商保留一个命名密钥。';
   @override
