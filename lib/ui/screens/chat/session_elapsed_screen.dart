@@ -100,11 +100,17 @@ String _seconds(Duration duration) =>
       1,
     );
 
-List<(Color, Duration)> _segments(TurnElapsed elapsed, ThemeRoles roles) => [
-  (roles.text3, elapsed.wait),
-  (roles.accent, elapsed.thinking),
-  (roles.success, elapsed.output),
-  (roles.partner, elapsed.toolExecution),
+List<(Color, Duration)> _segments({
+  required Duration wait,
+  required Duration thinking,
+  required Duration output,
+  required Duration tool,
+  required ThemeRoles roles,
+}) => [
+  (roles.text3, wait),
+  (roles.accent, thinking),
+  (roles.success, output),
+  (roles.partner, tool),
 ];
 
 class _ElapsedRing extends StatelessWidget {
@@ -162,7 +168,13 @@ class _RingPainter extends CustomPainter {
     );
     var start = -math.pi / 2;
     final gap = .03;
-    for (final segment in _segments(elapsed, roles)) {
+    for (final segment in _segments(
+      wait: elapsed.wait,
+      thinking: elapsed.thinking,
+      output: elapsed.output,
+      tool: elapsed.toolExecution,
+      roles: roles,
+    )) {
       if (segment.$2 == Duration.zero) continue;
       final sweep =
           segment.$2.inMicroseconds / total.inMicroseconds * 2 * math.pi;
@@ -270,7 +282,13 @@ class _BarPainter extends CustomPainter {
     );
     if (total == Duration.zero) return;
     var start = 0.0;
-    for (final segment in _segments(elapsed, roles)) {
+    for (final segment in _segments(
+      wait: elapsed.wait,
+      thinking: elapsed.thinking,
+      output: elapsed.output,
+      tool: elapsed.toolExecution,
+      roles: roles,
+    )) {
       if (segment.$2 == Duration.zero) continue;
       final width =
           segment.$2.inMicroseconds / total.inMicroseconds * size.width;
