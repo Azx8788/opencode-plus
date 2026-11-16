@@ -218,6 +218,7 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
     super.initState();
     final editing = widget.editing;
     final template = widget.template;
+    _keyMode = editing?.keyMode ?? ProviderKeyMode.plaintext;
     if (editing != null) {
       _name.text = editing.name;
       _id.text = editing.id;
@@ -794,12 +795,19 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
     setState(() => _saving = true);
     try {
       final resolved = _resolved ?? await _store.resolve();
+      final profileID = widget.controller.profile?.id;
+      final keyRing = profileID == null
+          ? const <ProviderKeyRecord>[]
+          : (await _keyRingStore.load(
+              profileID: profileID,
+              providerID: editing.id,
+              currentPath: editing.secretPath,
+            )).keys;
       await _store.remove(editing.id, resolved: resolved);
       await _store.removeProviderKeyFiles(editing.id, [
-        for (final key in _keyRing) key.filePath,
+        for (final key in keyRing) key.filePath,
         ?editing.secretPath,
       ]);
-      final profileID = widget.controller.profile?.id;
       if (profileID != null) {
         try {
           await _keyRingStore.save(
