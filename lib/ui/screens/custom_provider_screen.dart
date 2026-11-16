@@ -340,10 +340,12 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
         _keyMode = _activeKeyID != null ? ProviderKeyMode.secretFile : mode;
       });
     } catch (error) {
-      if (mounted) setState(() {
-        _keyRingLoading = false;
-        _saveError = _messageFor(error);
-      });
+      if (mounted) {
+        setState(() {
+          _keyRingLoading = false;
+          _saveError = _messageFor(error);
+        });
+      }
     }
   }
 
@@ -498,7 +500,7 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
       throw const ProviderWriteRefused('The selected server changed');
     }
     await _keyRingStore.save(
-      profileID: _profileID!,
+      profileID: _profileID,
       providerID: providerID,
       keys: keys,
       activeID: activeID,
@@ -1267,7 +1269,9 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
 
   Future<void> _useNamedKey(ProviderKeyRecord key) async {
     if (!_canManageKeys || _saving || _keyRingLoading || !_sameServer ||
-        key.id == _activeKeyID) return;
+        key.id == _activeKeyID) {
+      return;
+    }
     final providerID = _draft().id;
     setState(() { _saving = true; _saveError = null; });
     try {

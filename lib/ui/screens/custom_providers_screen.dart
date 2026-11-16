@@ -104,7 +104,7 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
       setState(() {
         _resolved = resolved;
         _catalogue = catalogue;
-        if (_profileID != null) _hidden = _visibility.load(_profileID!);
+        if (_profileID != null) _hidden = _visibility.load(_profileID);
         _loading = false;
       });
       _openInitialOnce();

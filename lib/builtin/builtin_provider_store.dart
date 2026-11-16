@@ -758,7 +758,9 @@ fi
     if (!snapshot.canMerge) return;
     for (final path in paths) {
       if (!managedProviderKeyPath(path, providerID) ||
-          _referencesKey(snapshot.document, path)) continue;
+          _referencesKey(snapshot.document, path)) {
+        continue;
+      }
       try {
         await _deleteFile(_relative(path));
       } catch (_) {

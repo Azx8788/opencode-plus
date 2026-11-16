@@ -152,4 +152,41 @@ void main() {
     expect(linux.writes, isEmpty);
     expect(find.text('fixture-legacy-key'), findsNothing);
   });
+
+  testWidgets('adding a second key preserves the old plaintext key and reasoning variants', (tester) async {
+    final document = jsonDecode(linux.files['.oc-opencode2/config/opencode/opencode.json']!) as Map;
+    document['providers']['gateway']['settings']['apiKey'] = 'fixture-legacy-key';
+    linux.files['.oc-opencode2/config/opencode/opencode.json'] = jsonEncode(document);
+    await openEditor(tester);
+    final add = find.byKey(const ValueKey('provider-key-add'));
+    await tester.ensureVisible(add);
+    await tester.tap(add);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('provider-key-name-field')), 'Personal');
+    await tester.tap(find.byKey(const ValueKey('provider-key-name-confirm')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('provider-key-secret-field')), 'fixture-new-personal-key');
+    await tester.tap(find.byKey(const ValueKey('provider-key-secret-confirm')));
+    await tester.pumpAndSettle();
+    final saved = jsonDecode(linux.files['.oc-opencode2/config/opencode/opencode.json']!) as Map;
+    final settings = saved['providers']['gateway']['settings'] as Map;
+    final currentPath = (settings['apiKey'] as String).replaceFirst('{file:/root/', '').replaceFirst('}', '');
+    expect(linux.files[currentPath], 'fixture-new-personal-key');
+    expect(linux.files.entries.where((entry) => entry.key.endsWith('.key') && entry.value == 'fixture-legacy-key'), hasLength(1));
+    expect(saved['providers']['gateway']['models'], document['providers']['gateway']['models']);
+    final names = await ProviderKeyRingStore(prefs).load(
+      profileID: 'phone', providerID: 'gateway', currentPath: '/root/$currentPath',
+    );
+    expect(names.keys.map((key) => key.name), containsAll(['Default', 'Personal']));
+    final legacy = names.keys.firstWhere((key) => key.name == 'Default');
+    final legacyRow = find.byKey(ValueKey('provider-key-${legacy.id}'));
+    await tester.ensureVisible(legacyRow);
+    await tester.tap(legacyRow);
+    await tester.pumpAndSettle();
+    final switched = jsonDecode(linux.files['.oc-opencode2/config/opencode/opencode.json']!) as Map;
+    expect(switched['providers']['gateway']['settings']['apiKey'], '{file:${legacy.filePath}}');
+    final allPrefs = prefs.getKeys().map((key) => prefs.get(key).toString()).join();
+    expect(allPrefs, isNot(contains('fixture-legacy-key')));
+    expect(allPrefs, isNot(contains('fixture-new-personal-key')));
+  });
 }
