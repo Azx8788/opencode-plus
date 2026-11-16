@@ -119,8 +119,9 @@ void main() {
           streamed: 2500,
           completed: 3000,
         ),
+        // A replayed step with the same server id must count once.
         step(
-          'a2',
+          'a1',
           created: 1000,
           firstToken: 1500,
           streamed: 2500,

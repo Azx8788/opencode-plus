@@ -124,17 +124,21 @@ class _UsageRequestTimelineState extends State<UsageRequestTimeline> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      KitText(
-                        _clock(DateTime.fromMillisecondsSinceEpoch(from)),
-                        role: KitTextRole.caption,
-                        tone: KitTextTone.secondary,
-                        tabular: true,
+                      Flexible(
+                        child: KitText(
+                          _clock(DateTime.fromMillisecondsSinceEpoch(from)),
+                          role: KitTextRole.caption,
+                          tone: KitTextTone.secondary,
+                          tabular: true,
+                        ),
                       ),
-                      KitText(
-                        _clock(DateTime.fromMillisecondsSinceEpoch(now)),
-                        role: KitTextRole.caption,
-                        tone: KitTextTone.secondary,
-                        tabular: true,
+                      Flexible(
+                        child: KitText(
+                          _clock(DateTime.fromMillisecondsSinceEpoch(now)),
+                          role: KitTextRole.caption,
+                          tone: KitTextTone.secondary,
+                          tabular: true,
+                        ),
                       ),
                     ],
                   ),

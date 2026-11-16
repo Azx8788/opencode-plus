@@ -115,17 +115,21 @@ class SessionRequestTimelineScreen extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        KitText(
-                          _clock(DateTime.fromMillisecondsSinceEpoch(first!)),
-                          role: KitTextRole.caption,
-                          tone: KitTextTone.secondary,
-                          tabular: true,
+                        Flexible(
+                          child: KitText(
+                            _clock(DateTime.fromMillisecondsSinceEpoch(first!)),
+                            role: KitTextRole.caption,
+                            tone: KitTextTone.secondary,
+                            tabular: true,
+                          ),
                         ),
-                        KitText(
-                          _clock(DateTime.fromMillisecondsSinceEpoch(last!)),
-                          role: KitTextRole.caption,
-                          tone: KitTextTone.secondary,
-                          tabular: true,
+                        Flexible(
+                          child: KitText(
+                            _clock(DateTime.fromMillisecondsSinceEpoch(last!)),
+                            role: KitTextRole.caption,
+                            tone: KitTextTone.secondary,
+                            tabular: true,
+                          ),
                         ),
                       ],
                     ),

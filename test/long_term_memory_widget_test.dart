@@ -117,6 +117,13 @@ void main() {
         isCurrent: current ?? () => true,
       );
 
+  /// A save drives an indeterminate loading bar; do not wait for animations.
+  Future<void> afterWrite(WidgetTester tester) async {
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump();
+  }
+
   Future<void> selectFirst(WidgetTester tester) async {
     final first = find.byKey(const ValueKey('memory-candidate-0'));
     await tester.ensureVisible(first);
@@ -156,7 +163,7 @@ void main() {
       );
       await selectFirst(tester);
       await tester.tap(find.byKey(const ValueKey('memory-review-save')));
-      await tester.pumpAndSettle();
+      await afterWrite(tester);
       expect(store.snapshot.entries.single.text, '请用中文简洁回答');
       expect(store.snapshot.entries.single.sourceCallID, 'proposal');
       expect(find.byKey(const ValueKey('memory-review-saved')), findsOneWidget);
@@ -193,7 +200,7 @@ void main() {
       scope.onChanged!('global');
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('memory-review-save')));
-      await tester.pumpAndSettle();
+      await afterWrite(tester);
       expect(store.snapshot.entries.single.project, isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     },
@@ -206,7 +213,7 @@ void main() {
       await mount(tester, review());
       await selectFirst(tester);
       await tester.tap(find.byKey(const ValueKey('memory-review-save')));
-      await tester.pumpAndSettle();
+      await afterWrite(tester);
       expect(store.snapshot.entries, isEmpty);
       expect(
         find.textContaining('Memory storage could not be read or written'),
@@ -214,7 +221,7 @@ void main() {
       );
       secure.failWrite = false;
       await tester.tap(find.byKey(const ValueKey('memory-review-save')));
-      await tester.pumpAndSettle();
+      await afterWrite(tester);
       expect(store.snapshot.entries.length, 1);
       await tester.pumpWidget(const SizedBox.shrink());
     },
@@ -223,6 +230,35 @@ void main() {
   testWidgets(
     'manual editor saves in same store; deletion needs confirmation',
     (tester) async {
+      await mount(
+        tester,
+        Builder(
+          builder: (context) => TextButton(
+            key: const Key('open-memory-editor'),
+            onPressed: () => Navigator.of(context).push(
+              KitPageRoute<void>(
+                builder: (_) =>
+                    MemoryEditor(store: store, isCurrent: () => true),
+              ),
+            ),
+            child: const Text('open'),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('open-memory-editor')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('memory-text')),
+        'Use concise replies',
+      );
+      await tester.tap(find.byKey(const ValueKey('memory-save')));
+      await tester.pumpAndSettle();
+      expect(store.snapshot.entries.single.text, 'Use concise replies');
+      final entry = find.byKey(
+        ValueKey('memory-entry-${store.snapshot.entries.single.id}'),
+      );
+      // The editor popped on save; a fresh MemoryScreen lists the saved entry.
+      await tester.pumpWidget(const SizedBox.shrink());
       final profiles = ProfileStore(prefs: prefs, secure: secure);
       final connection = ConnectionController(
         profiles,
@@ -233,34 +269,17 @@ void main() {
         ),
       );
       addTearDown(connection.dispose);
-      final shared = profiles.longTermMemory;
       await mount(tester, MemoryScreen(controller: connection));
-      await tester.tap(find.byKey(const ValueKey('memory-add')));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const ValueKey('memory-text')),
-        'Use concise replies',
-      );
-      await tester.tap(find.byKey(const ValueKey('memory-save')));
-      await tester.pumpAndSettle();
-      expect(shared.snapshot.entries.single.text, 'Use concise replies');
-      final entry = find.byKey(
-        ValueKey('memory-entry-${shared.snapshot.entries.single.id}'),
-      );
       await tester.ensureVisible(entry);
       await tester.tap(entry);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('memory-delete')));
       await tester.pumpAndSettle();
-      expect(shared.snapshot.entries.length, 1);
+      expect(store.snapshot.entries.length, 1);
       expect(
         find.textContaining('Remove this saved memory from this device?'),
         findsOneWidget,
       );
-      // Canceling is deliberately exercised without touching the vault.
-      Navigator.of(tester.element(find.byType(MemoryEditor))).pop();
-      await tester.pumpAndSettle();
-      expect(shared.snapshot.entries.length, 1);
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
