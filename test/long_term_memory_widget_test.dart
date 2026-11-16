@@ -15,7 +15,6 @@ import 'package:opencode_mobile/state/profiles.dart';
 import 'package:opencode_mobile/ui/app_theme.dart';
 import 'package:opencode_mobile/ui/kit/kit.dart';
 import 'package:opencode_mobile/ui/kit/style/kit_style_theme.dart';
-import 'package:opencode_mobile/ui/screens/memory/memory_editor.dart';
 import 'package:opencode_mobile/ui/screens/memory/memory_proposal_card.dart';
 import 'package:opencode_mobile/ui/screens/memory/memory_review_screen.dart';
 import 'package:opencode_mobile/ui/screens/memory/memory_screen.dart';
@@ -117,28 +116,32 @@ void main() {
         isCurrent: current ?? () => true,
       );
 
-  /// A save drives KitScreen's indeterminate loading bar, so these tests
-  /// press the real button callback (like selectFirst) instead of waiting
-  /// for an animation that never settles, then let the serialized store
-  /// write finish across a few frames.
+  // setUp constructs the store's queue Future outside testWidgets' FakeAsync
+  // zone. Late listeners on that Future run on the real microtask queue.
+  // Pumping simulated frames alone cannot complete them. Yield to the real
+  // queue, then verify the actual tap's write and UI completion.
+  Future<void> settleWrite(WidgetTester tester) async {
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pumpAndSettle();
+  }
+
   Future<void> pressSave(WidgetTester tester, {bool enabled = true}) async {
     final button = tester.widget<KitButton>(
       find.byKey(const ValueKey('memory-review-save')),
     );
     expect(button.onPressed, enabled ? isNotNull : isNull);
     if (enabled) {
-      button.onPressed!();
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 150));
-      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('memory-review-save')));
+      await settleWrite(tester);
     }
   }
 
   Future<void> selectFirst(WidgetTester tester) async {
     final first = find.byKey(const ValueKey('memory-candidate-0'));
     await tester.ensureVisible(first);
-    tester.widget<KitSwitchRow>(first).onChanged!(true);
+    await tester.tap(first);
     await tester.pumpAndSettle();
+    expect(tester.widget<KitSwitchRow>(first).value, isTrue);
   }
 
   testWidgets(
@@ -251,11 +254,7 @@ void main() {
       addTearDown(connection.dispose);
       final shared = profiles.longTermMemory;
       await mount(tester, MemoryScreen(controller: connection));
-      final add = tester.widget<KitButton>(
-        find.byKey(const ValueKey('memory-add')),
-      );
-      expect(add.onPressed, isNotNull);
-      add.onPressed!();
+      await tester.tap(find.byKey(const ValueKey('memory-add')));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const ValueKey('memory-text')),
@@ -265,10 +264,8 @@ void main() {
         find.byKey(const ValueKey('memory-save')),
       );
       expect(save.onPressed, isNotNull);
-      save.onPressed!();
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 150));
-      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('memory-save')));
+      await settleWrite(tester);
       expect(shared.snapshot.entries.single.text, 'Use concise replies');
       final entry = find.byKey(
         ValueKey('memory-entry-${shared.snapshot.entries.single.id}'),
