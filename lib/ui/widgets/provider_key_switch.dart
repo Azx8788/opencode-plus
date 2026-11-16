@@ -46,17 +46,18 @@ Future<bool> showProviderKeySwitch(
 
   final strings = lookupAppLocalizations(Localizations.localeOf(context));
   final messenger = ScaffoldMessenger.maybeOf(context);
-  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? progress;
   void say(String message) {
-    progress?.close();
-    if (sameScope()) messenger?.showSnackBar(SnackBar(content: Text(message)));
+    if (!sameScope()) return;
+    messenger
+      ?..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   final store = BuiltinProviderStore(linux: linux ?? BuiltinLinux());
   final names = ProviderKeyRingStore(controller.store.prefs);
   var activated = false;
   try {
-    progress = messenger?.showSnackBar(
+    messenger?.showSnackBar(
       SnackBar(content: Text(strings.providerKeyLoading)),
     );
     final resolved = await store.resolve();
@@ -103,8 +104,7 @@ Future<bool> showProviderKeySwitch(
       );
       activeID = legacyID;
     }
-    progress?.close();
-    progress = null;
+    messenger?.clearSnackBars();
     if (keys.isEmpty) {
       say(strings.providerKeyConfigureFirst);
       return false;
@@ -130,7 +130,7 @@ Future<bool> showProviderKeySwitch(
     checkScope();
     final key = chosen;
     if (key == null || key.id == activeID) return false;
-    progress = messenger?.showSnackBar(
+    messenger?.showSnackBar(
       SnackBar(content: Text(strings.providerKeySwitching)),
     );
     final value = await store.readSecret(key.filePath);
@@ -235,7 +235,7 @@ Future<bool> showProviderKeySwitch(
     say(activated ? strings.providerKeyReloadNeeded : strings.providerKeySwitchFailed);
     return activated;
   } finally {
-    progress?.close();
+    messenger?.clearSnackBars();
     _keySwitchesInProgress.remove(providerID);
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:opencode_mobile/domain/models.dart';
 import 'package:opencode_mobile/l10n/app_localizations.dart';
 import 'package:opencode_mobile/ui/kit/kit.dart';
+import 'package:opencode_mobile/ui/app_theme.dart';
 import 'package:opencode_mobile/ui/screens/chat_screen.dart' as chat;
 import 'package:opencode_mobile/ui/widgets/tool_card.dart';
 
@@ -82,7 +83,9 @@ void main() {
   }) async {
     await tester.pumpWidget(
       MaterialApp(
-        theme: dark ? ThemeData.dark() : ThemeData.light(),
+        // Use the same theme factory as the app; the transcript must follow
+        // the selected roles/fonts/surface style rather than stock Material.
+        theme: dark ? AppTheme.dark() : AppTheme.light(),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         builder: (context, child) => MediaQuery(
