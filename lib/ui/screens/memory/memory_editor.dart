@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../../domain/long_term_memory.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../state/long_term_memory.dart';
+import '../../app_iconography.dart';
 import '../../kit/kit.dart';
 import '../../widgets/product_states.dart';
 
@@ -189,7 +190,9 @@ class _MemoryEditorState extends State<MemoryEditor> {
                   for (final project in projects.values)
                     KitChoice(value: project.key, title: project.label),
                 ],
-                onSelected: _busy ? null : (key) => setState(() => _project = projects[key]),
+                onSelected: _busy
+                    ? null
+                    : (key) => setState(() => _project = projects[key]),
                 disabledReason: _busy ? l.memorySaving : null,
               ),
               KitSwitchRow(

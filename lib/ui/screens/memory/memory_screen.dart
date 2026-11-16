@@ -6,6 +6,7 @@ import '../../../domain/long_term_memory.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../state/connection.dart';
 import '../../../state/long_term_memory.dart';
+import '../../app_iconography.dart';
 import '../../kit/kit.dart';
 import '../../widgets/product_states.dart';
 import 'memory_editor.dart';
@@ -202,15 +203,16 @@ class _MemoryScreenState extends State<MemoryScreen> {
                     SizedBox(height: t.space2),
                     KitText(l.memoryToolHint, role: KitTextRole.secondary),
                     SizedBox(height: t.space3),
-                    if (_store.loaded) KitText(
-                      l.memoryCount(
-                        snapshot.entries.length,
-                        snapshot.applicable(project?.key).length,
+                    if (_store.loaded)
+                      KitText(
+                        l.memoryCount(
+                          snapshot.entries.length,
+                          snapshot.applicable(project?.key).length,
+                        ),
+                        key: const ValueKey('memory-summary'),
+                        role: KitTextRole.headline,
+                        tabular: true,
                       ),
-                      key: const ValueKey('memory-summary'),
-                      role: KitTextRole.headline,
-                      tabular: true,
-                    ),
                   ],
                 ),
               ),

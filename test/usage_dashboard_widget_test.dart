@@ -89,8 +89,9 @@ List<UsageTrendPoint> _points(UsageSnapshot snapshot, {bool failed = false}) {
   final weights = List.generate(plan.buckets.length, (index) => index % 8 + 1);
   final weightTotal = weights.fold<int>(0, (sum, value) => sum + value);
   int share(int total, int index) {
-    if (index < weights.length - 1)
+    if (index < weights.length - 1) {
       return total * weights[index] ~/ weightTotal;
+    }
     return total -
         weights
             .take(index)

@@ -56,16 +56,18 @@ class _MemoryReviewScreenState extends State<MemoryReviewScreen> {
           ? l.memoryLimit
           : null,
     );
-    if (mounted && result != null)
+    if (mounted && result != null) {
       setState(() => _candidates[index] = result.trim());
+    }
   }
 
   Future<void> _save() async {
     if (_busy ||
         _selected.isEmpty ||
         _saved ||
-        (_projectScope && widget.project == null))
+        (_projectScope && widget.project == null)) {
       return;
+    }
     setState(() {
       _busy = true;
       _error = null;
@@ -146,8 +148,9 @@ class _MemoryReviewScreenState extends State<MemoryReviewScreen> {
                   selected: _projectScope ? 'project' : 'global',
                   semanticsLabel: l.memoryScope,
                   onChanged: (value) {
-                    if (!_busy)
+                    if (!_busy) {
                       setState(() => _projectScope = value == 'project');
+                    }
                   },
                   segments: [
                     KitSegment(
