@@ -50,7 +50,9 @@ class _UsageActivityHeatmapState extends State<_UsageActivityHeatmap> {
       });
     }
     final scaler = MediaQuery.textScalerOf(context);
-    final cell = math.max(t.space3, scaler.scale(t.space3));
+    // Caption line height, not just font size: weekday labels must not
+    // paint over neighbouring rows under the app's text-size setting.
+    final cell = math.max(t.space3, scaler.scale(16));
     final gap = t.space1 / 2;
     final slot = cell + gap;
     final labelHeight = scaler.scale(16) + t.space2;

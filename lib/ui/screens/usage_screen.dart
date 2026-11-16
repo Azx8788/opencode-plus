@@ -230,6 +230,7 @@ class _UsageScreenState extends State<UsageScreen> {
                 lifetime: _overview.lifetime,
                 lifetimeLoading: _overview.lifetimeLoading,
                 lifetimeFailed: _overview.lifetimeError != null,
+                unavailable: _overview.detached || _overview.error != null,
                 range: _overview.range,
                 now: _overview.clock().toLocal(),
                 launches: AppLaunchStatistics.read(

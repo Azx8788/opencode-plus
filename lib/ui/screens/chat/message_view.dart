@@ -713,7 +713,9 @@ class _MessageView extends StatelessWidget {
     List<_AssistantPartRun> all,
     bool streaming,
     _ChatScreenState? chat,
-  ) => run.card != null && chat != null
+  ) => run.memory != null && chat != null
+      ? chat._memoryProposalRow(run.parts.single, run.memory!)
+      : run.card != null && chat != null
       ? chat._agentCardRow(run.card!)
       : run.parts.first.type == 'v2:notice'
       ? V2TranscriptRow(

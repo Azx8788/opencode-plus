@@ -282,6 +282,21 @@ extension _ConnectionControllerConnectImpl on ConnectionController {
     if (gateway is Api2Gateway) {
       gateway.serverRunsTools = (id) =>
           identical(api, gateway) && _autoApprovalFor(id).automatic;
+      gateway.memoryContext = (id) async {
+        final memory = store.longTermMemory;
+        if (!memory.managed) return null;
+        await memory.load();
+        final revision = memory.revision;
+        final location = locationRevision;
+        final session = await gateway.session(id);
+        bool current() => !_disposed && identical(api, gateway) &&
+            profile.id == this.profile?.id && profile.baseUrl == this.profile?.baseUrl &&
+            location == locationRevision && memory.revision == revision;
+        if (!current()) throw const MemoryException(MemoryFailure.changed);
+        final projectKey = session.projectID == null ? null : memoryProjectKey(
+          profile.id, profile.baseUrl, session.projectID!);
+        return MemoryPromptContext(value: memory.snapshot.context(projectKey), isCurrent: current);
+      };
     }
     if (gateway is Api2Gateway &&
         BuiltinLinux.managesServerUrl(profile.baseUrl)) {

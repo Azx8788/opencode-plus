@@ -160,6 +160,7 @@ import '../builtin/agents/phone_agents_host.dart' show BuiltinPhoneAgents;
 import '../builtin/agents/agent_sign_in.dart' show ChannelAgentSignInHost;
 import 'phone_agent_host_port.dart';
 import 'conversation_title_memory.dart';
+import '../domain/long_term_memory.dart';
 
 part 'connection/gen_ui.dart';
 part 'connection/connector_search.dart';

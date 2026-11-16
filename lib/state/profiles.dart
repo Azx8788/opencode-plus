@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../ui/kit/kit_redact.dart';
 import 'factsbook/factsbook_store.dart' show FactsBookStore;
+import 'long_term_memory.dart';
 import '../domain/phone_agent_host.dart';
 import '../builtin/agents/agent_host_cleanup.dart';
 import '../builtin/builtin_linux.dart';
@@ -51,6 +52,7 @@ class _ProfileStoreChanges extends ChangeNotifier {
 /// Persists server profiles. Metadata in SharedPreferences, secrets in the
 /// Android Keystore via flutter_secure_storage.
 class ProfileStore {
+  LongTermMemoryStore get longTermMemory => LongTermMemoryStore.shared(prefs, secure);
   static const _profilesKey = 'oc.profiles';
   static const _activeKey = 'oc.activeProfile';
 

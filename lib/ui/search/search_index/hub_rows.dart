@@ -157,6 +157,17 @@ extension _IndexHubRows on _IndexBuild {
         open: (context, scope) => openTeamSetup(context, scope.controller),
       ),
       // Conversations: what runs by itself, how a transcript shows,
+      SearchEntry(
+        id: 'settings-memory',
+        kind: SearchEntryKind.hubRow,
+        group: SettingsGroup.chat,
+        icon: AppIconography.database,
+        title: l10n.memoryTitle,
+        keywords:
+            '${l10n.memoryAdd} ${l10n.memorySummarize} ${l10n.memorySearch}',
+        pages: const ['memory'],
+        open: _screen((scope) => MemoryScreen(controller: scope.controller)),
+      ),
       // the shell it runs commands in, and voice.
       // What runs by itself (P6.1): the team's level and the doors to the
       // rules and the watching that let things happen without asking.

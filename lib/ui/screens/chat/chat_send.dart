@@ -624,7 +624,7 @@ extension _ChatSend on _ChatScreenState {
       // A response error cannot establish whether the server already
       // admitted work. Keep the durable marker for explicit review instead
       // of returning a draft that appears safe to send a second time.
-      if (_onlineSendID != null && promptStarted) {
+      if (_onlineSendID != null && promptStarted && e is! MemoryException) {
         _onlineSendError = KitRedact.text(e.toString());
         if (mounted) _showComposerNote(strings.queuedResendMessage);
         return;
@@ -633,6 +633,10 @@ extension _ChatSend on _ChatScreenState {
       if (!mounted) return;
       if (e is ApiException && e.errorTag == 'SessionRevertPending') {
         unawaited(_conn.ensureSession(widget.sessionID));
+      }
+      if (e is MemoryException) {
+        // The memory synchronizer refuses before client.prompt is called.
+        _onlineSendDispatched = false;
       }
       _setChatState(() => _attachments.insertAll(0, attachments));
       final currentText = _composer.text;

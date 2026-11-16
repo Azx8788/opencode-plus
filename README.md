@@ -33,14 +33,14 @@ of losing its servers and its Ubuntu.
 ## Versioning
 
 `version:` in `pubspec.yaml` is the only version the APK carries
-(`0.3.24+32` is name 0.3.24, code 32). **A plain `flutter build apk` does not
+(`0.3.25+33` is name 0.3.25, code 33). **A plain `flutter build apk` does not
 move it**, so two builds of the same tree install as the same version and the
 phone has no reason to treat the second one as an upgrade. Use one of these
 (the numbers below are the current version and what each command makes of it):
 
 ```sh
-dart run tool/bump_version.dart              # 0.3.24+32 -> 0.3.24+33
-dart run tool/bump_version.dart --patch      # 0.3.24+32 -> 0.3.25+33
+dart run tool/bump_version.dart              # 0.3.25+33 -> 0.3.25+34
+dart run tool/bump_version.dart --patch      # 0.3.25+33 -> 0.3.26+34
 tool/build_apk.sh                            # bump, then build a release APK
 ```
 
@@ -75,6 +75,17 @@ budgets and the previous detailed report remain one tap away. Unreported
 source breakdowns and message counts are not invented; app launches begin
 counting with this version. See [LOCAL_USAGE_DASHBOARD.md](LOCAL_USAGE_DASHBOARD.md)
 for measurements, bounded reads and verification.
+
+## Memory
+
+Settings → Conversations → Memory lets you add, edit, disable and delete
+memories. In a conversation, ask AI to summarize memories, or use the
+conversation menu's summary action. The `oc-ui` MCP `memory_write` tool only
+proposes entries: preview, edit and select them, then explicitly save to the
+same local store. There is no background extraction, independent summary
+request or automatic write. The tool must be installed on the current agent;
+unsupported agents do not silently use files or a different model instead.
+See [MEMORY.md](MEMORY.md) for the contract and host limits.
 
 ## Conversation layout
 

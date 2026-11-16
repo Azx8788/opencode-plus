@@ -29,6 +29,7 @@ import '../screens/global_sessions_screen.dart';
 import '../screens/guide_screen.dart';
 import '../screens/keep_running_screen.dart';
 import '../screens/library_screen.dart';
+import '../screens/memory/memory_screen.dart';
 import '../screens/linux_manager/linux_manager_screen.dart'
     show openLinuxManager;
 import '../screens/linux_manager/linux_packages_page.dart';

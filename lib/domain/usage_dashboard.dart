@@ -167,11 +167,10 @@ String compactUsageCount(int count) {
   for (final unit in const [(1000000000, 'B'), (1000000, 'M'), (1000, 'K')]) {
     if (count >= unit.$1) {
       final number = count / unit.$1;
-      return '${number.toStringAsFixed(number < 10
-          ? 2
-          : number < 100
-          ? 1
-          : 0)}${unit.$2}';
+      final shown = number
+          .toStringAsFixed(2)
+          .replaceFirst(RegExp(r'\.?0+$'), '');
+      return '$shown${unit.$2}';
     }
   }
   return '$count';
