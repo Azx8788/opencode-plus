@@ -40,8 +40,8 @@ Future<bool> reloadServerConfig({
     final response = await transport.dio.post<void>(
       '/location/reload',
       queryParameters: {
-        if (directory != null) 'location[directory]': directory,
-        if (workspace != null) 'location[workspace]': workspace,
+        'location[directory]': ?directory,
+        'location[workspace]': ?workspace,
       },
       options: Options(
         sendTimeout: timeout,
