@@ -483,7 +483,9 @@ extension _ConnectionControllerModelsImpl on ConnectionController {
     if (selectedModel == null ||
         selectedModel.variants.any(
           (candidate) => candidate.id == variant && !candidate.disabled,
-        )) return false;
+        )) {
+      return false;
+    }
 
     AppLog.info('catalog', 'session reasoning variant removed', {
       'provider': model.providerID,
