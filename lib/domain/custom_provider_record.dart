@@ -75,6 +75,7 @@ class CustomProviderRecord {
     baseUrl: baseUrl,
     apiKey: withKey ?? apiKey,
     keyMode: keyMode,
+    keyFile: secretPath,
     keyPlaceholder: keyPlaceholder,
     models: models,
     disabledModelIDs: disabledModels,

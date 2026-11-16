@@ -30,6 +30,7 @@ import 'dart:convert';
 import '../diagnostics/app_log.dart';
 import '../domain/custom_provider.dart';
 import '../domain/custom_provider_record.dart';
+import '../domain/model_reasoning.dart';
 import '../domain/server_gateway/value_types_catalog.dart'
     show ProductException;
 import 'builtin_linux.dart';
@@ -538,6 +539,45 @@ fi
       'context': context,
       'backup': backup != null,
     });
+    return ProviderWriteReceipt(
+      configPath: snapshot.path,
+      backupPath: backup,
+      keyFileWritten: false,
+      providerID: providerID,
+      format: target.format,
+    );
+  }
+
+  /// Adds one requested reasoning level to the persistent server config.
+  /// The same path is used for every provider advertising reasoningEffort.
+  Future<ProviderWriteReceipt> setModelReasoningEffort(
+    String providerID,
+    String modelID,
+    String effort,
+  ) async {
+    final target = await resolve();
+    final snapshot = await read(target);
+    if (!snapshot.canMerge || snapshot.document == null) {
+      throw const ProviderWriteRefused(
+        'The server configuration cannot be edited here',
+        reason: 'unwritable',
+      );
+    }
+    final next = withModelReasoningEffort(
+      snapshot.document!,
+      target.format,
+      providerID: providerID,
+      modelID: modelID,
+      effort: effort,
+    );
+    final backup = identical(next, snapshot.document)
+        ? null
+        : await _writeDocument(
+            next,
+            path: snapshot.path,
+            exists: snapshot.exists,
+            previous: snapshot.raw,
+          );
     return ProviderWriteReceipt(
       configPath: snapshot.path,
       backupPath: backup,

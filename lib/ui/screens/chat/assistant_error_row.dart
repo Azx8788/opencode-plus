@@ -215,6 +215,16 @@ class _AssistantErrorRow extends StatelessWidget {
     String? named,
     KitAction? gatewayFix,
   ) => switch (kind) {
+    MessageErrorKind.variantUnavailable => (
+      'variant-unavailable',
+      onChooseModel == null || recovered
+          ? null
+          : KitAction(
+              key: const Key('error-action-choose-reasoning'),
+              label: strings.modelPickerThinking,
+              onPressed: onChooseModel,
+            ),
+    ),
     MessageErrorKind.modelNotFound => (
       'model-not-found',
       // A gateway that 404s a model name is fixed by naming one it lists,

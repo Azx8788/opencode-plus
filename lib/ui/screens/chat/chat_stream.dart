@@ -317,38 +317,19 @@ extension _ChatStream on _ChatScreenState {
       MessageErrorKind.unknown,
       text,
     );
-    if (kind == MessageErrorKind.variantUnavailable) {
-      unawaited(_recoverUnavailableVariant());
+    if (kind != MessageErrorKind.modelNotFound &&
+        kind != MessageErrorKind.variantUnavailable) {
       return;
     }
-    if (kind != MessageErrorKind.modelNotFound) return;
     unawaited(_readConn().refreshCatalog());
-  }
-
-  Future<void> _recoverUnavailableVariant() async {
-    try {
-      final connection = _readConn();
-      await connection.refreshCatalog();
-      await connection.reconcileSessionVariant(
-        widget.sessionID,
-        refreshCatalog: false,
-      );
-    } catch (_) {
-      // The error row still offers Send again; a transient catalog failure
-      // must not replace the useful server error with a second one.
-    }
   }
 
   String _eventErrorMessage(Object? raw) {
     if (raw is Map) {
       final data = raw['data'];
       final nested = data is Map ? data['message'] : null;
-      return (
-            raw['message'] ??
-            nested ??
-            raw['name'] ??
-            raw['type']
-          )?.toString() ??
+      final message = raw['message'] ?? nested ?? raw['name'] ?? raw['type'];
+      return message?.toString() ??
           _chatL10n(context).chatUiOpenCodeCouldNotCompleteThisPrompt;
     }
     final text = raw?.toString().trim();

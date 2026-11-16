@@ -20,22 +20,28 @@ extension _ModelCatalogFooter on _ModelCatalogViewState {
     final variants =
         drafted?.variants.where((variant) => !variant.disabled).toList() ??
         const <CatalogVariant>[];
+    final extra = drafted == null ? const <String>[] : _extraEfforts(drafted);
     final agents = _choosableAgents(catalog);
     CatalogVariant? chosenVariant;
     for (final variant in variants) {
       if (variant.id == _draftVariant) chosenVariant = variant;
     }
+    final level = presentedEffort(_draftVariant, _strings);
+    final chosenLabel = _draftVariant.isEmpty
+        ? _strings.e7ModelUiDefault
+        : chosenVariant != null
+        ? _variantLabel(chosenVariant)
+        : extra.contains(_draftVariant)
+        ? _strings.modelEffortCustom(level)
+        : _strings.modelEffortUnavailable(level);
     final chips = <Widget>[
-      if (drafted != null && variants.isNotEmpty)
+      if (drafted != null &&
+          (variants.isNotEmpty || extra.isNotEmpty || _draftVariant.isNotEmpty))
         Builder(
           builder: (chipContext) => KitChip.summary(
             key: const Key('model-picker-thinking'),
             icon: AppIconography.idea,
-            label: _strings.modelPickerThinkingChip(
-              chosenVariant == null
-                  ? _strings.e7ModelUiDefault
-                  : _variantLabel(chosenVariant),
-            ),
+            label: _strings.modelPickerThinkingChip(chosenLabel),
             expanded: false,
             onPressed: () =>
                 unawaited(_chooseThinking(chipContext, drafted, variants)),
@@ -91,6 +97,7 @@ extension _ModelCatalogFooter on _ModelCatalogViewState {
   ) async {
     final locked = _lockedReason;
     final known = variants.any((variant) => variant.id == _draftVariant);
+    final extra = _extraEfforts(model);
     await showKitMenu(
       anchor,
       semanticsLabel: _strings.modelPickerThinking,
@@ -98,11 +105,20 @@ extension _ModelCatalogFooter on _ModelCatalogViewState {
         KitMenuItem(
           key: ValueKey('model-variant-${model.id}-default'),
           label: _strings.e7ModelUiDefault,
-          checked: !known,
+          checked: _draftVariant.isEmpty,
           enabled: locked == null,
           disabledReason: locked,
           onSelected: () => _setVariant(model, ''),
         ),
+        if (_draftVariant.isNotEmpty && !known && !extra.contains(_draftVariant))
+          KitMenuItem(
+            key: const Key('model-variant-unavailable'),
+            label: presentedEffort(_draftVariant, _strings),
+            checked: true,
+            enabled: false,
+            disabledReason: _strings.chatErrorVariantUnavailable,
+            onSelected: () {},
+          ),
         for (final variant in variants)
           KitMenuItem(
             key: ValueKey('model-variant-${model.id}-${variant.id}'),
@@ -111,6 +127,17 @@ extension _ModelCatalogFooter on _ModelCatalogViewState {
             enabled: locked == null,
             disabledReason: locked,
             onSelected: () => _setVariant(model, variant.id),
+          ),
+        for (final effort in extra)
+          KitMenuItem(
+            key: ValueKey('model-extra-effort-$effort'),
+            group: KitMenuGroup(_strings.modelEffortCustomGroup),
+            label: presentedEffort(effort, _strings),
+            supporting: _strings.modelEffortCustomHint,
+            checked: _draftVariant == effort,
+            enabled: locked == null,
+            disabledReason: locked,
+            onSelected: () => _setVariant(model, effort),
           ),
       ],
     );
@@ -232,6 +259,8 @@ extension _ModelCatalogFooter on _ModelCatalogViewState {
     });
     var modelConfirmed = false;
     try {
+      if (!await _prepareReasoningChoice(model, variant)) return;
+      if (!mounted || !_sameScope) return;
       final sessionID = _scopedSessionID;
       if (sessionID != null) {
         await widget.controller.selectModelForSession(
@@ -244,14 +273,16 @@ extension _ModelCatalogFooter on _ModelCatalogViewState {
       }
       if (!_sameScope) return;
       // A runtime may resolve Default to the model's advertised default ID.
+      final currentCatalog = _catalog;
       final effectiveDefault =
           variant.isEmpty &&
-          _draftedModel(catalog)!.variants.any(
+          currentCatalog != null &&
+          (_draftedModel(currentCatalog)?.variants.any(
             (option) =>
                 !option.disabled &&
                 option.id == _currentVariant &&
                 option.options['isDefault'] == true,
-          );
+          ) ?? false);
       if (!ModelLibrary.sameModel(_currentModel, model) ||
           (_currentVariant != variant && !effectiveDefault)) {
         if (mounted) {

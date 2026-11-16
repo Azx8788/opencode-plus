@@ -25,6 +25,8 @@ Future<bool> reloadServerConfig({
   String username = 'opencode',
   String? cleartextConfirmedOrigin,
   String? certificatePinSha256,
+  String? directory,
+  String? workspace,
   Duration timeout = const Duration(seconds: 8),
 }) async {
   final transport = Api2Transport(
@@ -37,6 +39,10 @@ Future<bool> reloadServerConfig({
   try {
     final response = await transport.dio.post<void>(
       '/location/reload',
+      queryParameters: {
+        if (directory != null) 'location[directory]': directory,
+        if (workspace != null) 'location[workspace]': workspace,
+      },
       options: Options(
         sendTimeout: timeout,
         receiveTimeout: timeout,

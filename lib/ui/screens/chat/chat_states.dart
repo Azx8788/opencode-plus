@@ -293,7 +293,9 @@ _ChatStatus _promptErrorStatus(
           onPressed: onSwitchBack,
         )
       : null;
-  final modelMissing = kind == MessageErrorKind.modelNotFound;
+  final modelMissing =
+      kind == MessageErrorKind.modelNotFound ||
+      kind == MessageErrorKind.variantUnavailable;
   final use = modelMissing && suggestion != null && onUseSuggestion != null
       ? KitAction(
           key: const ValueKey('prompt-error-use-suggestion'),

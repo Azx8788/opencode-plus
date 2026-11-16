@@ -27,6 +27,7 @@ import 'package:opencode_mobile/ui/kit/kit_tokens.dart';
 
 import '../../domain/models.dart';
 import '../../domain/model_recommendations.dart';
+import '../../domain/model_reasoning.dart';
 import '../../api2/server_config_reload.dart';
 import '../../builtin/builtin_linux.dart';
 import '../../builtin/builtin_provider_store.dart';
@@ -48,6 +49,7 @@ part 'pickers_catalog_sections.dart';
 part 'pickers_catalog_footer.dart';
 part 'pickers_catalog_models.dart';
 part 'pickers_choices.dart';
+part 'pickers_reasoning.dart';
 
 AppLocalizations _pickerStrings(BuildContext context) =>
     Localizations.of<AppLocalizations>(context, AppLocalizations) ??
@@ -371,6 +373,7 @@ class ModelCatalogView extends StatefulWidget {
     this.applyScope = ModelPickerApplyScope.classic,
     this.sessionID,
     this.focusAgent = false,
+    this.saveReasoningEffort,
   }) : _apply = null;
 
   const ModelCatalogView._sheet({
@@ -381,6 +384,7 @@ class ModelCatalogView extends StatefulWidget {
     this.sessionID,
     this.focusAgent = false,
   }) : _apply = apply,
+       saveReasoningEffort = null,
        scrollController = null,
        onClose = null,
        showHeader = false;
@@ -395,6 +399,11 @@ class ModelCatalogView extends StatefulWidget {
 
   /// Opens with the agent choice unfolded.
   final bool focusAgent;
+
+  /// Optional host-owned writer. It must persist the level and refresh the
+  /// catalog before completing. The built-in server uses its config store.
+  final Future<void> Function(ModelRef model, String effort)?
+  saveReasoningEffort;
 
   final _SheetApply? _apply;
 

@@ -10291,7 +10291,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get modelEffortExtraHigh => '极高';
 
   @override
-  String get modelEffortMax => '最大';
+  String get modelEffortMax => 'Max';
 
   @override
   String get setupStoppedByRestart => '手机已重启，因此本地服务器已停止。需要时请再次启动。';
@@ -18286,7 +18286,20 @@ class AppLocalizationsZh extends AppLocalizations {
   String get chatErrorModelNotFound => '服务器上没有这个模型。';
 
   @override
-  String get chatErrorVariantUnavailable => '该思考等级已不可用。下次发送时将使用模型默认等级。';
+  String get chatErrorVariantUnavailable => '当前目录缺少此思考等级。请打开模型选择器恢复它或选择其他等级。';
+
+  @override
+  String get modelEffortCustomGroup => '自定义思考等级';
+  @override
+  String get modelEffortCustomHint => '为此模型保存明确的请求参数。服务商的实际支持可能与目录不同。';
+  @override
+  String modelEffortCustom(String level) => '$level · 自定义';
+  @override
+  String modelEffortUnavailable(String level) => '$level · 不可用';
+  @override
+  String get modelEffortSaveFailed => '思考等级保存失败，当前选择未改变。';
+  @override
+  String get modelEffortSavedNotLoaded => '已保存，但服务器尚未加载此等级。请刷新模型，或在当前任务结束后重启内置服务器。';
 
   @override
   String get chatErrorContextOverflow => '这段对话对模型来说太长了。';

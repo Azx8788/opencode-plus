@@ -30739,8 +30739,15 @@ abstract class AppLocalizations {
   /// The saved reasoning level disappeared after the server's model catalog changed.
   ///
   /// In en, this message translates to:
-  /// **'That reasoning level is no longer available. The next send will use the model default.'**
+  /// **'This reasoning level is missing from the current catalog. Open the model picker to restore it or choose another level.'**
   String get chatErrorVariantUnavailable;
+
+  String get modelEffortCustomGroup;
+  String get modelEffortCustomHint;
+  String modelEffortCustom(String level);
+  String modelEffortUnavailable(String level);
+  String get modelEffortSaveFailed;
+  String get modelEffortSavedNotLoaded;
 
   /// Chat: an agent error of the context-overflow kind; the server's text is under Details
   ///

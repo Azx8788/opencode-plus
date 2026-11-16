@@ -19389,7 +19389,20 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatErrorVariantUnavailable =>
-      'That reasoning level is no longer available. The next send will use the model default.';
+      'This reasoning level is missing from the current catalog. Open the model picker to restore it or choose another level.';
+
+  @override
+  String get modelEffortCustomGroup => 'Custom reasoning levels';
+  @override
+  String get modelEffortCustomHint => 'Save an explicit request setting for this model. Provider support may differ from the catalog.';
+  @override
+  String modelEffortCustom(String level) => '$level · custom';
+  @override
+  String modelEffortUnavailable(String level) => '$level · unavailable';
+  @override
+  String get modelEffortSaveFailed => 'Could not save the reasoning level. Your selection has not changed.';
+  @override
+  String get modelEffortSavedNotLoaded => 'Saved, but the server has not loaded this reasoning level. Refresh models or restart the built-in server after its current work finishes.';
 
   @override
   String get chatErrorContextOverflow =>

@@ -33,14 +33,14 @@ of losing its servers and its Ubuntu.
 ## Versioning
 
 `version:` in `pubspec.yaml` is the only version the APK carries
-(`0.3.20+28` is name 0.3.20, code 28). **A plain `flutter build apk` does not
+(`0.3.21+29` is name 0.3.21, code 29). **A plain `flutter build apk` does not
 move it**, so two builds of the same tree install as the same version and the
 phone has no reason to treat the second one as an upgrade. Use one of these
 (the numbers below are the current version and what each command makes of it):
 
 ```sh
-dart run tool/bump_version.dart              # 0.3.20+28 -> 0.3.20+29
-dart run tool/bump_version.dart --patch      # 0.3.20+28 -> 0.3.21+29
+dart run tool/bump_version.dart              # 0.3.21+29 -> 0.3.21+30
+dart run tool/bump_version.dart --patch      # 0.3.21+29 -> 0.3.22+30
 tool/build_apk.sh                            # bump, then build a release APK
 ```
 
@@ -65,6 +65,20 @@ crosses the Flutter/native boundary.
 
 [docs/BRANCH_INTEGRATION.md](docs/BRANCH_INTEGRATION.md) records the consolidated
 branches, conflict decisions and the validation gate before branch cleanup.
+
+## Reasoning levels
+
+For the built-in server, open the conversation's model picker → All models →
+Thinking. Models already advertising a reasoning-effort control show missing
+levels, including Max, under **Custom reasoning levels**. Choose a level and
+apply it to save the override and use it for the conversation. Save and Fetch
+models preserve these settings. Provider support can differ from its catalog;
+an explicit override is not a promise that every model supports Max.
+
+After upgrading from 0.3.20 or earlier, restart the built-in server once, after
+its current work finishes, so configuration reload uses the live file instead
+of a frozen startup snapshot. Remote servers require their owner to edit the
+server configuration; this phone does not silently write to another machine.
 
 ## Differences from upstream
 

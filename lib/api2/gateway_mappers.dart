@@ -749,6 +749,7 @@ Map<String, dynamic> _modelData(Api2ModelInfo model) {
       for (final variant in variants)
         if (variant is Map && variant['id'] is String)
           variant['id'] as String: {
+            'disabled': variant['disabled'] == true,
             'body': variant['settings'] is Map
                 ? Map<String, dynamic>.from(variant['settings'] as Map)
                 : const <String, dynamic>{},
@@ -823,6 +824,7 @@ CatalogModel mapApi2CatalogModel(Api2ModelInfo model) {
           if (variant is Map && variant['id'] is String)
             CatalogVariant(
               id: variant['id'] as String,
+              disabled: variant['disabled'] == true,
               options: variant['settings'] is Map
                   ? Map<String, dynamic>.from(variant['settings'] as Map)
                   : const {},

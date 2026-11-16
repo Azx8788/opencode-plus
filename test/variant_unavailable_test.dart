@@ -1,28 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:opencode_mobile/api2/events.dart';
+import 'package:opencode_mobile/api2/gateway_events.dart';
 import 'package:opencode_mobile/domain/models.dart';
-import 'package:opencode_mobile/domain/server_gateway/value_types_core.dart';
-import 'package:opencode_mobile/state/connection.dart';
-
-CatalogSnapshot _catalog({List<CatalogVariant> variants = const []}) =>
-    CatalogSnapshot(
-      providers: const [],
-      agents: const [],
-      models: [
-        CatalogModel(
-          id: 'gpt-6-astra',
-          providerID: 'gpt1',
-          name: 'GPT-6 Astra',
-          enabled: true,
-          status: 'active',
-          contextLimit: 1000000,
-          outputLimit: 32000,
-          reasoning: true,
-          attachments: true,
-          tools: true,
-          variants: variants,
-        ),
-      ],
-    );
 
 void main() {
   test('recognises the server variant-unavailable error', () {
@@ -44,27 +23,18 @@ void main() {
       sessionErrorFallbackText('VariantUnavailableError'),
       contains('reasoning level'),
     );
+    expect(
+      sessionErrorFallbackText('VariantUnavailableError'),
+      isNot(contains('will use the model default')),
+    );
   });
 
-  test('variant availability is model- and provider-scoped', () {
-    final model = ModelRef(providerID: 'gpt1', modelID: 'gpt-6-astra');
-    expect(
-      catalogOffersSessionVariant(
-        _catalog(variants: [const CatalogVariant(id: 'max')]),
-        model,
-        'max',
-      ),
-      isTrue,
-    );
-    expect(catalogOffersSessionVariant(_catalog(), model, 'max'), isFalse);
-    expect(catalogOffersSessionVariant(_catalog(), model, ''), isTrue);
-    expect(
-      catalogOffersSessionVariant(
-        _catalog(variants: [const CatalogVariant(id: 'max', disabled: true)]),
-        model,
-        'max',
-      ),
-      isFalse,
-    );
+  test('model and provider changes invalidate the picker catalog', () {
+    final adapter = Api2EventAdapter();
+    for (final type in ['model.updated', 'provider.updated']) {
+      final event = Api2EventEnvelope.fromJson({'type': type, 'data': {}});
+      expect(event.event, isA<Api2RefreshHintEvent>());
+      expect(adapter.adapt(event).single.type, 'catalog.updated');
+    }
   });
 }

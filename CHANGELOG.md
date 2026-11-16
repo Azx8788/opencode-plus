@@ -2,7 +2,28 @@
 
 This project is in public alpha. Only the newest preview is supported.
 
+## 0.3.21+29 — 2026-11-16
+
+  * **A persistent, visible Max choice, not an automatic downgrade.** On the
+    built-in server, models advertising `reasoningEffort` now offer missing
+    levels under "Custom reasoning levels" in the model picker. Apply saves a
+    real model variant, reloads the current project and confirms the catalog
+    before changing the conversation. These are explicit request overrides;
+    a provider may still reject or ignore a level it does not support.
+  * **Editing a provider no longer erases its reasoning configuration.** Save
+    and Fetch models keep existing variants, model aliases and reasoning
+    capabilities. A metadata refresh no longer silently lowers a chosen Max.
+  * **Configuration reload reads the live file.** New server starts no longer
+    freeze the provider file in `OPENCODE_CONFIG_CONTENT`. A server running
+    before this update needs one restart after its current work finishes.
+  * **Behaviour tests cover the visible choice and persistence.** Menu → Max
+    → save → refreshed catalog → session API, failed saves, provider edits and
+    missing metadata are tested without making paid provider requests.
+
 ## 0.3.20+28 — 2026-11-16
+
+This unreleased candidate only handled unavailable variants. Its automatic
+downgrade approach did not solve missing Max choices and is replaced above.
 
   * **A reasoning level that disappears no longer breaks the next prompt.**
     Catalog refreshes and sends reconcile the current conversation's variant

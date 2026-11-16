@@ -701,7 +701,14 @@ class CustomProviderDraft {
     if (providers.containsKey(id) && !replace) {
       throw ProductException('A provider named "$id" already exists');
     }
-    providers[id] = entry;
+    // The form owns a small subset of the model schema. In particular it
+    // does not edit variants, modelID aliases or reasoning controls. Replacing
+    // the whole entry used to erase them even on "Fetch models" and when
+    // only the key changed. Merge the form-owned fields onto the latest file.
+    final previous = providers[id];
+    providers[id] = replace && previous is Map
+        ? _mergeProviderEdit(previous, entry, format)
+        : entry;
     merged[rootKey] = providers;
     return merged;
   }
@@ -710,6 +717,61 @@ class CustomProviderDraft {
     ProviderConfigFormat.v1 => 'provider',
     ProviderConfigFormat.v2 => 'providers',
   };
+
+  static Map<String, Object?> _mergeProviderEdit(
+    Map previous,
+    Map<String, Object?> edited,
+    ProviderConfigFormat format,
+  ) {
+    final result = <String, Object?>{
+      ...previous.cast<String, Object?>(),
+      ...edited,
+    };
+    final settingsKey = format == ProviderConfigFormat.v2
+        ? 'settings'
+        : 'options';
+    final oldSettings = previous[settingsKey];
+    final newSettings = edited[settingsKey] as Map;
+    final settings = <String, Object?>{
+      if (oldSettings is Map) ...oldSettings.cast<String, Object?>(),
+      ...newSettings.cast<String, Object?>(),
+    };
+    // These two fields are deliberately editable/removable by the form.
+    if (!newSettings.containsKey('apiKey')) settings.remove('apiKey');
+    if (!newSettings.containsKey('headers')) settings.remove('headers');
+    result[settingsKey] = settings;
+    final oldModels = previous['models'];
+    final newModels = edited['models'] as Map;
+    final models = <String, Object?>{
+      if (oldModels is Map) ...oldModels.cast<String, Object?>(),
+    };
+    for (final item in newModels.entries) {
+      final before = models[item.key];
+      final after = item.value as Map;
+      final model = <String, Object?>{
+        if (before is Map) ...before.cast<String, Object?>(),
+        ...after.cast<String, Object?>(),
+      };
+      if (after['disabled'] != true) {
+        model.remove('disabled');
+        if (!after.containsKey('limit')) model.remove('limit');
+        final oldCaps = before is Map ? before['capabilities'] : null;
+        final newCaps = after['capabilities'];
+        if (newCaps is Map) {
+          model['capabilities'] = {
+            if (oldCaps is Map) ...oldCaps,
+            ...newCaps,
+          };
+        }
+      }
+      models[item.key as String] = model;
+    }
+    result['models'] = models;
+    if (format == ProviderConfigFormat.v1 && !edited.containsKey('blacklist')) {
+      result.remove('blacklist');
+    }
+    return result;
+  }
 }
 
 /// The config document with one model's context window replaced.

@@ -23082,7 +23082,15 @@
     }
   },
   "chatErrorModelNotFound": "The server doesn't have this model.",
-  "chatErrorVariantUnavailable": "That reasoning level is no longer available. The next send will use the model default.",
+  "chatErrorVariantUnavailable": "This reasoning level is missing from the current catalog. Open the model picker to restore it or choose another level.",
+  "modelEffortCustomGroup": "Custom reasoning levels",
+  "modelEffortCustomHint": "Save an explicit request setting for this model. Provider support may differ from the catalog.",
+  "modelEffortCustom": "{level} · custom",
+  "@modelEffortCustom": {"placeholders": {"level": {"type": "String"}}},
+  "modelEffortUnavailable": "{level} · unavailable",
+  "@modelEffortUnavailable": {"placeholders": {"level": {"type": "String"}}},
+  "modelEffortSaveFailed": "Could not save the reasoning level. Your selection has not changed.",
+  "modelEffortSavedNotLoaded": "Saved, but the server has not loaded this reasoning level. Refresh models or restart the built-in server after its current work finishes.",
   "@chatErrorModelNotFound": {
     "description": "Chat: an agent error of the model-not-found kind whose server text the app does not recognise; the server's text is under Details"
   },

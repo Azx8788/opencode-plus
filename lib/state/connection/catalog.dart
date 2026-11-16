@@ -290,22 +290,7 @@ extension _ConnectionControllerCatalogImpl on ConnectionController {
   /// pickers come through here.
   Future<void> _ensureCatalog() {
     final running = _currentCatalogLoad;
-    if (running != null) {
-      // If a config/provider/catalog invalidation arrived during this read,
-      // _loadCatalog queued one trailing read behind it. A caller that is
-      // about to send must join that trailing read too: the first response is
-      // explicitly stale and may still advertise a variant just removed.
-      final followUp = _catalogFollowUp;
-      if (followUp != null && identical(_catalogFollowUpAfter, running)) {
-        return followUp;
-      }
-      return running.then((_) async {
-        final queued = _catalogFollowUp;
-        if (queued != null && identical(_catalogFollowUpAfter, running)) {
-          await queued;
-        }
-      });
-    }
+    if (running != null) return running;
     if (_catalogFresh || _catalogRecent) return Future<void>.value();
     return _startCatalogLoad(announce: catalog == null);
   }
@@ -695,16 +680,9 @@ extension _ConnectionControllerCatalogImpl on ConnectionController {
         }
       }
       var nextVariant = selectedVariant;
-      final catalogModel = nextCatalog.models.where(
-        (model) =>
-            model.providerID == nextModel?.providerID &&
-            model.id == nextModel?.modelID,
-      );
-      final validVariants = catalogModel.isEmpty
-          ? const <CatalogVariant>[]
-          : catalogModel.first.variants.where((variant) => !variant.disabled);
-      if (nextVariant.isNotEmpty &&
-          !validVariants.any((variant) => variant.id == nextVariant)) {
+      // Catalog metadata is not a user's selection. Retain a custom effort
+      // for the same model; the picker can restore it or choose another level.
+      if (!ModelLibrary.sameModel(nextModel, selectedModel)) {
         nextVariant = '';
       }
       var nextAgent = selectedAgent;
@@ -790,10 +768,6 @@ extension _ConnectionControllerCatalogImpl on ConnectionController {
       _catalogReuseKey = scope;
       _catalogReuseInvalidations = invalidations;
       _notifyListeners();
-      // Session selections are server-owned on OpenCode 2 and can outlive a
-      // provider/config refresh. Reconcile them after this catalog is marked
-      // fresh, rather than waiting for the next prompt to fail.
-      _reconcileLoadedSessionVariants();
     } catch (error) {
       if (!_isCurrentCatalogRefresh(
         generation,

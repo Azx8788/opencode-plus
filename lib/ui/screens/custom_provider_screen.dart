@@ -718,6 +718,8 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
       username: profile.username.isEmpty ? 'opencode' : profile.username,
       cleartextConfirmedOrigin: profile.cleartextConfirmedOrigin,
       certificatePinSha256: profile.certificatePinSha256,
+      directory: widget.controller.directory,
+      workspace: widget.controller.workspace,
     );
   }
 

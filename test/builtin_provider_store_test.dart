@@ -40,6 +40,9 @@ class _FakeServer {
 
   Future<void> write(String relativePath, String content) async {
     files[relativePath] = content;
+    if (relativePath == '.oc-opencode2/config/opencode/opencode.json') {
+      fileBody = base64Encode(utf8.encode(content));
+    }
   }
 
   Future<BuiltinLinuxRunResult> run(String script, Duration timeout) async {
@@ -138,12 +141,11 @@ void main() {
   });
 
   group('scripts', () {
-    test('the start script hands the provider file to the server', () async {
-      // OPENCODE_CONFIG_CONTENT has the highest precedence, so the entry the
-      // app writes still applies if the server's own path resolution moves.
+    test('server reload reads the live file rather than a startup snapshot', () async {
       final script = BuiltinLinux.serverScript();
-      expect(script, contains(r'OPENCODE_CONFIG_CONTENT=$(cat'));
-      expect(script, contains('65536'));
+      expect(script, contains('export XDG_CONFIG_HOME=/root/.oc-opencode2/config'));
+      expect(script, contains('unset OPENCODE_CONFIG OPENCODE_CONFIG_CONTENT'));
+      expect(script, isNot(contains('export OPENCODE_CONFIG_CONTENT')));
       expect(await _syntaxError(script), isNull);
     });
 
@@ -164,6 +166,34 @@ void main() {
   });
 
   group('save', () {
+    test('Max survives both a config reread and a later provider edit', () async {
+      final existing = _draft().toDocument(ProviderConfigFormat.v2);
+      final fake = _FakeServer()
+        ..fileBody = base64Encode(utf8.encode(jsonEncode(existing)));
+      final store = _store(fake);
+      final added = await store.setModelReasoningEffort(
+        'my-gateway',
+        'deepseek-v3.2',
+        'max',
+      );
+      expect(added.backupPath, isNotNull);
+      expect(added.keyFileWritten, isFalse);
+      expect(fake.keyFile, isNull);
+      Map model() =>
+          (((jsonDecode(fake.configFile!) as Map)['providers'] as Map)
+                      ['my-gateway'] as Map)['models']['deepseek-v3.2'] as Map;
+      expect(model()['variants'], [
+        {'id': 'max', 'settings': {'reasoningEffort': 'max'}},
+      ]);
+      await store.save(_draft(apiKey: null), replace: true);
+      expect(model()['variants'], [
+        {'id': 'max', 'settings': {'reasoningEffort': 'max'}},
+      ]);
+      final resolved = await store.resolve();
+      final snapshot = await store.read(resolved);
+      expect(snapshot.document, jsonDecode(fake.configFile!));
+    });
+
     test('writes the provider and never the raw key into the config', () async {
       final fake = _FakeServer();
       final receipt = await _store(fake).save(_draft());

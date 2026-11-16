@@ -379,6 +379,8 @@ extension _ConnectionControllerEventsImpl on ConnectionController {
       case 'catalog.updated':
       case 'agent.updated':
       case 'config.updated':
+      case 'provider.updated':
+      case 'model.updated':
         // Provider credentials and catalog overlays can change without a
         // reconnect. Refetch the current catalog just like upstream clients,
         // behind the list already shown; a burst shares one reload.

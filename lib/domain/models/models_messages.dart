@@ -84,8 +84,7 @@ enum MessageErrorKind {
     if (key.contains('contentfilter')) return contentFilter;
     if (key.contains('abort')) return aborted;
     if (key.contains('modelnotfound')) return modelNotFound;
-    if (key.contains('variantunavailable') ||
-        key.contains('effortunavailable')) {
+    if (key.contains('variantunavailable') || key.contains('effortunavailable')) {
       return variantUnavailable;
     }
     return unknown;
@@ -144,10 +143,10 @@ String sessionErrorFallbackText(String? name) {
     MessageErrorKind.aborted => 'The run was stopped before it finished.',
     MessageErrorKind.modelNotFound =>
       'The selected model is not available on this server. Choose another '
-      'model.',
+          'model.',
     MessageErrorKind.variantUnavailable =>
       'The selected reasoning level is no longer available for this model. '
-          'The next send will use the model default.',
+          'Open the model picker to restore it or choose another level.',
     MessageErrorKind.unknown =>
       name == null || name.trim().isEmpty
           ? 'The session run failed.'
