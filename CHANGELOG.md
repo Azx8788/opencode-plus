@@ -16,6 +16,21 @@ This project is in public alpha. Only the newest preview is supported.
     Model request counts are not called message counts; unavailable request
     source breakdowns are explained. Main-app launches are counted only from
     this update onward, separately from server/project usage.
+  * **Memory you review before it is saved.** Settings → Conversations →
+    Memory keeps global and per-project memories encrypted on this phone.
+    Ask AI to summarize the current conversation, or add one yourself. The
+    `oc-ui` MCP `memory_write` tool only proposes entries; nothing is written
+    until you preview, edit and select them. Disabled or deleted memories stop
+    being sent with later messages. There is no background extraction,
+    separate summary request or automatic save.
+  * **Reply timing, cache hits and request timelines.** Every reply footer
+    adds the final request's cache-hit rate to elapsed time, steps, speed and
+    context. The conversation menu opens per-reply and whole-conversation
+    elapsed breakdowns, plus a model-step request timeline; Local usage adds
+    a cross-session timeline of acknowledged sends. Recorded phases use
+    server timestamps only. A streaming window without text boundaries stays
+    unclassified rather than being guessed as output, and unreported cache
+    data stays unknown.
 
 ## 0.3.24+32 — 2026-11-16
 
