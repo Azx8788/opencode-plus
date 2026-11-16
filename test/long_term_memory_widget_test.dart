@@ -260,6 +260,7 @@ void main() {
         find.byKey(const ValueKey('memory-text')),
         'Use concise replies',
       );
+      await tester.pumpAndSettle();
       final save = tester.widget<KitButton>(
         find.byKey(const ValueKey('memory-save')),
       );
