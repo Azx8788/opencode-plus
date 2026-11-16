@@ -11,6 +11,8 @@ documents are now OpenCode Plus, while the application id stays
 `com.azx8788.opencode.mini` so an existing install upgrades in place instead
 of losing its servers and its Ubuntu.
 
+中文概览见 [opencodePlus项目介绍.md](opencodePlus项目介绍.md)；面向维护者的历史审计快照见 [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md)。
+
 ## What it does
 
 - **Agents run on the phone.** The app installs its own Ubuntu (proot, no root),

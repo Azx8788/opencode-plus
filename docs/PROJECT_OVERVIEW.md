@@ -2,6 +2,16 @@
 
 > 本文是审计分支的历史快照，不代表整合后所有模块的最新状态。
 > `0.3.18+26` 的分支整合范围与验证门槛见 [BRANCH_INTEGRATION.md](BRANCH_INTEGRATION.md)。
+> 当前版本（`0.3.25+33`）的能力与边界见 [opencodePlus项目介绍.md](../opencodePlus项目介绍.md)；
+> 下文的版本号、代码量、测试数量与分支状态都是各自记录当日的数值，不作现值使用。
+
+## 当前版本补充（0.3.25+33）
+
+以下能力在历史审计之后加入，细节见上面的当前版本介绍和对应专题文档：
+
+- **本机用量仪表盘**：活动热力图、7/30/90 天与全部时间的 Token 卡片、模型排行；聚合读取有界、失败显式未知，详见 [LOCAL_USAGE_DASHBOARD.md](../LOCAL_USAGE_DASHBOARD.md)。
+- **预览后确认的长期记忆**：设置里手动管理，AI 通过内置 `oc-ui` MCP `memory_write` 只提交候选，勾选保存才写入本机加密库，详见 [MEMORY.md](../MEMORY.md)。
+- **耗时与缓存命中率**：回答底部显示最后一次请求的缓存命中率；会话菜单提供整段与逐条回答的耗时分布、模型步骤请求时间线；用量页提供跨会话的本机请求时间线。阶段只用服务端时间戳，未分类流式时间不猜成输出，详见 [CONVERSATION_PROCESS_CARDS.md](../CONVERSATION_PROCESS_CARDS.md)。
 
 - 仓库：<https://github.com/Azx8788/opencode-plus>
 - 分析对象：`main` @ `0355410`（快照基线）+ 整改分支 `audit/quality-fixes-20261115`
