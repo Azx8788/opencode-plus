@@ -553,7 +553,7 @@ fi
       settingsKey: settings,
     };
     final nextProviders = <String, Object?>{
-      for (final item in providers.entries) '${item.key}': item.value,
+      for (final item in (providers as Map).entries) '${item.key}': item.value,
       providerID: entry,
     };
     final next = <String, Object?>{...document, root: nextProviders};
@@ -629,18 +629,19 @@ fi
     }
     final settings = <String, Object?>{
       ...oldSettings.cast<String, Object?>(),
-      if (activeKeyID != null)
-        'apiKey': '{file:${keys.firstWhere((key) => key.id == activeKeyID).filePath}}'
-      else
-        'apiKey': null,
     };
-    if (activeKeyID == null) settings.remove('apiKey');
+    if (activeKeyID != null) {
+      settings['apiKey'] =
+          '{file:${keys.firstWhere((key) => key.id == activeKeyID).filePath}}';
+    } else {
+      settings.remove('apiKey');
+    }
     final entry = <String, Object?>{
       ...existingProvider.cast<String, Object?>(),
       settingsKey: settings,
     };
     final nextProviders = <String, Object?>{
-      for (final item in providers.entries) '${item.key}': item.value,
+      for (final item in (providers as Map).entries) '${item.key}': item.value,
       providerID: entry,
     };
     final next = <String, Object?>{...document, root: nextProviders};
@@ -705,13 +706,13 @@ fi
   }
 
   static bool _managedKeyPath(String path, String providerID) => RegExp(
-    '^/root/\\.secrets/opencode-plus/${RegExp.escape(providerID)}/[a-zA-Z0-9_-]{1,48}\\.key$',
+    '^/root/\\.secrets/opencode-plus/${RegExp.escape(providerID)}/[a-zA-Z0-9_-]{1,48}\\.key\$',
   ).hasMatch(path);
 
   static bool _safeKeyPath(String path, String providerID) =>
       path == '/root/.secrets/$providerID.key' ||
       RegExp(
-        '^/root/\\.secrets/opencode-plus/${RegExp.escape(providerID)}/[a-zA-Z0-9_-]{1,48}\\.key$',
+        '^/root/\\.secrets/opencode-plus/${RegExp.escape(providerID)}/[a-zA-Z0-9_-]{1,48}\\.key\$',
       ).hasMatch(path);
 
   /// Writes one model's context window into an entry that is already on disk.

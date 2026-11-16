@@ -197,6 +197,32 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
       confirmKey: const ValueKey('provider-delete-confirm'),
     );
     if (!agreed || !mounted) return;
+    await _removeProvider(record.id, record.name, currentPath: record.secretPath);
+  }
+
+  /// Removes an entry the form cannot open. Its shape is unknown, but its id
+  /// is enough for a config-level removal, and the backup still protects it.
+  Future<void> _deleteUnreadable(String id) async {
+    final l10n = _l10nOf(context);
+    final agreed = await showKitConfirm(
+      context,
+      title: l10n.providerManageDeleteTitle(id),
+      body: l10n.providerManageDeleteBody,
+      confirmLabel: l10n.providerManageDelete,
+      kind: KitConfirmKind.destructive,
+      icon: AppIconography.delete,
+      confirmKey: const ValueKey('provider-unreadable-delete-confirm'),
+    );
+    if (!agreed || !mounted) return;
+    await _removeProvider(id, id);
+  }
+
+  Future<void> _removeProvider(
+    String id,
+    String name, {
+    String? currentPath,
+  }) async {
+    final l10n = _l10nOf(context);
     setState(() => _busy = true);
     try {
       final profileID = widget.controller.profile?.id;
@@ -204,19 +230,19 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
           ? null
           : await _keyRingStore.load(
               profileID: profileID,
-              providerID: record.id,
-              currentPath: record.secretPath,
+              providerID: id,
+              currentPath: currentPath,
             );
-      await _store.remove(record.id, resolved: _resolved);
-      await _store.removeProviderKeyFiles(record.id, [
+      await _store.remove(id, resolved: _resolved);
+      await _store.removeProviderKeyFiles(id, [
         for (final key in keyRing?.keys ?? const []) key.filePath,
-        if (record.secretPath case final path?) path,
+        if (currentPath case final path?) path,
       ]);
       if (profileID != null) {
         try {
           await _keyRingStore.save(
             profileID: profileID,
-            providerID: record.id,
+            providerID: id,
             keys: const [],
             activeID: null,
           );
@@ -226,7 +252,7 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
       }
       if (!mounted) return;
       setState(() => _busy = false);
-      _say(l10n.providerManageDeleted(record.name));
+      _say(l10n.providerManageDeleted(name));
       await _load();
     } catch (error) {
       if (!mounted) return;
@@ -384,6 +410,13 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
               _hidden.contains(entry.id),
         )
         .length;
+    // An unreadable entry the shipped list does not already show still has an
+    // id, which is all a config-level removal needs.
+    final represented = {for (final entry in allEntries) entry.id};
+    final unreadableOnly = [
+      for (final id in catalogue.unreadableIDs)
+        if (!represented.contains(id)) id,
+    ]..sort();
     // Two sources, two sections: a shipped template is a provider whose
     // models come from the server's own catalogue, and a custom one is a
     // channel the person declared. They behave differently on save (one is
@@ -448,19 +481,12 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
           tone: KitTextTone.secondary,
         ),
       ],
-      if (catalogue.unreadable > 0) ...[
+      if (unreadableOnly.isNotEmpty) ...[
         SizedBox(height: tokens.space3),
         KitRowGroup(
           margin: EdgeInsets.zero,
           children: [
-            KitRow(
-              key: const ValueKey('providers-unreadable'),
-              title: l10n.providerManageUnreadable(catalogue.unreadable),
-              supporting: TextSpan(text: l10n.providerManageUnreadableBody),
-              supportingMaxLines: 3,
-              enabled: false,
-              disabledReason: l10n.providerManageUnreadableBody,
-            ),
+            for (final id in unreadableOnly) _unreadableRow(context, l10n, id),
           ],
         ),
       ],
@@ -504,6 +530,27 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
     ];
   }
 
+  Widget _unreadableRow(
+    BuildContext context,
+    AppLocalizations l10n,
+    String id,
+  ) => KitRow(
+    key: ValueKey('provider-unreadable-$id'),
+    title: id,
+    supporting: TextSpan(text: l10n.providerManageUnreadableBody),
+    supportingMaxLines: 3,
+    menuLabel: l10n.providerManageMenu(id),
+    menu: [
+      KitMenuItem(
+        key: ValueKey('provider-delete-unreadable-$id'),
+        label: l10n.providerManageDelete,
+        icon: AppIconography.delete,
+        destructive: true,
+        onSelected: () => _deleteUnreadable(id),
+      ),
+    ],
+  );
+
   Widget _row(
     BuildContext context,
     AppLocalizations l10n,
@@ -533,9 +580,7 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
         ].join(' · '),
       ),
       supportingMaxLines: 3,
-      enabled: !entry.blocked,
-      disabledReason: entry.blocked ? l10n.providerManageUnreadableBody : null,
-      trailing: const KitChevron(),
+      trailing: entry.blocked ? null : const KitChevron(),
       onTap: entry.blocked
           ? null
           : () => _openForm(
@@ -544,7 +589,15 @@ class _CustomProvidersScreenState extends State<CustomProvidersScreen> {
             ),
       menuLabel: l10n.providerManageMenu(entry.name),
       menu: [
-        if (record == null) ...[
+        if (entry.blocked)
+          KitMenuItem(
+            key: ValueKey('provider-delete-${entry.id}'),
+            label: l10n.providerManageDelete,
+            icon: AppIconography.delete,
+            destructive: true,
+            onSelected: () => _deleteUnreadable(entry.id),
+          )
+        else if (record == null) ...[
           KitMenuItem(
             key: ValueKey('provider-setup-${entry.id}'),
             label: l10n.providerManageSetup,

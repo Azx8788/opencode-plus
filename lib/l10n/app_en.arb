@@ -44371,9 +44371,9 @@
       }
     }
   },
-  "providerManageUnreadableBody": "Their shape is not something this form can rewrite safely (an override of a built-in provider, for example). Edit them on the server.",
+  "providerManageUnreadableBody": "Their shape is not something this form can rewrite safely (an override of a built-in provider, for example). Edit them on the server, or remove one from this list.",
   "@providerManageUnreadableBody": {
-    "description": "Their shape is not something this form can rewrite safely (an override of a built-in provider, for example). Edit them on the server."
+    "description": "Their shape is not something this form can rewrite safely (an override of a built-in provider, for example). Edit them on the server, or remove one from this list."
   },
   "providerEditTitle": "Edit provider",
   "@providerEditTitle": {

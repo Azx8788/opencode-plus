@@ -64,7 +64,7 @@ class ProviderKeyRingStore {
         ? null
         : keys.where((key) => key.filePath == currentPath).firstOrNull?.id ??
               (keys.any((key) => key.id == storedActive) ? storedActive : null);
-    return (keys: List.unmodifiable(keys), activeID: active);
+    return (keys: List<ProviderKeyRecord>.unmodifiable(keys), activeID: active);
   }
 
   Future<void> save({
@@ -100,7 +100,7 @@ class ProviderKeyRingStore {
         for (final key in normalized)
           {'id': key.id, 'name': key.name, 'path': key.filePath},
       ],
-      if (activeID != null) 'active': activeID,
+      'active': ?activeID,
     });
     if (!await preferences.setString(_key(profileID, providerID), encoded)) {
       throw const FormatException('Could not save provider key names');
@@ -108,6 +108,6 @@ class ProviderKeyRingStore {
   }
 
   static bool _managedPath(String path, String providerID) => RegExp(
-    '^/root/\\.secrets/opencode-plus/${RegExp.escape(providerID)}/[a-zA-Z0-9_-]{1,48}\\.key$',
+    '^/root/\\.secrets/opencode-plus/${RegExp.escape(providerID)}/[a-zA-Z0-9_-]{1,48}\\.key\$',
   ).hasMatch(path);
 }

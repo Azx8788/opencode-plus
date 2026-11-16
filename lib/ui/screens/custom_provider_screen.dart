@@ -97,8 +97,7 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
   /// itself, so the key has to be somewhere the server can read: in the
   /// config, which only the server's own account can open. `secretFile` is
   /// kept for entries written that way before this rule.
-  ProviderKeyMode _keyMode =
-      widget.editing?.keyMode ?? ProviderKeyMode.plaintext;
+  ProviderKeyMode _keyMode = ProviderKeyMode.plaintext;
 
   late final ProviderKeyRingStore _keyRingStore = ProviderKeyRingStore(
     widget.controller.store.prefs,
@@ -798,7 +797,7 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
       await _store.remove(editing.id, resolved: resolved);
       await _store.removeProviderKeyFiles(editing.id, [
         for (final key in _keyRing) key.filePath,
-        if (editing.secretPath case final path?) path,
+        ?editing.secretPath,
       ]);
       final profileID = widget.controller.profile?.id;
       if (profileID != null) {
@@ -1305,6 +1304,12 @@ class _CustomProviderScreenState extends State<CustomProviderScreen> {
     } catch (error) {
       if (mounted) setState(() { _saving = false; _saveError = _messageFor(error); });
     }
+  }
+
+  void _say(String message) {
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   Future<void> _copySnippet() async {

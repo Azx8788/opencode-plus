@@ -34327,7 +34327,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get providerManageUnreadableBody =>
-      '这些条目的结构不是这个表单能安全重写的（例如内置供应商的覆盖配置）。请在服务器上直接编辑。';
+      '这些条目的结构不是这个表单能安全重写的（例如内置供应商的覆盖配置）。请在服务器上直接编辑，或从此列表删除。';
 
   @override
   String get providerEditTitle => '编辑供应商';

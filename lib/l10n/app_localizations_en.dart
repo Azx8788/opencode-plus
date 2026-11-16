@@ -36345,7 +36345,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get providerManageUnreadableBody =>
-      'Their shape is not something this form can rewrite safely (an override of a built-in provider, for example). Edit them on the server.';
+      'Their shape is not something this form can rewrite safely (an override of a built-in provider, for example). Edit them on the server, or remove one from this list.';
 
   @override
   String get providerEditTitle => 'Edit provider';
