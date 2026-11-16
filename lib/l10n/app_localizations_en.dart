@@ -599,7 +599,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get usageTitle => 'Usage and cost';
+  String get usageTitle => 'Local usage';
 
   @override
   String get usageDescription =>
@@ -30406,7 +30406,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get usageTabPlans => 'Plans';
 
   @override
-  String get usageTabSpending => 'Spending';
+  String get usageTabSpending => 'Local usage';
 
   @override
   String get usagePlansRefresh => 'Refresh plans';
@@ -36089,6 +36089,123 @@ class AppLocalizationsEn extends AppLocalizations {
   String get providerKeysTitle => 'Named API keys';
   @override
   String get providerKeysHint => 'Use the last selected key by default. A newly added key is selected automatically; keys are never rotated.';
+  @override
+  String get statsHeatmap => 'Activity heatmap';
+
+  @override
+  String get statsHeatmapHint => 'Model requests per day · swipe to see earlier weeks. Unrecorded dates are dimmed.';
+
+  @override
+  String get statsLess => 'Less';
+
+  @override
+  String get statsMore => 'More';
+
+  @override
+  String get statsConversations => 'Conversations';
+
+  @override
+  String get statsModelRequests => 'Model requests';
+
+  @override
+  String get statsAllRecorded => 'All recorded in this server/project scope';
+
+  @override
+  String get statsStepsNotMessages => 'Model steps, not a total message count';
+
+  @override
+  String get statsLaunches => 'App launches on this phone';
+
+  @override
+  String get statsNotRecorded => 'Not recorded';
+
+  @override
+  String statsSince(String date) => 'Counted since ${date}';
+
+  @override
+  String get statsTokenUsage => 'Token usage';
+
+  @override
+  String get statsSevenDays => '7 days';
+
+  @override
+  String get statsNinetyDays => '90 days';
+
+  @override
+  String get statsInputTokens => 'Input tokens';
+
+  @override
+  String get statsOutputTokens => 'Output tokens';
+
+  @override
+  String get statsCachedTokens => 'Cache-hit tokens';
+
+  @override
+  String get statsCacheRate => 'Cache hit rate';
+
+  @override
+  String get statsDailyUsage => 'Daily usage';
+
+  @override
+  String get statsMonthlyUsage => 'Monthly usage';
+
+  @override
+  String statsGroupedDays(int count) => 'Grouped by ${count} calendar days to keep reads bounded';
+
+  @override
+  String statsGroupedMonths(int count) => 'Grouped by ${count} calendar months';
+
+  @override
+  String get statsPeriodTotal => 'Period total';
+
+  @override
+  String get statsByModel => 'By model';
+
+  @override
+  String get statsBySource => 'By source';
+
+  @override
+  String get statsSourcesUnavailable => 'This server does not report separate chat, compaction, title or other request sources. No source shares can be calculated from these totals.';
+
+  @override
+  String get statsTokenExplanation => 'Input includes cache reads and writes once. Output includes reasoning. Cache hits are a subset of input, not extra usage; hit rate = cache reads ÷ input. These are this server’s recorded tokens, not a provider invoice.';
+
+  @override
+  String get statsDetails => 'Exact usage, costs and budgets';
+
+  @override
+  String get statsOther => 'Other';
+
+  @override
+  String get statsShare => 'Share of reported tokens';
+
+  @override
+  String get statsSummaryFailed => 'Could not read the activity overview. Pull down to retry.';
+
+  @override
+  String statsRequests(int count) => '${count} model requests';
+
+  @override
+  String get statsActivityDetails => 'View daily activity';
+
+  @override
+  String statsLoadingBuckets(int done, int total) => 'Loading usage · ${done}/${total}';
+
+  @override
+  String get statsTrendUnavailable => 'Daily token measurements are unavailable. The period total above is still the reported total.';
+
+  @override
+  String get statsPartialTrend => 'Some dates could not be read. Gaps are unknown, not zero usage.';
+
+  @override
+  String get statsTrendDetails => 'Select a date and view exact tokens';
+
+  @override
+  String statsExactTokens(String count) => '${count} tokens';
+
+  @override
+  String get statsChartHint => 'Tap a bar for its period. Use the date list for exact values; unrecorded periods are marked with a dash.';
+
   @override
   String get chatStatsTitle => 'Reply statistics';
   @override

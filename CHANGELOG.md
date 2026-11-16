@@ -2,6 +2,21 @@
 
 This project is in public alpha. Only the newest preview is supported.
 
+## 0.3.25+33 — 2026-11-16
+
+  * **A visual local-usage dashboard.** Activity heatmap, lifetime overview,
+    7/30/90-day and all-time token cards, a selectable usage chart and model
+    ranking replace the long spending report. Theme, typography, background
+    and surface preferences are unchanged. Costs, budgets, provider filters
+    and tool reliability remain available under exact usage details.
+  * **Measured rather than invented.** Input includes cached input once;
+    reasoning is included in output. Daily/monthly bars use bounded server
+    aggregate reads, two at a time, with caching and stale-request guards.
+    Missing buckets stay unknown, and longer periods disclose grouping.
+    Model request counts are not called message counts; unavailable request
+    source breakdowns are explained. Main-app launches are counted only from
+    this update onward, separately from server/project usage.
+
 ## 0.3.24+32 — 2026-11-16
 
   * **Prose and process are separate.** Consecutive thoughts and tool calls

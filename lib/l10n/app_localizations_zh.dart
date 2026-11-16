@@ -554,7 +554,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get usageTitle => '用量与费用';
+  String get usageTitle => '本地用量';
 
   @override
   String get usageDescription => '此 OpenCode 服务器记录的、跨你的对话的活动。';
@@ -28650,7 +28650,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get usageTabPlans => '套餐';
 
   @override
-  String get usageTabSpending => '花费';
+  String get usageTabSpending => '本地用量';
 
   @override
   String get usagePlansRefresh => '刷新套餐';
@@ -34085,6 +34085,123 @@ class AppLocalizationsZh extends AppLocalizations {
   String get providerKeysTitle => '命名 API 密钥';
   @override
   String get providerKeysHint => '默认沿用上次选中的密钥；新添加的密钥会自动选中，不会轮询使用。';
+  @override
+  String get statsHeatmap => '活动热力图';
+
+  @override
+  String get statsHeatmapHint => '按每天的模型请求统计，可横滑查看更早的周；未记录日期以淡色显示。';
+
+  @override
+  String get statsLess => '少';
+
+  @override
+  String get statsMore => '多';
+
+  @override
+  String get statsConversations => '对话数';
+
+  @override
+  String get statsModelRequests => '模型请求数';
+
+  @override
+  String get statsAllRecorded => '当前服务器/项目范围内的全部记录';
+
+  @override
+  String get statsStepsNotMessages => '按模型调用步数统计，不冒充总消息数';
+
+  @override
+  String get statsLaunches => '本机应用启动次数';
+
+  @override
+  String get statsNotRecorded => '未记录';
+
+  @override
+  String statsSince(String date) => '自 ${date} 开始记录';
+
+  @override
+  String get statsTokenUsage => 'Token 用量';
+
+  @override
+  String get statsSevenDays => '7 天';
+
+  @override
+  String get statsNinetyDays => '90 天';
+
+  @override
+  String get statsInputTokens => '输入 Token';
+
+  @override
+  String get statsOutputTokens => '输出 Token';
+
+  @override
+  String get statsCachedTokens => '缓存命中 Token';
+
+  @override
+  String get statsCacheRate => '缓存命中率';
+
+  @override
+  String get statsDailyUsage => '每日用量';
+
+  @override
+  String get statsMonthlyUsage => '每月用量';
+
+  @override
+  String statsGroupedDays(int count) => '按 ${count} 个自然日汇总，避免大量读取';
+
+  @override
+  String statsGroupedMonths(int count) => '按 ${count} 个自然月汇总';
+
+  @override
+  String get statsPeriodTotal => '本期总计';
+
+  @override
+  String get statsByModel => '按模型';
+
+  @override
+  String get statsBySource => '按来源';
+
+  @override
+  String get statsSourcesUnavailable => '此服务器未单独提供聊天、压缩、标题等请求来源，不能从总量推算其占比。';
+
+  @override
+  String get statsTokenExplanation => '输入包含缓存读取及写入，均只计一次；输出包含思考。缓存命中是输入的一部分，不额外累加；命中率＝缓存读取÷输入。这是当前服务器的记录，不是供应商账单。';
+
+  @override
+  String get statsDetails => '精确用量、费用与预算';
+
+  @override
+  String get statsOther => '其他';
+
+  @override
+  String get statsShare => '已上报 Token 占比';
+
+  @override
+  String get statsSummaryFailed => '活动总览读取失败，请下拉刷新重试。';
+
+  @override
+  String statsRequests(int count) => '${count} 次模型请求';
+
+  @override
+  String get statsActivityDetails => '查看每日活动';
+
+  @override
+  String statsLoadingBuckets(int done, int total) => '正在读取用量 · ${done}/${total}';
+
+  @override
+  String get statsTrendUnavailable => '每日 Token 数据暂不可用，上方本期总计仍为服务器上报的用量。';
+
+  @override
+  String get statsPartialTrend => '部分日期读取失败，图中的缺口代表未知，不是零用量。';
+
+  @override
+  String get statsTrendDetails => '选择日期并查看精确用量';
+
+  @override
+  String statsExactTokens(String count) => '${count} Token';
+
+  @override
+  String get statsChartHint => '点柱子查看对应期间，或通过日期列表查看精确值；未记录期间以短横线标记。';
+
   @override
   String get chatStatsTitle => '回答统计';
   @override

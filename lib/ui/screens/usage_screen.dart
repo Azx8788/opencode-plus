@@ -1,15 +1,18 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 
 import '../../api2/transport.dart';
 import '../../domain/quota_answers.dart';
+import '../../domain/usage_dashboard.dart';
 import '../../domain/server_gateway.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/connection.dart';
 import '../../state/usage_budgets.dart';
 import '../../state/usage_overview.dart';
+import '../../state/app_launch_statistics.dart';
 import '../app_theme.dart';
 import '../kit/kit_bidi.dart';
 import '../kit/kit_buttons.dart';
@@ -31,9 +34,16 @@ import '../kit/kit_surface.dart';
 import '../kit/kit_text.dart';
 import '../kit/kit_tokens.dart';
 import '../kit/kit_top_bar.dart';
+import '../kit/kit_segmented.dart';
+import '../kit/kit_tappable.dart';
+import '../kit/kit_key_value.dart';
 import '../kit/motion/kit_refresh.dart';
 import '../widgets/product_states.dart';
 import 'usage_refresh_slot.dart';
+
+part 'usage/usage_dashboard.dart';
+part 'usage/usage_activity_heatmap.dart';
+part 'usage/usage_trend_chart.dart';
 
 AppLocalizations _strings(BuildContext context) =>
     lookupAppLocalizations(Localizations.localeOf(context));
@@ -195,28 +205,50 @@ class _UsageScreenState extends State<UsageScreen> {
                 SizedBox(height: tokens.space2),
                 KitText(l10n.usagePreviousResult, role: KitTextRole.secondary),
               ],
-              if (snapshot != null) ...[gap(), _UsageTotal(snapshot: snapshot)],
               if (available) ...[
-                SizedBox(height: tokens.sectionGap),
-                _UsageFilters(overview: _overview),
-              ],
-              if (snapshot != null && _budgets.available) ...[
-                SizedBox(height: tokens.sectionGap),
-                _UsageBudgetControls(
-                  budgets: _budgets,
-                  snapshot: snapshot,
-                  enabled:
-                      available &&
-                      !_overview.loading &&
-                      _overview.error == null,
+                gap(),
+                KitPickerRow<UsageScope>(
+                  rowKey: ValueKey('usage-scope-${_overview.scope.name}'),
+                  title: l10n.usageScope,
+                  selected: _overview.scope,
+                  onSelected: (scope) => unawaited(_overview.setScope(scope)),
+                  choices: [
+                    KitChoice(
+                      value: UsageScope.allProjects,
+                      title: l10n.usageAllProjects,
+                    ),
+                    KitChoice(
+                      value: UsageScope.currentProject,
+                      title: l10n.usageCurrentProject,
+                    ),
+                  ],
                 ),
               ],
-              if (snapshot != null && !snapshot.statistics.isEmpty)
-                _UsageReport(
-                  snapshot: snapshot,
-                  overview: _overview,
-                  search: _search,
+              gap(),
+              UsageDashboard(
+                snapshot: snapshot,
+                lifetime: _overview.lifetime,
+                lifetimeLoading: _overview.lifetimeLoading,
+                lifetimeFailed: _overview.lifetimeError != null,
+                range: _overview.range,
+                now: _overview.clock().toLocal(),
+                launches: AppLaunchStatistics.read(
+                  widget.controller.store.prefs,
                 ),
+                trend: _overview.trend,
+                trendPlan: _overview.trendPlan,
+                trendLoading: _overview.trendLoading,
+                trendFinished: _overview.trendFinished,
+                onRange: available
+                    ? (range) => unawaited(_overview.setRange(range))
+                    : null,
+                onRetryTrend: available
+                    ? () => unawaited(_overview.loadTrend())
+                    : null,
+                onDetails: snapshot == null
+                    ? null
+                    : () => _openDetails(context),
+              ),
               if (snapshot != null) ...[
                 SizedBox(height: tokens.sectionGap),
                 KitText(
@@ -277,6 +309,44 @@ class _UsageScreenState extends State<UsageScreen> {
       );
     },
   );
+
+  Future<void> _openDetails(BuildContext context) => showKitSheet<void>(
+    context,
+    title: _strings(context).statsDetails,
+    height: KitSheetHeight.full,
+    body: (context) => ListenableBuilder(
+      listenable: Listenable.merge([_overview, _budgets]),
+      builder: (context, _) {
+        final snapshot = _overview.snapshot;
+        if (snapshot == null) return KitText(_strings(context).usageLoading);
+        final tokens = KitTokens.of(context);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _UsageTotal(snapshot: snapshot),
+            SizedBox(height: tokens.space4),
+            _UsageFilters(overview: _overview),
+            SizedBox(height: tokens.space4),
+            if (_budgets.available)
+              _UsageBudgetControls(
+                budgets: _budgets,
+                snapshot: snapshot,
+                enabled:
+                    !_overview.detached &&
+                    !_overview.loading &&
+                    _overview.error == null,
+              ),
+            _UsageReport(
+              snapshot: snapshot,
+              overview: _overview,
+              search: _search,
+            ),
+          ],
+        );
+      },
+    ),
+  );
 }
 
 /// A section's name above its content (sentence case, a header for
@@ -326,7 +396,9 @@ class _UsageTotal extends StatelessWidget {
     final spent = covered.matchesRequestedRange
         ? switch (snapshot.range) {
             UsageRange.today => l10n.usageSpentToday,
+            UsageRange.sevenDays => l10n.statsSevenDays,
             UsageRange.thirtyDays => l10n.usageSpentThirtyDays,
+            UsageRange.ninetyDays => l10n.statsNinetyDays,
             UsageRange.year => l10n.usageSpentYear,
             UsageRange.allTime => l10n.usageSpentAllTime,
           }
@@ -410,7 +482,9 @@ class _UsageFilters extends StatelessWidget {
     final l10n = _strings(context);
     String rangeLabel(UsageRange range) => switch (range) {
       UsageRange.today => l10n.usageToday,
+      UsageRange.sevenDays => l10n.statsSevenDays,
       UsageRange.thirtyDays => l10n.usageThirtyDays,
+      UsageRange.ninetyDays => l10n.statsNinetyDays,
       UsageRange.year => l10n.usageYear,
       UsageRange.allTime => l10n.usageAllTime,
     };

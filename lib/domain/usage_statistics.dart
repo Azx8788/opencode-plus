@@ -1,4 +1,5 @@
-enum UsageRange { today, thirtyDays, year, allTime }
+// Keep older ranges for persisted budgets; the dashboard offers 7/30/90/all.
+enum UsageRange { today, sevenDays, thirtyDays, ninetyDays, year, allTime }
 
 class UsageQuery {
   final int? from;
@@ -22,7 +23,9 @@ class UsageQuery {
     // or 25 hours. Include the current millisecond in the half-open interval.
     final start = switch (range) {
       UsageRange.today => DateTime(now.year, now.month, now.day),
+      UsageRange.sevenDays => DateTime(now.year, now.month, now.day - 6),
       UsageRange.thirtyDays => DateTime(now.year, now.month, now.day - 29),
+      UsageRange.ninetyDays => DateTime(now.year, now.month, now.day - 89),
       UsageRange.year => DateTime(now.year, 1, 1),
       UsageRange.allTime => null,
     };
@@ -115,6 +118,11 @@ class UsageTokens {
     required this.cacheWrite,
   });
   int get total => input + output + reasoning + cacheRead + cacheWrite;
+
+  /// OpenCode input excludes cached tokens. Include them once, not twice.
+  int get prompt => input + cacheRead + cacheWrite;
+  int get completion => output + reasoning;
+  double? get cacheHitRate => prompt == 0 ? null : cacheRead / prompt;
   factory UsageTokens.fromJson(Map<String, dynamic> json) {
     final cache = _map(json['cache']);
     return UsageTokens(

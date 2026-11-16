@@ -102,6 +102,7 @@ import 'ui/screens/team_conversation/team_conversation.dart'
     show TeamConversation;
 import 'ui/screens/this_phone_screen.dart';
 import 'state/phone_host.dart' show PhoneHostKind;
+import 'state/app_launch_statistics.dart';
 import 'state/termux_host_setup.dart' show TermuxHostJob;
 import 'ui/screens/phone_setup/phone_setup_termux_screen.dart'
     show openPhoneSetupTermux;
@@ -281,6 +282,7 @@ class _OcAppState extends ConsumerState<OcApp> with WidgetsBindingObserver {
     super.initState();
     unawaited(_harvestDynamicColors());
     _controller = ref.read(connProvider);
+    unawaited(AppLaunchStatistics.recordMainLaunch(_controller.store.prefs));
     const ScheduledPromptsPlatform().setOpenHandler(
       _consumeScheduledPromptOpen,
     );
