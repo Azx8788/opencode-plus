@@ -21,7 +21,7 @@ void main() {
           'android.permission.INTERACT_ACROSS_USERS_FULL');
     });
 
-    test('SYSTEM_ALERT_WINDOW is declared for the forced safety overlay', () {
+    test('SYSTEM_ALERT_WINDOW is declared for the safety overlay', () {
       final manifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
       expect(manifest, contains('android.permission.SYSTEM_ALERT_WINDOW'));
     });
@@ -56,33 +56,44 @@ void main() {
     final policy = File(
       'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuCommandPolicy.kt',
     ).readAsStringSync();
+    final controller = File(
+      'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuController.kt',
+    ).readAsStringSync();
 
-    test('no command is silently allowed or silently blocked', () {
-      // The old fail-closed `allowed` field is gone: every command reaches the
-      // overlay. Risk decides colour and delay, not a hard block.
-      expect(policy, isNot(contains('allowed: Boolean')));
-      expect(policy, contains('allowDelaySeconds'));
+    test('read-only grammar exists and stays narrow', () {
+      expect(policy, contains('isSafeReadOnly'));
+      // Pipe/redirect/backtick/dollar markers are rejected from direct reads.
+      expect(policy, contains('shellSyntax'));
+      expect(policy, contains("Regex(\"[;&|<>`\$(){}\\\\[\\\\]\\\\\\\\\\\\n\\\\r\\\"']\")"));
     });
 
-    test('risk levels map to colour and delay', () {
-      expect(policy, contains('Risk.GREEN'));
-      expect(policy, contains('Risk.BLUE'));
-      expect(policy, contains('Risk.YELLOW'));
-      expect(policy, contains('Risk.RED'));
-      // Catastrophic commands get the longest delay, not a silent block.
-      expect(policy, contains('catastrophic'));
-      expect(policy, contains('10'));
+    test('direct execution only covers safe read-only plus advanced YELLOW', () {
+      expect(controller, contains('DIRECT_READ_ONLY'));
+      expect(controller, contains('ADVANCED_MODE'));
+      // Advanced mode still confirms RED, with a fixed 3-second wait.
+      expect(controller, contains('advanced && decision.risk == ShizukuCommandPolicy.Risk.RED'));
+      expect(controller, contains('3'));
+      // Non-direct commands still resolve to the overlay or a deny path.
+      expect(controller, contains('ShizukuSafetyOverlay.confirm'));
     });
 
     test('overlay is forced and fail-closed on timeout', () {
       final overlay = File(
         'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuSafetyOverlay.kt',
       ).readAsStringSync();
-      expect(overlay, contains('TIMEOUT_MS'));
       expect(overlay, contains('TYPE_APPLICATION_OVERLAY'));
       expect(overlay, contains('FLAG_SECURE'));
       expect(overlay, contains('canDrawOverlays'));
       expect(overlay, contains('complete(false)'));
+      expect(overlay, contains('timeoutSeconds'));
+    });
+
+    test('service reports its own pid instead of using Process.pid', () {
+      final service = File(
+        'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuCommandService.kt',
+      ).readAsStringSync();
+      expect(service, contains('OCRPID='));
+      expect(service, isNot(contains('.pid()')));
     });
   });
 }

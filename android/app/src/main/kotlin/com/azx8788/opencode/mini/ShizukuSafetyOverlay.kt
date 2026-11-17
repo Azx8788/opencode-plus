@@ -20,25 +20,27 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * A forced, top-most Android overlay. Every Shizuku command passes through it.
  *
- * Fail-closed: no overlay permission, overlay creation failure, or 30s timeout
- * all resolve to "deny". The Allow button is disabled for a risk-dependent
- * delay so a reflexive tap cannot authorise a destructive command.
+ * Fail-closed: no overlay permission or creation failure resolves to deny.
+ * Confirmation delay and timeout come from bounded user settings.
  */
 internal object ShizukuSafetyOverlay {
-    private const val TIMEOUT_MS = 30_000L
     private var showing = false
 
     fun confirm(
         context: Context,
         command: String,
         decision: ShizukuCommandPolicy.Decision,
+        allowDelaySeconds: Int,
+        timeoutSeconds: Int,
         complete: (Boolean) -> Unit,
     ) {
         // Always hop to main: WindowManager calls must be on the main thread.
         if (Looper.myLooper() != Looper.getMainLooper()) {
-            Handler(Looper.getMainLooper()).post { show(context, command, decision, complete) }
+            Handler(Looper.getMainLooper()).post {
+                show(context, command, decision, allowDelaySeconds, timeoutSeconds, complete)
+            }
         } else {
-            show(context, command, decision, complete)
+            show(context, command, decision, allowDelaySeconds, timeoutSeconds, complete)
         }
     }
 
@@ -46,6 +48,8 @@ internal object ShizukuSafetyOverlay {
         context: Context,
         command: String,
         decision: ShizukuCommandPolicy.Decision,
+        allowDelaySeconds: Int,
+        timeoutSeconds: Int,
         complete: (Boolean) -> Unit,
     ) {
         if (showing) { complete(false); return }
@@ -104,9 +108,9 @@ internal object ShizukuSafetyOverlay {
             setTextColor(textColor)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
             text = if (chinese)
-                "类型：$kindLabel\n风险等级：$riskLabel\n超时：${TIMEOUT_MS / 1000} 秒后自动拒绝"
+                "类型：$kindLabel\n风险等级：$riskLabel\n超时：${timeoutSeconds} 秒后自动拒绝"
             else
-                "Type: $kindLabel\nRisk: $riskLabel\nTimeout: auto-deny in ${TIMEOUT_MS / 1000}s"
+                "Type: $kindLabel\nRisk: $riskLabel\nTimeout: auto-deny in ${timeoutSeconds}s"
         }
 
         val cmdBox = TextView(context).apply {
@@ -192,7 +196,7 @@ internal object ShizukuSafetyOverlay {
 
         // Risk-gated delay: the Allow button becomes tappable only after the
         // delay, with a live countdown so the person reads the command.
-        val delayMs = decision.allowDelaySeconds * 1000L
+        val delayMs = allowDelaySeconds * 1000L
         val startedAt = System.currentTimeMillis()
         val countdown = object : Runnable {
             override fun run() {
@@ -234,7 +238,7 @@ internal object ShizukuSafetyOverlay {
             showing = true
             wm.addView(panel, params)
             main.post(countdown)
-            main.postDelayed({ finish(false) }, TIMEOUT_MS)
+            main.postDelayed({ finish(false) }, timeoutSeconds * 1000L)
         } catch (_: Exception) {
             finish(false)
         }

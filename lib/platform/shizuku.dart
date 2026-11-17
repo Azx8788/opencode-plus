@@ -14,6 +14,31 @@ class ShizukuPlatform {
     await _methods.invokeMapMethod<String, Object?>('status') ?? const {},
   );
 
+  static Future<Map<String, Object?>> settings() async =>
+      Map<String, Object?>.from(
+        await _methods.invokeMapMethod<String, Object?>('settings') ?? const {},
+      );
+
+  static Future<Map<String, Object?>> saveSettings({
+    required bool directReadOnly,
+    required bool advancedMode,
+    required int allowDelaySeconds,
+    required int overlayTimeoutSeconds,
+    required int commandTimeoutSeconds,
+    required int maxOutputKiB,
+  }) async =>
+      Map<String, Object?>.from(
+        await _methods.invokeMapMethod<String, Object?>('saveSettings', {
+              'direct_read_only': directReadOnly,
+              'advanced_mode': advancedMode,
+              'allow_delay_seconds': allowDelaySeconds,
+              'overlay_timeout_seconds': overlayTimeoutSeconds,
+              'command_timeout_seconds': commandTimeoutSeconds,
+              'max_output_kib': maxOutputKiB,
+            }) ??
+            const {},
+      );
+
   static Future<void> requestPermission() =>
       _methods.invokeMethod<void>('requestPermission');
 

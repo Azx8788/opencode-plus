@@ -24,6 +24,12 @@ internal object ShizukuController {
     private const val REQUEST_CODE = 7412
     private const val PREFS = "shizuku_settings"
     private const val ENABLED = "enabled"
+    private const val DIRECT_READ_ONLY = "direct_read_only"
+    private const val ADVANCED_MODE = "advanced_mode"
+    private const val ALLOW_DELAY_SECONDS = "allow_delay_seconds"
+    private const val OVERLAY_TIMEOUT_SECONDS = "overlay_timeout_seconds"
+    private const val COMMAND_TIMEOUT_SECONDS = "command_timeout_seconds"
+    private const val MAX_OUTPUT_KIB = "max_output_kib"
     private const val SERVICE_VERSION = 1
     private val main = Handler(Looper.getMainLooper())
     private var app: Context? = null
@@ -111,6 +117,8 @@ internal object ShizukuController {
                     main.post { result.success(value) }
                 }.start()
             }
+            "settings" -> result.success(readSettings())
+            "saveSettings" -> saveSettings(call, result)
             "overlaySettings" -> {
                 try {
                     app!!.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -166,18 +174,20 @@ internal object ShizukuController {
             result.error("invalid_request", "Invalid operation ID.", null)
             return
         }
-        executeCommand(id, "id; getprop ro.build.version.release", 10_000, 16_384, result)
+        val settings = readSettings()
+        executeCommand(id, "id; getprop ro.build.version.release",
+            (settings[COMMAND_TIMEOUT_SECONDS] as Int) * 1000, 16_384, result)
     }
 
     private fun execute(call: MethodCall, result: MethodChannel.Result) {
         val command = call.argument<String>("command")
         val id = call.argument<String>("operationId") ?: java.util.UUID.randomUUID().toString()
-        val timeout = call.argument<Int>("timeoutMs") ?: 30_000
+        val timeout = call.argument<Int>("timeoutMs") ?: (readSettings()[COMMAND_TIMEOUT_SECONDS] as Int) * 1000
         if (command.isNullOrBlank() || command.toByteArray().size > 16 * 1024 || timeout !in 1_000..120_000) {
             result.error("invalid_request", "Invalid command or timeout.", null)
             return
         }
-        executeCommand(id, command, timeout, 64 * 1024, result)
+        executeCommand(id, command, timeout, (readSettings()[MAX_OUTPUT_KIB] as Int) * 1024, result)
     }
 
     private fun executeCommand(id: String, command: String, timeout: Int, limit: Int, result: MethodChannel.Result) {
@@ -185,45 +195,111 @@ internal object ShizukuController {
             result.error("shizuku_not_ready", "Shizuku UserService is not connected.", null)
             return
         }
-        if (!android.provider.Settings.canDrawOverlays(requireNotNull(app))) {
-            result.error("overlay_permission_missing",
-                "Safety overlay permission is required. Grant it in system settings, then retry.", null)
-            return
-        }
         val expectedService = binder
         val decision = ShizukuCommandPolicy.inspect(command)
-        // Every command — read, write, destructive — goes through the overlay.
-        // The person sees the full command text, risk colour and countdown,
-        // then decides. No silent allow, no silent block.
-        ShizukuSafetyOverlay.confirm(app!!, command, decision) { allowed ->
+        val settings = readSettings()
+        val advanced = settings[ADVANCED_MODE] == true
+
+        // Direct execution, no overlay:
+        //  - always-configurable safe read-only grammar, and
+        //  - with "advanced user" on, everything up to YELLOW included.
+        // RED commands still require explicit consent even in advanced mode.
+        val directRead = settings[DIRECT_READ_ONLY] == true && decision.readOnly
+        val advancedAuto = advanced && decision.risk.ordinal <= ShizukuCommandPolicy.Risk.YELLOW.ordinal
+        if (directRead || advancedAuto) {
+            executeAfterAdmission(id, command, timeout, limit, expectedService, result)
+            return
+        }
+        if (!android.provider.Settings.canDrawOverlays(requireNotNull(app))) {
+            result.error("overlay_permission_missing",
+                "Safety overlay permission is required for this command. Grant it in system settings, then retry.", null)
+            return
+        }
+        // Overlay consent. Advanced users still confirm RED commands, with a
+        // fixed 3-second wait instead of the configurable normal delay.
+        val allowDelay = if (advanced && decision.risk == ShizukuCommandPolicy.Risk.RED) {
+            3
+        } else {
+            settings[ALLOW_DELAY_SECONDS] as Int
+        }
+        ShizukuSafetyOverlay.confirm(
+            app!!, command, decision,
+            allowDelaySeconds = allowDelay,
+            timeoutSeconds = settings[OVERLAY_TIMEOUT_SECONDS] as Int,
+        ) { allowed ->
             if (!allowed) {
                 result.error("shizuku_denied",
                     "Command was not executed: denied or timed out.", null)
             } else if (!ready() || binder !== expectedService) {
                 result.error("shizuku_instance_changed",
                     "Shizuku state changed during confirmation. Command was not executed.", null)
-            } else Thread {
-                val response = runCatching { expectedService!!.execute(id, command, timeout, limit) }
-                main.post {
-                    response.onSuccess { result.success(jsonMap(it)) }
-                        .onFailure { result.error("shizuku_execution_failed",
-                            "Shizuku command failed or the service disconnected.", null) }
-                }
-            }.start()
+            } else executeAfterAdmission(id, command, timeout, limit, expectedService, result)
         }
+    }
+
+    private fun executeAfterAdmission(
+        id: String, command: String, timeout: Int, limit: Int,
+        expectedService: IShizukuCommandService?, result: MethodChannel.Result,
+    ) {
+        if (!ready() || binder !== expectedService || expectedService == null) {
+            result.error("shizuku_instance_changed", "Shizuku state changed. Command was not executed.", null)
+            return
+        }
+        Thread {
+            val response = runCatching { expectedService.execute(id, command, timeout, limit) }
+            main.post {
+                response.onSuccess { result.success(jsonMap(it)) }
+                    .onFailure { result.error("shizuku_execution_failed",
+                        "Shizuku command failed or the service disconnected.", null) }
+            }
+        }.start()
     }
 
     private fun bind() {
         if (userServiceBound || !ready()) return
-        // No binding without the forced overlay: a connected service without a
-        // way to ask the person would be an execution path with no consent step.
-        if (!android.provider.Settings.canDrawOverlays(requireNotNull(app))) return
         try {
             Shizuku.bindUserService(serviceArgs, connection)
             userServiceBound = true
         } catch (_: Throwable) {
             userServiceBound = false
         }
+    }
+
+    private fun readSettings(): Map<String, Any> {
+        val prefs = requireNotNull(app).getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return mapOf(
+            DIRECT_READ_ONLY to prefs.getBoolean(DIRECT_READ_ONLY, true),
+            ADVANCED_MODE to prefs.getBoolean(ADVANCED_MODE, false),
+            ALLOW_DELAY_SECONDS to prefs.getInt(ALLOW_DELAY_SECONDS, 10).coerceIn(0, 60),
+            OVERLAY_TIMEOUT_SECONDS to prefs.getInt(OVERLAY_TIMEOUT_SECONDS, 30).coerceIn(10, 120),
+            COMMAND_TIMEOUT_SECONDS to prefs.getInt(COMMAND_TIMEOUT_SECONDS, 30).coerceIn(1, 120),
+            MAX_OUTPUT_KIB to prefs.getInt(MAX_OUTPUT_KIB, 64).coerceIn(4, 256),
+        )
+    }
+
+    private fun saveSettings(call: MethodCall, result: MethodChannel.Result) {
+        val direct = call.argument<Boolean>(DIRECT_READ_ONLY)
+        val advanced = call.argument<Boolean>(ADVANCED_MODE)
+        val delay = call.argument<Int>(ALLOW_DELAY_SECONDS)
+        val overlayTimeout = call.argument<Int>(OVERLAY_TIMEOUT_SECONDS)
+        val commandTimeout = call.argument<Int>(COMMAND_TIMEOUT_SECONDS)
+        val outputKiB = call.argument<Int>(MAX_OUTPUT_KIB)
+        if (direct == null || advanced == null || delay == null || delay !in 0..60 ||
+            overlayTimeout == null || overlayTimeout !in 10..120 ||
+            commandTimeout == null || commandTimeout !in 1..120 ||
+            outputKiB == null || outputKiB !in 4..256) {
+            result.error("invalid_settings", "Shizuku setting is outside its allowed range.", null)
+            return
+        }
+        requireNotNull(app).getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(DIRECT_READ_ONLY, direct)
+            .putBoolean(ADVANCED_MODE, advanced)
+            .putInt(ALLOW_DELAY_SECONDS, delay)
+            .putInt(OVERLAY_TIMEOUT_SECONDS, overlayTimeout)
+            .putInt(COMMAND_TIMEOUT_SECONDS, commandTimeout)
+            .putInt(MAX_OUTPUT_KIB, outputKiB)
+            .apply()
+        result.success(readSettings())
     }
 
     private fun unbind(remove: Boolean) {
