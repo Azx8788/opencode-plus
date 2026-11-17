@@ -201,6 +201,7 @@ extension _ConnectionControllerEventsImpl on ConnectionController {
       if (settled) _notifyListeners();
       _invalidateFeedDirectoryQuestions(event);
       _genUiGlobalEvent(event);
+      _observeTaskTrace(event);
       if (event.type == 'session.created' ||
           event.type == 'session.deleted' ||
           event.type == 'session.updated') {
@@ -248,8 +249,22 @@ extension _ConnectionControllerEventsImpl on ConnectionController {
 
   // ---------------- Event handling ----------------
 
+  void _observeTaskTrace(EventEnvelope event) {
+    if (event.type != 'rpc.mobile-insights.changed') return;
+    final gateway = api;
+    final owner = _connectedProfile ?? profile;
+    if (gateway is! Api2Gateway || owner == null) return;
+    final trace = TaskTraceStore.shared(store.prefs, owner.id, owner.baseUrl);
+    unawaited(
+      gateway.refreshTaskTrace?.call().catchError((Object error) {
+        trace.unavailable(error);
+      }),
+    );
+  }
+
   void _onEvent(EventEnvelope env) {
     if (_disposed) return;
+    _observeTaskTrace(env);
     final props = env.properties;
     // The run handlers below notify; the feed only needs to know.
     _feedObserveRunEvent(env);

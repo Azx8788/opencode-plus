@@ -146,6 +146,8 @@ class KitWorkLine extends StatefulWidget {
     this.stepsKey,
     this.tail,
     this.thinking = false,
+    this.retainWhenCollapsed = false,
+    this.pinnedSteps = const {},
   });
 
   /// What the work did; the chip's summary words.
@@ -182,6 +184,8 @@ class KitWorkLine extends StatefulWidget {
   /// [stepCap].
   final int? tail;
   final bool thinking;
+  final bool retainWhenCollapsed;
+  final Set<int> pinnedSteps;
 
   /// Opened without asking when the work ended on a failure; otherwise
   /// folded. The host passes its stored choice as [expanded] when there is
@@ -360,17 +364,36 @@ class _KitWorkLineState extends State<KitWorkLine> {
     };
 
     final steps = widget.steps;
-    final hidden = expanded ? _hidden : 0;
+    final retained = widget.retainWhenCollapsed;
+    final visible = <int>{
+      if (expanded || !retained)
+        for (var i = expanded ? _hidden : 0; i < steps.length; i++) i
+      else ...{
+        for (
+          var i = math.max(0, steps.length - (widget.tail ?? 2));
+          i < steps.length;
+          i++
+        )
+          i,
+        ...widget.pinnedSteps.where((i) => i >= 0 && i < steps.length),
+      },
+    };
+    final hidden = retained
+        ? steps.length - visible.length
+        : expanded
+        ? _hidden
+        : 0;
     final shown = <Widget>[
-      for (var i = hidden; i < steps.length; i++)
-        if (i == _focusIndex)
-          Focus(
-            focusNode: _firstRevealed,
-            onFocusChange: _onFirstRevealedFocus,
-            child: steps[i],
-          )
-        else
-          steps[i],
+      for (var i = 0; i < steps.length; i++)
+        if (visible.contains(i))
+          if (i == _focusIndex)
+            Focus(
+              focusNode: _firstRevealed,
+              onFocusChange: _onFirstRevealedFocus,
+              child: steps[i],
+            )
+          else
+            steps[i],
     ];
     return KitSurface(
       key: const ValueKey('kit-work-card'),
@@ -378,7 +401,9 @@ class _KitWorkLineState extends State<KitWorkLine> {
       shape: KitShape.panel,
       padding: KitSurfacePadding.compact,
       child: KitStepTimeline(
-        label: label,
+        label: retained && !expanded && hidden > 0
+            ? l10n.kitWorkEarlierSteps(hidden)
+            : label,
         spoken: spoken,
         icon: widget.thinking
             ? AppIconography.idea
@@ -394,9 +419,10 @@ class _KitWorkLineState extends State<KitWorkLine> {
               ),
         mark: mark,
         live: widget.state == KitWorkState.running && !expanded,
-        expanded: expanded,
+        expanded: expanded || retained,
+        controlExpanded: expanded,
         onPressed: _toggle,
-        head: hidden > 0
+        head: expanded && hidden > 0
             ? Align(
                 alignment: AlignmentDirectional.centerStart,
                 child: KitButton.tertiary(

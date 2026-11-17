@@ -488,6 +488,13 @@ class _WorkGroupState extends State<_WorkGroup> {
         KitWorkLine.opensByDefault(state) ||
         _tools.any((part) => part.toolState.outputFiles.isNotEmpty);
     final expanded = widget.expansionStore[_storeKey] ?? opensByDefault;
+    final steps = <Widget>[];
+    int? lastThought;
+    for (final run in widget.runs) {
+      if (run.parts.any((p) => p.type == 'reasoning'))
+        lastThought = steps.length;
+      steps.addAll(widget.buildRun(run));
+    }
     final store = widget.expansionStore;
     if (store is _ExpansionStore) store.recordVisible(_storeKey, expanded);
     return KeyedSubtree(
@@ -506,8 +513,10 @@ class _WorkGroupState extends State<_WorkGroup> {
         stepsKey: const Key('work-group-steps'),
         // A long running turn keeps its newest steps in view; the finished
         // ones fold behind "Show N earlier steps".
-        tail: state == KitWorkState.running ? 3 : null,
-        steps: [for (final run in widget.runs) ...widget.buildRun(run)],
+        tail: 2,
+        retainWhenCollapsed: true,
+        pinnedSteps: {if (lastThought != null) lastThought},
+        steps: steps,
       ),
     );
   }

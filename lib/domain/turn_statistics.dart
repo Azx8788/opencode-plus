@@ -44,7 +44,10 @@ class TurnStatistics {
     return speed.isFinite ? speed : null;
   }
 
-  factory TurnStatistics.fromSteps(Iterable<MessageWithParts> messages) {
+  factory TurnStatistics.fromSteps(
+    Iterable<MessageWithParts> messages, {
+    int? liveNow,
+  }) {
     // Replayed events and repeated shells must not inflate the counters.
     final unique = <String, MessageWithParts>{};
     for (final message in messages) {
@@ -83,7 +86,7 @@ class TurnStatistics {
       cost += step.info.cost;
       if (tokens.total <= 0) timingComplete = false;
       if (tokens.output + tokens.reasoning <= 0) continue;
-      final span = _generationSpan(step);
+      final span = _generationSpan(step, liveNow: liveNow);
       if (span == null || span <= Duration.zero) {
         timingComplete = false;
       } else {
@@ -99,7 +102,7 @@ class TurnStatistics {
           (step) => step.info.time?.created != null && step.info.time!.recorded,
         )) {
       final start = modelSteps.first.info.time!.created!;
-      final end = modelSteps.last.info.time?.completed;
+      final end = modelSteps.last.info.time?.completed ?? liveNow;
       if (end != null && start > 0 && end >= start) {
         duration = Duration(milliseconds: end - start);
       }
@@ -133,15 +136,22 @@ class TurnStatistics {
             part.text.trim().isNotEmpty,
       );
 
-  static Duration? _generationSpan(MessageWithParts step) {
+  static Duration? _generationSpan(MessageWithParts step, {int? liveNow}) {
     final time = step.info.time;
     final first = time?.firstToken;
-    final streamed = time?.streamed;
+    final streamed =
+        time?.streamed ?? (time?.completed == null ? liveNow : null);
     if (first != null && streamed != null && first > 0 && streamed > first) {
       return Duration(milliseconds: streamed - first);
     }
     // V1 can report explicit text/thought intervals rather than request
     // streaming timestamps. Only a complete set of intervals is usable.
+    // Text intervals alone do not account for generated tool arguments, nor
+    // for hidden reasoning with no matching part.
+    if (step.parts.any((p) => p.type == 'tool') ||
+        (step.info.tokens.reasoning > 0 &&
+            !step.parts.any((p) => p.type == 'reasoning')))
+      return null;
     final generated = step.parts
         .where(
           (part) =>

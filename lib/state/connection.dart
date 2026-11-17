@@ -1,6 +1,8 @@
 import '../scheduling/platform.dart';
+
 import 'dart:async';
 import 'dart:math' show Random;
+
 import '../background/widget_v2_contract.dart';
 import '../background/widget_action_runner.dart'
     show widgetProfileFingerprint, widgetRunMarker;
@@ -18,10 +20,13 @@ import '../domain/mcp_catalog.dart';
 import 'mcp_chat_controller.dart';
 import '../builtin/agents/gen_ui_install.dart';
 import 'gen_ui_state.dart';
+
 import 'dart:convert';
 import 'dart:ui' show Brightness, Locale, PlatformDispatcher;
+
 import 'package:clock/clock.dart';
 import 'package:crypto/crypto.dart' as receipt_crypto;
+
 import '../domain/command_receipts.dart';
 import '../domain/command_receipt_transport.dart';
 import 'pending_command_journal.dart';
@@ -118,6 +123,9 @@ import 'team_glance.dart';
 import 'orchestration_store.dart';
 import 'elsewhere_attention.dart';
 import 'profiles.dart';
+import 'task_trace.dart';
+import '../domain/task_trace.dart';
+import '../api2/task_trace.dart';
 import 'termux_host_setup.dart' show ManagedRuntimeFlavor;
 import 'pending_auth.dart';
 import 'session_drafts.dart';
@@ -254,8 +262,9 @@ final connProvider = Provider<ConnectionController>(
 
 typedef ServerGatewayFactory = ServerGateway Function(ServerProfile profile);
 
-typedef ProductRepositoryFactory =
-    ServerOperationsGateway Function(ServerGateway api);
+typedef ProductRepositoryFactory = ServerOperationsGateway Function(
+  ServerGateway api,
+);
 
 /// Builds the OpenCode 2 gateway pair for a profile whose detected flavor is
 /// [ServerFlavor.v2]. Injected by tests; production uses the Api2Transport →
@@ -267,13 +276,12 @@ typedef V2GatewayPairFactory =
 
 typedef LocalWakeLockEnsurer = Future<void> Function();
 
-typedef EventStreamFactory =
-    LiveEventChannel Function({
-      required ServerGateway api,
-      required void Function(EventEnvelope event) onEvent,
-      required void Function(StreamStatus status) onStatus,
-      void Function(Object error)? onError,
-    });
+typedef EventStreamFactory = LiveEventChannel Function({
+  required ServerGateway api,
+  required void Function(EventEnvelope event) onEvent,
+  required void Function(StreamStatus status) onStatus,
+  void Function(Object error)? onError,
+});
 
 /// Everything the UI needs about the active server connection.
 ///

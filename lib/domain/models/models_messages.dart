@@ -214,6 +214,22 @@ class MessageInfo {
   /// exact turn correlation must treat null as "unknown", not "none".
   final String? parentID;
 
+  MessageInfo withTime(MsgTime value) => MessageInfo(
+    id: id,
+    sessionID: sessionID,
+    role: role,
+    agent: agent,
+    providerID: providerID,
+    modelID: modelID,
+    cost: cost,
+    tokens: tokens,
+    time: value,
+    errorText: errorText,
+    finish: finish,
+    errorKind: errorKind,
+    parentID: parentID,
+  );
+
   MessageInfo({
     required this.id,
     required this.sessionID,
@@ -656,6 +672,26 @@ class Part {
   /// A small, allowlisted presentation contract for server-authored notices.
   /// It contains no arbitrary provider/configuration metadata.
   final Map<String, String> noticeMetadata;
+
+  Part withRecordedTime(int start, int? end) => Part(
+    id: id,
+    type: type,
+    text: text,
+    messageID: messageID,
+    callID: callID,
+    toolName: toolName,
+    toolState: toolState,
+    mime: mime,
+    filename: filename,
+    url: url,
+    synthetic: synthetic,
+    ended: ended || end != null,
+    noticeMetadata: noticeMetadata,
+    startedAt: startedAt ?? DateTime.fromMillisecondsSinceEpoch(start),
+    completedAt:
+        completedAt ??
+        (end == null ? null : DateTime.fromMillisecondsSinceEpoch(end)),
+  );
 
   Part({
     this.id,

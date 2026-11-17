@@ -47,6 +47,19 @@ class Api2Gateway
   Future<void> Function(String sessionID)? beforeSessionDispatch;
   void Function(String sessionID)? sessionDispatchSettled;
   Future<MemoryPromptContext?> Function(String sessionID)? memoryContext;
+  Future<Map<String, dynamic>?> Function(
+    String sessionID,
+    String text,
+    PromptDelivery? delivery,
+  )?
+  taskMetadata;
+  void Function(
+    String sessionID,
+    Api2InboxItem receipt,
+    Map<String, dynamic> metadata,
+  )?
+  onTaskPromptAccepted;
+  Future<void> Function()? refreshTaskTrace;
 
   /// Notifies the app of a prompt this gateway actually accepted for dispatch.
   /// Called only for OpenCode 2 sends, with the model the caller selected;
@@ -542,9 +555,11 @@ class Api2Gateway
       await _prepareSessionDispatch(sessionID);
       final memory = memoryContext;
       if (memory != null) await Api2Memory(client).sync(sessionID, memory);
-      await client.prompt(
+      final metadata = await taskMetadata?.call(sessionID, text, delivery);
+      final receipt = await client.prompt(
         sessionID,
         text: text,
+        metadata: metadata,
         delivery: switch (delivery) {
           null => null,
           PromptDelivery.steer => Api2Delivery.steer,
@@ -578,6 +593,8 @@ class Api2Gateway
             ),
         ],
       );
+      if (metadata != null)
+        onTaskPromptAccepted?.call(sessionID, receipt, metadata);
     }),
   );
 

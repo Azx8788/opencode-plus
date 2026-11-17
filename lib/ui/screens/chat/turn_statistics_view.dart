@@ -13,11 +13,19 @@ String _replyDuration(BuildContext context, Duration duration) {
   );
 }
 
-KitTurnStatistics? _replyStatistics(
+Widget? _replyStatistics(
   BuildContext context,
   TurnStatistics stats, {
   required String messageID,
+  List<MessageWithParts>? liveSteps,
+  TaskTraceStore? trace,
 }) {
+  if (liveSteps != null)
+    return _LiveReplyStatistics(
+      steps: liveSteps,
+      trace: trace,
+      messageID: messageID,
+    );
   final strings = _chatL10n(context);
   final duration = stats.duration;
   final speed = stats.tokensPerSecond;
@@ -47,13 +55,16 @@ KitTurnStatistics? _replyStatistics(
         text: strings.chatStatsSteps(stats.steps),
         label: strings.chatStatsSteps(stats.steps),
       ),
-    if (speed != null)
-      KitTurnStat(
-        key: ValueKey('reply-speed-$messageID'),
-        icon: AppIconography.speed,
-        text: strings.chatStatsSpeed(speed.toStringAsFixed(1)),
-        label: strings.chatStatsSpeed(speed.toStringAsFixed(1)),
-      ),
+    KitTurnStat(
+      key: ValueKey('reply-speed-$messageID'),
+      icon: AppIconography.speed,
+      text: speed == null
+          ? strings.insightsWaitingToken
+          : strings.chatStatsSpeed(speed.toStringAsFixed(1)),
+      label: speed == null
+          ? strings.insightsWaitingToken
+          : strings.chatStatsSpeed(speed.toStringAsFixed(1)),
+    ),
     if (contextTokens != null)
       KitTurnStat(
         key: ValueKey('reply-context-$messageID'),
@@ -153,6 +164,33 @@ KitTurnStatistics? _replyStatistics(
         ),
       ),
     ),
+  );
+}
+
+class _LiveReplyStatistics extends StatelessWidget {
+  const _LiveReplyStatistics({
+    required this.steps,
+    required this.messageID,
+    this.trace,
+  });
+  final List<MessageWithParts> steps;
+  final String messageID;
+  final TaskTraceStore? trace;
+  @override
+  Widget build(BuildContext context) => KitSince(
+    since: steps.firstOrNull?.info.time?.created == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(steps.first.info.time!.created!),
+    ticks: KitSinceTicks.seconds,
+    builder: (context, _) {
+      final messages = trace?.graph.decorate(steps) ?? steps;
+      final stats = TurnStatistics.fromSteps(
+        messages,
+        liveNow: trace?.serverNow,
+      );
+      return _replyStatistics(context, stats, messageID: messageID) ??
+          const SizedBox.shrink();
+    },
   );
 }
 

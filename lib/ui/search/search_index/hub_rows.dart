@@ -139,6 +139,18 @@ extension _IndexHubRows on _IndexBuild {
           (scope) => CapabilitiesScreen(controller: scope.controller),
         ),
       ),
+      SearchEntry(
+        id: 'settings-search-provider',
+        kind: SearchEntryKind.hubRow,
+        group: SettingsGroup.ai,
+        icon: AppIconography.search,
+        title: l10n.insightsSearchTitle,
+        keywords: 'Tavily Exa web search 搜索供应商 搜索引擎',
+        pages: const ['search-provider'],
+        open: _screen(
+          (scope) => SearchProviderScreen(controller: scope.controller),
+        ),
+      ),
       // The AI Team as a place of its own in Settings, not only a plugin
       // (docs/qa/team-discover-2026-09-25): the one team page (P3.4), on or
       // off; off, it sets the team up for this kind of server. The same door

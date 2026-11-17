@@ -12,6 +12,7 @@ import '../state/profiles.dart' show ServerProfile;
 import '../termux/bridge.dart' show TermuxBridge, TermuxRuntime;
 import '../termux/opencode_ubuntu_setup.dart';
 import 'setup/setup_contract.dart' show setupToolsChanged;
+import 'insights/insights_install.dart';
 
 /// Where the built-in Ubuntu is in its life, as the Android side reports it.
 enum BuiltinLinuxPhase {
@@ -591,9 +592,8 @@ class BuiltinLinux {
     if (!supported) return Future.value(const BuiltinLinuxStatus.absent());
     final shared = _statusReads[_channel];
     if (shared != null && shared.$1 == _requests) return shared.$2;
-    final read = _invoke<Map<Object?, Object?>>(
-      'status',
-    ).then((raw) => BuiltinLinuxStatus.fromMap(raw ?? const {}));
+    final read = _invoke<Map<Object?, Object?>>('status')
+        .then((raw) => BuiltinLinuxStatus.fromMap(raw ?? const {}));
     _statusReads[_channel] = (_requests, read);
     read.whenComplete(() {
       if (_statusReads[_channel]?.$2 == read) _statusReads[_channel] = null;
@@ -1551,6 +1551,7 @@ fi
         'cd $projectsDir\n'
         '[ -s $passwordFile ] || { echo "[oc] The server password is missing" >&2; exit 78; }\n'
         '$isolated'
+        '(\n${insightsInstallScript()}) || exit 75\n'
         // Tell the agent where it runs (lib/domain/phone_agent_context.dart);
         // never blocks the start.
         '(\n${PhoneAgentContext.builtinScript}) >/dev/null 2>&1 || true\n'

@@ -179,8 +179,9 @@ extension _ChatSessionMenu on _ChatScreenState {
           onSelected: () => unawaited(
             pushKitPage<void>(
               context,
-              (_) => SessionRequestTimelineScreen(
-                messages: List.of(_visibleHistory),
+              (_) => TaskTimelineScreen(
+                controller: _conn,
+                sessionID: widget.sessionID,
               ),
             ),
           ),

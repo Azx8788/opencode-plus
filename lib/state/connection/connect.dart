@@ -280,6 +280,111 @@ extension _ConnectionControllerConnectImpl on ConnectionController {
     }
     final gateway = pair.gateway;
     if (gateway is Api2Gateway) {
+      final trace = TaskTraceStore.shared(
+        store.prefs,
+        profile.id,
+        profile.baseUrl,
+      );
+      Future<void>? traceRead;
+      final cursors = <String, int>{};
+      gateway.refreshTaskTrace = () {
+        if (traceRead != null) return traceRead!;
+        final directory = gateway.client.directory;
+        final locationKey = directory ?? '';
+        final operation = () async {
+          await trace.load();
+          var after = cursors[locationKey] ?? 0;
+          for (var pageNo = 0; pageNo < 20; pageNo++) {
+            final page = await Api2TaskTrace(gateway.client)
+                .history(after: after);
+            if (gateway.client.directory != directory) return;
+            trace.anchor(page.serverNow);
+            await trace.append(page.events, incomplete: page.truncated);
+            for (final event in page.events) {
+              final seq = event['seq'];
+              if (seq is int && seq > after) after = seq;
+            }
+            cursors[locationKey] = after;
+            if (page.next == null) return;
+            if (page.events.isEmpty || page.next! < after)
+              throw const FormatException('Invalid task cursor');
+            after = page.next!;
+          }
+          throw const FormatException(
+            'Task history exceeds the bounded read window',
+          );
+        }();
+        traceRead = operation.whenComplete(() => traceRead = null);
+        return traceRead!;
+      };
+      gateway.taskMetadata = (sessionID, text, delivery) async {
+        bool sessionKnown = true;
+        try {
+          final session = await gateway.client.session(sessionID);
+          if (session.parentID != null) return null;
+        } catch (error) {
+          sessionKnown = false;
+          trace.unavailable(error);
+        }
+        try {
+          await gateway.refreshTaskTrace?.call();
+        } catch (error) {
+          trace.unavailable(error);
+        }
+        bool? running;
+        try {
+          running = (await gateway.client.activeSessions()).containsKey(
+            sessionID,
+          );
+        } catch (_) {
+          running = null;
+        }
+        try {
+          await trace.load();
+        } catch (_) {
+          running = null;
+        }
+        if (!sessionKnown) running = null;
+        final active = trace.graph.activeTasks[sessionID];
+        final known =
+            active != null &&
+            trace.graph.tasks[active]?.association == TaskAssociation.confirmed;
+        final intent = taskPromptIntent(
+          running: running,
+          queued: delivery == PromptDelivery.queue,
+          knownTask: known,
+          text: text,
+        );
+        final random = Random.secure();
+        final nonce = List.generate(
+          16,
+          (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+        ).join();
+        return {
+          'mobile.task': {
+            'id': intent == TaskPromptIntent.supplement
+                ? active
+                : 'task:$nonce',
+            'intent': intent.name,
+          },
+        };
+      };
+      gateway.onTaskPromptAccepted = (sessionID, receipt, metadata) {
+        unawaited(
+          trace
+              .append([
+                {
+                  'id': 'admitted:${receipt.id}',
+                  'type': 'task.admitted',
+                  'sessionID': sessionID,
+                  'inboxID': receipt.id,
+                  'task': metadata['mobile.task'],
+                  'at': ?receipt.timeCreated,
+                },
+              ])
+              .catchError((Object _) {}),
+        );
+      };
       gateway.onPromptDispatched = (sessionID, model, agent, variant) {
         // Record only what actually left for this saved server. The log is
         // best-effort observability: it never gates or changes the send.
