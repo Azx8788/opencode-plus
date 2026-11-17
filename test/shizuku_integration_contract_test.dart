@@ -36,6 +36,10 @@ void main() {
         'android/app/src/main/aidl/com/azx8788/opencode/mini/IShizukuCommandService.aidl',
       ).readAsStringSync();
       expect(aidl, contains('void destroy() = 16777114;'));
+      // AIDL requires ids on every method once one is assigned.
+      expect(aidl, contains('= 1;'));
+      expect(aidl, contains('= 2;'));
+      expect(aidl, contains('= 3;'));
       expect(aidl, contains('execute(String operationId'));
       expect(aidl, contains('boolean cancel(String operationId)'));
     });
