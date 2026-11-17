@@ -104,7 +104,13 @@ internal object ShizukuController {
 
     private fun handle(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
-            "status" -> { refresh(); result.success(snapshot()) }
+            "status" -> {
+                refresh()
+                Thread {
+                    val value = snapshot()
+                    main.post { result.success(value) }
+                }.start()
+            }
             "overlaySettings" -> {
                 try {
                     app!!.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -179,7 +185,7 @@ internal object ShizukuController {
             result.error("shizuku_not_ready", "Shizuku UserService is not connected.", null)
             return
         }
-        if (!android.provider.Settings.canDrawOverlays(app)) {
+        if (!android.provider.Settings.canDrawOverlays(requireNotNull(app))) {
             result.error("overlay_permission_missing",
                 "Safety overlay permission is required. Grant it in system settings, then retry.", null)
             return
@@ -209,6 +215,9 @@ internal object ShizukuController {
 
     private fun bind() {
         if (userServiceBound || !ready()) return
+        // No binding without the forced overlay: a connected service without a
+        // way to ask the person would be an execution path with no consent step.
+        if (!android.provider.Settings.canDrawOverlays(requireNotNull(app))) return
         try {
             Shizuku.bindUserService(serviceArgs, connection)
             userServiceBound = true
@@ -239,7 +248,6 @@ internal object ShizukuController {
         return mapOf(
             "managerInstalled" to manager, "binderAlive" to alive,
             "overlayAllowed" to android.provider.Settings.canDrawOverlays(context),
-            "overlayNeedsSettings" to true,
             // Provider initializes Sui automatically. Never infer Sui from UID 0:
             // Shizuku itself can also be launched with root.
             "provider" to if (!alive) "unknown" else if (Sui.isSui()) "sui" else "shizuku",
@@ -253,7 +261,13 @@ internal object ShizukuController {
         )
     }
 
-    private fun emit() { main.post { sink?.success(snapshot()) } }
+    private fun emit() {
+        // Binder reads stay off the main thread; the UI only receives a map.
+        Thread {
+            val value = snapshot()
+            main.post { sink?.success(value) }
+        }.start()
+    }
 
     private fun jsonMap(raw: String): Map<String, Any?> {
         val json = JSONObject(raw)

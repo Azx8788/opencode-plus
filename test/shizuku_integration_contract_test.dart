@@ -67,7 +67,7 @@ void main() {
       expect(policy, contains('Risk.RED'));
       // Catastrophic commands get the longest delay, not a silent block.
       expect(policy, contains('catastrophic'));
-      expect(policy, contains('5'));
+      expect(policy, contains('10'));
     });
 
     test('overlay is forced and fail-closed on timeout', () {

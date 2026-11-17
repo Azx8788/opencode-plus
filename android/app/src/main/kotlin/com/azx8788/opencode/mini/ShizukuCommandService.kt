@@ -5,7 +5,6 @@ import android.system.Os
 import android.system.OsConstants
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
-import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
@@ -13,7 +12,7 @@ import kotlin.concurrent.thread
 
 /** Executes bounded commands in the Shizuku UserService identity. */
 class ShizukuCommandService : IShizukuCommandService.Stub() {
-    private data class Running(val process: Process, val startedAt: Long)
+    private data class Running(val process: Process, val startedAt: Long, val grouped: Boolean)
     private val active = ConcurrentHashMap<String, Running>()
     private val executionSlot = Semaphore(1)
 
@@ -30,12 +29,20 @@ class ShizukuCommandService : IShizukuCommandService.Stub() {
         require(outputLimitBytes in 1_024..MAX_OUTPUT_BYTES)
         check(executionSlot.tryAcquire()) { "busy" }
 
-        val process = try { ProcessBuilder("setsid", "sh", "-c", command).start() }
-        catch (error: Throwable) { executionSlot.release(); throw error }
-        val running = Running(process, SystemClock.elapsedRealtime())
+        var grouped = true
+        val process = try {
+            ProcessBuilder("setsid", "sh", "-c", command).start()
+        } catch (_: Throwable) {
+            // setsid is part of Android's toybox, but if a platform lacks it we
+            // still run the command; cancellation is then reported unconfirmed.
+            grouped = false
+            try { ProcessBuilder("sh", "-c", command).start() }
+            catch (error: Throwable) { executionSlot.release(); throw error }
+        }
+        val running = Running(process, SystemClock.elapsedRealtime(), grouped)
         if (active.putIfAbsent(operationId, running) != null) {
             executionSlot.release()
-            terminate(process)
+            terminate(process, grouped)
             error("duplicate_operation")
         }
         val stdout = ByteArrayOutputStream()
@@ -46,17 +53,20 @@ class ShizukuCommandService : IShizukuCommandService.Stub() {
         try {
             val finished = process.waitFor(timeoutMs.toLong(), TimeUnit.MILLISECONDS)
             if (!finished) {
-                val stopped = terminate(process)
+                val stopped = terminate(process, running.grouped)
                 return result(operationId, if (stopped) "failed" else "unknown",
                     if (stopped) "timeout" else "timeout_unconfirmed", null, stdout, stderr, truncated, running.startedAt)
             }
             outThread.join(1_000)
             errThread.join(1_000)
-            return result(operationId, "succeeded", null, process.exitValue(), stdout, stderr, truncated, running.startedAt)
+            val exit = process.exitValue()
+            return result(operationId, if (exit == 0) "succeeded" else "failed",
+                if (exit == 0) null else "nonzero_exit", exit, stdout, stderr, truncated, running.startedAt)
         } catch (_: InterruptedException) {
-            terminate(process)
+            val stopped = terminate(process, running.grouped)
             Thread.currentThread().interrupt()
-            return result(operationId, "unknown", "binder_call_interrupted", null, stdout, stderr, truncated, running.startedAt)
+            return result(operationId, if (stopped) "cancelled" else "unknown",
+                if (stopped) "cancelled" else "binder_call_interrupted", null, stdout, stderr, truncated, running.startedAt)
         } finally {
             active.remove(operationId, running)
             executionSlot.release()
@@ -67,11 +77,11 @@ class ShizukuCommandService : IShizukuCommandService.Stub() {
 
     override fun cancel(operationId: String): Boolean {
         val running = active[operationId] ?: return false
-        return terminate(running.process)
+        return terminate(running.process, running.grouped)
     }
 
     override fun destroy() {
-        active.values.forEach { terminate(it.process) }
+        active.values.forEach { terminate(it.process, it.grouped) }
         active.clear()
         System.exit(0)
     }
@@ -88,7 +98,12 @@ class ShizukuCommandService : IShizukuCommandService.Stub() {
             }
         }
 
-    private fun terminate(process: Process): Boolean {
+    private fun terminate(process: Process, grouped: Boolean): Boolean {
+        if (!grouped) {
+            process.destroy()
+            if (!process.waitFor(300, TimeUnit.MILLISECONDS)) process.destroyForcibly()
+            return false // children cannot be proven gone without a process group
+        }
         val group = -process.pid()
         runCatching { Os.kill(group, OsConstants.SIGTERM) }
         runCatching { process.waitFor(500, TimeUnit.MILLISECONDS) }
@@ -98,7 +113,7 @@ class ShizukuCommandService : IShizukuCommandService.Stub() {
         return !groupExists(group)
     }
 
-    private fun groupExists(group: Long): Boolean = try {
+    private fun groupExists(group: Int): Boolean = try {
         Os.kill(group, 0)
         true
     } catch (_: android.system.ErrnoException) {
@@ -107,8 +122,8 @@ class ShizukuCommandService : IShizukuCommandService.Stub() {
 
     private fun result(id: String, state: String, reason: String?, exit: Int?, out: ByteArrayOutputStream,
                        err: ByteArrayOutputStream, truncated: Boolean, started: Long): String = JSONObject()
-        .put("operationId", id).put("state", state).put("reason", reason)
-        .put("exitCode", exit).put("stdout", out.toString("UTF-8"))
+        .put("operationId", id).put("state", state).put("reason", reason ?: JSONObject.NULL)
+        .put("exitCode", exit ?: JSONObject.NULL).put("stdout", out.toString("UTF-8"))
         .put("stderr", err.toString("UTF-8")).put("truncated", truncated)
         .put("elapsedMs", SystemClock.elapsedRealtime() - started).put("serviceInstance", instance).toString()
 
