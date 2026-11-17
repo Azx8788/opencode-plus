@@ -162,6 +162,14 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        // Zoom and history controls change presentation only. Verify a real
+        // tap before any sheet or screenshot changes the widget hierarchy.
+        final before = store.graph.userTasks;
+        expect(find.byKey(const ValueKey('task-zoom-in')), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('task-zoom-in')));
+        await tester.pumpAndSettle();
+        expect(store.graph.userTasks, before);
+        expect(find.byKey(const ValueKey('task-time-window')), findsOneWidget);
         await tester.tap(find.byKey(const ValueKey('task-time-window')));
         await tester.pumpAndSettle();
         expect(
@@ -178,6 +186,11 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('task-expand-root')));
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('task-bar-agent:c')), findsOneWidget);
+        await tester.ensureVisible(find.byKey(const ValueKey('task-bar-root')));
+        await tester.tap(find.byKey(const ValueKey('task-bar-root')));
+        await tester.pumpAndSettle();
+        expect(find.text('Task details'), findsOneWidget);
+        expect(find.text('Message turns'), findsOneWidget);
         final boundary = tester.renderObject<RenderRepaintBoundary>(
           find.byKey(const ValueKey('task-tree-capture')),
         );
@@ -196,16 +209,6 @@ void main() {
             image.dispose();
           }
         });
-        final before = store.graph.userTasks;
-        await tester.ensureVisible(find.byKey(const ValueKey('task-zoom-in')));
-        await tester.tap(find.byKey(const ValueKey('task-zoom-in')));
-        await tester.pumpAndSettle();
-        expect(store.graph.userTasks, before);
-        await tester.ensureVisible(find.byKey(const ValueKey('task-bar-root')));
-        await tester.tap(find.byKey(const ValueKey('task-bar-root')));
-        await tester.pumpAndSettle();
-        expect(find.text('Task details'), findsOneWidget);
-        expect(find.text('Message turns'), findsOneWidget);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox.shrink());
       },
