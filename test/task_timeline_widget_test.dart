@@ -186,13 +186,6 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('task-expand-root')));
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('task-bar-agent:c')), findsOneWidget);
-        await tester.ensureVisible(
-          find.byKey(const ValueKey('task-detail-root')),
-        );
-        await tester.tap(find.byKey(const ValueKey('task-detail-root')));
-        await tester.pumpAndSettle();
-        expect(find.text('Task details'), findsOneWidget);
-        expect(find.text('Message turns'), findsOneWidget);
         final boundary = tester.renderObject<RenderRepaintBoundary>(
           find.byKey(const ValueKey('task-tree-capture')),
         );
@@ -211,6 +204,13 @@ void main() {
             image.dispose();
           }
         });
+        await tester.ensureVisible(
+          find.byKey(const ValueKey('task-detail-root')),
+        );
+        await tester.tap(find.byKey(const ValueKey('task-detail-root')));
+        await tester.pumpAndSettle();
+        expect(find.text('Task details'), findsOneWidget);
+        expect(find.text('Message turns'), findsOneWidget);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox.shrink());
       },
