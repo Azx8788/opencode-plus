@@ -30,7 +30,6 @@ import '../motion/kit_reveal.dart';
 import '../style/kit_signal.dart'
     show KitSignalAspect, KitTrack, kitSegmentTimer, kitSignalHead;
 import 'kit_message.dart';
-import 'kit_turn_statistics.dart';
 
 /// At this text scale and above the footer's meta words move above the
 /// buttons, which stay on one row at the end (KitTurn.md Adaptive). The
@@ -280,7 +279,7 @@ class KitTurnFooter {
 
   /// Measurements belong to every finished reply, not just the newest
   /// one. They are independent of the optional timestamp/model meta line.
-  final KitTurnStatistics? statistics;
+  final Widget? statistics;
 }
 
 /// One turn: a prompt, then everything until the agent hands back, made of
@@ -570,6 +569,11 @@ class _TurnFrameState extends State<_TurnFrame> {
         ),
         noteInFooter ? noteGap - tokens.space2 : tokens.space1,
       );
+    }
+    // Live facts are separate from end-of-turn actions. Do not hide the
+    // elapsed/step/usage row until Copy and More become available.
+    if (!footed && ends && footer?.statistics != null) {
+      add(footer!.statistics!, tokens.space1);
     }
 
     Widget body = Column(

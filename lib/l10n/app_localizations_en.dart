@@ -36316,6 +36316,89 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get sessionElapsedTitle => 'Elapsed time';
   @override
+  String get insightsTitle => 'AI tasks and usage';
+  @override
+  String get insightsTask => 'User tasks';
+  @override
+  String get insightsSubagent => 'Subagents';
+  @override
+  String get insightsCalls => 'Model steps';
+  @override
+  String get insightsMessages => 'Message turns';
+  @override
+  String get insightsPending => 'Association pending';
+  @override
+  String get insightsPendingExplanation =>
+      'The executing task could not be identified. This item is retained without being counted as a user task.';
+  @override
+  String get insightsExplanation =>
+      'Tasks, message turns and model requests are counted separately. Subagent outcomes do not determine the parent outcome. History contains recorded events only.';
+  @override
+  String get insightsQueue => 'Queued';
+  @override
+  String get insightsLive => 'Running';
+  @override
+  String get insightsSuccess => 'Succeeded';
+  @override
+  String get insightsFailed => 'Failed';
+  @override
+  String get insightsCancelled => 'Cancelled / interrupted';
+  @override
+  String get insightsState => 'Execution state';
+  @override
+  String get insightsDetails => 'Task details';
+  @override
+  String get insightsModels => 'Model usage';
+  @override
+  String get insightsSuccessRate => 'Success rate (settled steps)';
+  @override
+  String get insightsMissingUsage => 'Steps with unknown token usage';
+  @override
+  String get insightsError => 'Reported error';
+  @override
+  String get insightsRetries => 'Scheduled retries';
+  @override
+  String get insightsRateLimit => 'Provider refusal · HTTP 429';
+  @override
+  String get insightsPartial =>
+      'This is partial history. Missing events are not reconstructed as success or zero usage.';
+  @override
+  String get insightsPrevious => 'Earlier';
+  @override
+  String get insightsNext => 'Later';
+  @override
+  String get insightsNow => 'Now';
+  @override
+  String get insightsAll => 'All';
+  @override
+  String get insightsWaitingToken => 'Speed not yet reported';
+  @override
+  String get insightsUnavailable =>
+      'The recording plugin is unavailable or disconnected. Existing records are retained; restart the managed server after its current task ends to load the plugin.';
+  @override
+  String get insightsInstall => 'Install search and task recording';
+  @override
+  String get insightsReload =>
+      'Installed, not yet active. Restart the in-app server after the current task ends.';
+  @override
+  String get insightsSearchTitle => 'Search provider';
+  @override
+  String get insightsSearchDisclosure =>
+      'Configure the connected OpenCode server, not only this conversation. Credentials use the server\'s secure integration store. A listed provider is not proof of authorization. A fixed selection never switches providers silently.';
+  @override
+  String get insightsAuthorized => 'Credential connected';
+  @override
+  String get insightsNotAuthorized => 'Not authorized · tap to connect';
+  @override
+  String get insightsSelected => 'Selected';
+  @override
+  String get insightsSearchOff => 'Disable AI web search';
+  @override
+  String get insightsSearchTest => 'Test the selected search provider';
+  @override
+  String get insightsSearchTestOK =>
+      'The selected provider returned real web sources.';
+  @override
   String get sessionElapsedEmpty => 'No recorded timing yet';
   @override
   String get sessionElapsedExplanation =>

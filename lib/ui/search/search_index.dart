@@ -42,6 +42,7 @@ import '../screens/saved_permissions_screen.dart';
 import '../screens/server_capabilities_screen.dart';
 import '../screens/session_import_screen.dart';
 import '../screens/settings/ai_setup_screen.dart';
+import '../screens/settings/search_provider_screen.dart';
 import '../screens/settings/tips_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/servers_screen.dart' show ServersRouteRequest;
@@ -134,8 +135,10 @@ class SearchScope {
 }
 
 typedef SearchGate = bool Function(SearchScope scope);
-typedef SearchOpen =
-    Future<void> Function(BuildContext context, SearchScope scope);
+typedef SearchOpen = Future<void> Function(
+  BuildContext context,
+  SearchScope scope,
+);
 
 bool _always(SearchScope _) => true;
 

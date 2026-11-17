@@ -230,6 +230,7 @@ class KitStepTimeline extends StatefulWidget {
     this.lineKey,
     this.stepsKey,
     this.stalled = false,
+    this.controlExpanded,
   });
 
   /// The line's words ("Read 3 files · ran 8 commands").
@@ -240,6 +241,9 @@ class KitStepTimeline extends StatefulWidget {
 
   /// Whether the steps are shown.
   final bool expanded;
+
+  /// Expansion of the earlier-steps control, independent of the visible tail.
+  final bool? controlExpanded;
 
   /// The line was tapped (open or close).
   final VoidCallback onPressed;
@@ -443,7 +447,7 @@ class _KitStepTimelineState extends State<KitStepTimeline> {
       icon: widget.icon,
       mark: widget.mark,
       live: widget.live,
-      expanded: widget.expanded,
+      expanded: widget.controlExpanded ?? widget.expanded,
       railBelow: widget.expanded && hasSteps,
       onPressed: widget.onPressed,
       spoken: widget.spoken ?? widget.label,

@@ -8,6 +8,7 @@ const settingsGroupRowIds = <SettingsGroup, List<String>>{
   SettingsGroup.ai: [
     'settings-model-and-mode',
     'settings-providers',
+    'settings-search-provider',
     'settings-category-usage',
     'settings-tools',
     'settings-agents',
@@ -263,6 +264,7 @@ class _SettingsGroupBodyState extends State<_SettingsGroupBody> {
           ),
         ),
         byServerRow('settings-providers', ByServerKind.providers),
+        row('settings-search-provider'),
         row('settings-category-usage'),
         byServerRow('settings-tools', ByServerKind.tools),
         row('settings-agents'),

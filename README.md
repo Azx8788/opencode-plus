@@ -91,15 +91,22 @@ See [MEMORY.md](MEMORY.md) for the contract and host limits.
 
 ## Conversation layout
 
-Each reply's footer shows reported elapsed time, model steps, generation
-speed, context and cache-hit rate from the final request's reported tokens.
-The conversation menu also opens two read-only timing pages: elapsed time
-(per reply and conversation-wide, from server-recorded timestamps) and a
-request timeline (per model, from those timestamps). Usage → Local usage
-adds a cross-session request timeline from a bounded local log of prompts
-this app actually sent. It starts empty with this version; no history is
-reconstructed, no prompt text is logged, and an unrecorded API-key choice is
-never invented. Missing time stays unreported rather than estimated.
+Each reply shows live elapsed time and model-step counts independently of its
+finished-turn actions. Generation speed uses reported tokens and matching
+generation intervals; context and cache-hit rate use the final request's
+usage. The conversation menu and Usage open a task-first tree/Gantt timeline,
+with independent user tasks, supplemental message turns, nested subagents and
+their model steps counted separately. Unknown associations stay pending.
+The managed recording plugin retains timestamps and structured outcomes, not
+prompt text or credentials. Missing history and token usage remain unknown.
+See [TASK_TIMELINE.md](TASK_TIMELINE.md) for the data and verification contract.
+
+Settings → Agent → Search provider exposes OpenCode's native search providers,
+including Tavily. Connect your own credential, select a fixed provider and
+test a real search. A catalogue entry alone is not proof of authorization;
+failed searches do not silently switch to a different provider.
+Each service opens its own full-page configuration in the existing provider
+style. Saving a credential and enabling a search provider are separate actions.
 
 Reply prose stays on the page. Consecutive thoughts and tool operations sit
 in a collapsible process card, in their original order. Running cards open

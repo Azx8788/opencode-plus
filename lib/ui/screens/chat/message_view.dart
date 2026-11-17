@@ -533,13 +533,34 @@ class _MessageView extends StatelessWidget {
     // it would say the agent is busy when it is waiting for the person (the
     // card is the state). The thought comes back once the card is answered.
     final shown = waiting
-        ? _withoutThoughtInHand([
+        ? [
             for (final part in visibleParts)
               if (!(chat?._toolWaitsForYou(part) ?? false)) part,
-          ])
+          ]
         : visibleParts;
     final runs = _withCards(_groupAssistantParts(shown), chat);
     final blocks = <Widget>[
+      if (m.info.modelID != null &&
+          messages != null &&
+          index != null &&
+          index >= 0 &&
+          !_turnSteps(messages, index)
+              .takeWhile((step) => step.info.id != m.info.id)
+              .any((step) => step.info.modelID != null))
+        Row(
+          key: ValueKey('reply-model-${m.info.id}'),
+          children: [
+            if (m.info.providerID != null)
+              ProviderLogo(m.info.providerID!, size: 28),
+            SizedBox(width: KitTokens.of(context).space2),
+            Expanded(
+              child: KitText(
+                _modelLabel(m.info) ?? m.info.modelID!,
+                role: KitTextRole.rowTitle,
+              ),
+            ),
+          ],
+        ),
       for (final stretch in _stretches(runs))
         if (_runIsWork(stretch.first))
           _WorkGroup(
@@ -612,9 +633,29 @@ class _MessageView extends StatelessWidget {
         ? chat._stoppedLine(latest: latest, onContinue: onContinue)
         : (null, null);
 
+    final traceProfile = chat?._conn.profile;
+    final trace = traceProfile == null
+        ? null
+        : TaskTraceStore.shared(
+            chat!._conn.store.prefs,
+            traceProfile.id,
+            traceProfile.baseUrl,
+          );
     final statistics = meta.stats == null
         ? null
-        : _replyStatistics(context, meta.stats!, messageID: m.info.id);
+        : _replyStatistics(
+            context,
+            meta.stats!,
+            messageID: m.info.id,
+            liveSteps:
+                (streaming || busy) &&
+                    messages != null &&
+                    index != null &&
+                    index >= 0
+                ? _turnSteps(messages, index)
+                : null,
+            trace: trace,
+          );
     final footer =
         onCopy == null && contextActions == null && statistics == null
         ? null
@@ -675,13 +716,6 @@ class _MessageView extends StatelessWidget {
     return chat._conn.permissionsForSession(session).isNotEmpty ||
         chat._conn.questionForSession(session) != null;
   }
-
-  /// [parts] without a thought still being written at their end (the
-  /// unfinished turn's newest part).
-  static List<Part> _withoutThoughtInHand(List<Part> parts) =>
-      parts.isNotEmpty && parts.last.type == 'reasoning'
-      ? parts.sublist(0, parts.length - 1)
-      : parts;
 
   static String _replyText(List<Part> parts) => parts
       .where((part) => part.type == 'text' && part.text.trim().isNotEmpty)

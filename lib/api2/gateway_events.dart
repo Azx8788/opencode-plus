@@ -716,6 +716,13 @@ class Api2EventAdapter {
         // Pass-through for the handful of v1-named types the dispatcher
         // handles that the typed v2 union does not model.
         switch (envelope.type) {
+          case 'rpc.mobile-insights.changed':
+            return [
+              _env(envelope.type, {
+                'sessionID': envelope.data['sessionID'],
+                'seq': envelope.data['seq'],
+              }),
+            ];
           case 'installation.updated':
           case 'installation.update-available':
           case 'pty.created':

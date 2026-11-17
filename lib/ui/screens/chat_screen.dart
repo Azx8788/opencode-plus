@@ -79,6 +79,8 @@ import '../../state/free_model_notice.dart'
     show FreeModelNoteDismissals, freeModelNoteDue;
 import '../../state/session_tail_cache.dart' show SessionTailPreview;
 import '../../state/profiles.dart' show ServerBackend, ServerProfile;
+import '../../state/task_trace.dart';
+import 'chat/task_timeline_screen.dart';
 import '../../state/context_usage.dart';
 import '../../state/conversation_nudges.dart';
 import '../../state/nudges.dart';
@@ -199,7 +201,7 @@ import 'memory/memory_editor.dart';
 import 'memory/memory_review_screen.dart';
 import 'memory/memory_proposal_card.dart';
 import 'chat/session_elapsed_screen.dart';
-import 'chat/session_request_timeline_screen.dart';
+import '../widgets/provider_logo.dart';
 import '../../domain/long_term_memory.dart';
 import 'session_export_screen.dart';
 import 'staged_revert_screen.dart';

@@ -12,6 +12,7 @@ import 'package:opencode_mobile/ui/app_theme.dart';
 import 'package:opencode_mobile/ui/kit/style/kit_style_theme.dart';
 import 'package:opencode_mobile/ui/screens/chat_screen.dart' as chat;
 import 'package:opencode_mobile/ui/widgets/tool_card.dart';
+import 'package:opencode_mobile/ui/widgets/provider_logo.dart';
 
 MessageWithParts _message(
   String id,
@@ -79,6 +80,7 @@ Part _tool(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() async {
+    ProviderLogo.logoLoaderOverride = (_) => Future<String?>.value(null);
     // The CI captures use the shipped fonts, rather than Flutter's Ahem test
     // font. These are the same asset families AppTheme and KitText request.
     for (final entry in const {
@@ -243,10 +245,10 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.text('fixture output'), findsOneWidget);
+      expect(find.text('fixture output'), findsNWidgets(2));
       await tester.tap(header);
       await tester.pumpAndSettle();
-      expect(find.byType(ToolCard), findsNothing);
+      expect(find.byType(ToolCard), findsNWidgets(2));
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
@@ -267,17 +269,18 @@ void main() {
       );
       expect(find.byKey(const ValueKey('kit-work-card')), findsOneWidget);
       expect(find.byType(ToolCard), findsOneWidget);
-      expect(find.byType(KitTurnStatistics), findsNothing);
+      expect(find.byType(KitTurnStatistics), findsOneWidget);
       await tester.tap(find.byKey(const Key('work-group-header')));
       await tester.pumpAndSettle();
-      expect(find.byType(ToolCard), findsNothing);
+      expect(find.byType(ToolCard), findsOneWidget);
       await mount(tester, [
         _message('a1', [_tool('a1', 'call-1')]),
       ], expansions: expansions);
       expect(
         find.byType(ToolCard),
-        findsNothing,
-        reason: 'stream completion must keep the manual collapse',
+        findsOneWidget,
+        reason:
+            'the latest step stays accessible when earlier steps are collapsed',
       );
       expect(find.byType(KitTurnStatistics), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
@@ -307,7 +310,7 @@ void main() {
       expect(expansions['work:a2/reasoning-0'], isNull);
       expect(
         find.byKey(const Key('assistant-reasoning-block')),
-        findsOneWidget,
+        findsNWidgets(2),
       );
       await mount(
         tester,
@@ -443,7 +446,7 @@ void main() {
       // The card's own tap must win after the global Show steps action.
       await tester.tap(find.byKey(const Key('work-group-header')));
       await tester.pumpAndSettle();
-      expect(find.byType(ToolCard), findsNothing);
+      expect(find.byType(ToolCard), findsOneWidget);
       chat.debugSetTranscriptWorkExpanded(
         expansions,
         messages,
@@ -457,7 +460,7 @@ void main() {
         expansions: expansions,
         reasoningExpanded: true,
       );
-      expect(find.byType(ToolCard), findsNothing);
+      expect(find.byType(ToolCard), findsOneWidget);
       await tester.tap(find.byKey(const Key('work-group-header')));
       await tester.pumpAndSettle();
       final thought = tester.widget<KitMessage>(

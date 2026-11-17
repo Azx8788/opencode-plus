@@ -13,14 +13,40 @@ import '../../theme_roles.dart';
 /// roles and follows the appearance settings; nothing here starts a
 /// request or changes the conversation.
 class SessionElapsedScreen extends StatelessWidget {
-  const SessionElapsedScreen({super.key, required this.messages});
+  const SessionElapsedScreen({
+    super.key,
+    required this.messages,
+    this.watch,
+    this.readMessages,
+    this.liveNow,
+  });
   final List<MessageWithParts> messages;
+  final Listenable? watch;
+  final List<MessageWithParts> Function()? readMessages;
+  final int? Function()? liveNow;
 
   @override
   Widget build(BuildContext context) {
+    if (watch == null) return _content(context);
+    return ListenableBuilder(
+      listenable: watch!,
+      builder: (context, _) => KitSince(
+        since: liveNow?.call() == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(liveNow!.call()!),
+        ticks: KitSinceTicks.seconds,
+        builder: (context, _) => _content(context),
+      ),
+    );
+  }
+
+  Widget _content(BuildContext context) {
     final l = AppLocalizations.of(context);
     final t = KitTokens.of(context);
-    final elapsed = SessionElapsed.fromMessages(messages);
+    final elapsed = SessionElapsed.fromMessages(
+      readMessages?.call() ?? messages,
+      liveNow: liveNow?.call(),
+    );
     final turns = [
       for (var index = 0; index < elapsed.turns.length; index++)
         (index: index, turn: elapsed.turns[index]),

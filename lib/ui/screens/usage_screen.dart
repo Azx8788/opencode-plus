@@ -30,6 +30,7 @@ import '../kit/kit_progress_row.dart';
 import '../kit/kit_reach.dart';
 import '../kit/kit_row.dart';
 import '../kit/kit_screen.dart';
+import '../kit/kit_page_route.dart';
 import '../kit/kit_search_field.dart';
 import '../kit/kit_state_view.dart';
 import '../kit/kit_surface.dart';
@@ -42,6 +43,7 @@ import '../kit/kit_key_value.dart';
 import '../kit/motion/kit_refresh.dart';
 import '../widgets/product_states.dart';
 import 'usage_refresh_slot.dart';
+import 'chat/task_timeline_screen.dart';
 
 part 'usage/usage_dashboard.dart';
 part 'usage/usage_activity_heatmap.dart';
@@ -254,7 +256,14 @@ class _UsageScreenState extends State<UsageScreen> {
                     : () => _openDetails(context),
               ),
               gap(tokens.sectionGap),
-              UsageRequestTimeline(controller: widget.controller),
+              KitRow(
+                title: l10n.insightsTitle,
+                leading: KitRow.icon(context, AppIconography.timeline),
+                onTap: () => pushKitPage<void>(
+                  context,
+                  (_) => TaskTimelineScreen(controller: widget.controller),
+                ),
+              ),
               if (snapshot != null) ...[
                 SizedBox(height: tokens.sectionGap),
                 KitText(

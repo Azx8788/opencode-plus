@@ -34307,6 +34307,85 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get sessionElapsedTitle => '耗时统计';
   @override
+  String get insightsTitle => 'AI 任务与使用统计';
+  @override
+  String get insightsTask => '用户任务';
+  @override
+  String get insightsSubagent => '子代理';
+  @override
+  String get insightsCalls => '模型请求步骤';
+  @override
+  String get insightsMessages => '消息轮次';
+  @override
+  String get insightsPending => '关联待确认';
+  @override
+  String get insightsPendingExplanation =>
+      '无法确认实际执行任务。此项已保留，暂不计入用户任务数，不按消息时间擅自归类。';
+  @override
+  String get insightsExplanation =>
+      '用户任务、消息轮次、模型请求分别计数。子代理结果不直接决定主任务结果。历史仅展示实际记录的事件。';
+  @override
+  String get insightsQueue => '排队中';
+  @override
+  String get insightsLive => '运行中';
+  @override
+  String get insightsSuccess => '成功';
+  @override
+  String get insightsFailed => '失败';
+  @override
+  String get insightsCancelled => '取消／中断';
+  @override
+  String get insightsState => '执行状态';
+  @override
+  String get insightsDetails => '任务详情';
+  @override
+  String get insightsModels => '模型使用统计';
+  @override
+  String get insightsSuccessRate => '成功率（已结束步骤）';
+  @override
+  String get insightsMissingUsage => 'Token 用量未知的步骤';
+  @override
+  String get insightsError => '已报告错误';
+  @override
+  String get insightsRetries => '已安排的重试';
+  @override
+  String get insightsRateLimit => '供应商拒绝 · HTTP 429';
+  @override
+  String get insightsPartial => '当前历史不完整。缺失事件不会被补成成功或零用量。';
+  @override
+  String get insightsPrevious => '更早';
+  @override
+  String get insightsNext => '更晚';
+  @override
+  String get insightsNow => '回到现在';
+  @override
+  String get insightsAll => '全部';
+  @override
+  String get insightsWaitingToken => '速度待数据回传';
+  @override
+  String get insightsUnavailable => '采集插件未加载或已断连。已有记录仍保留；请在当前任务结束后重启内置服务器加载插件。';
+  @override
+  String get insightsInstall => '安装搜索设置与任务采集插件';
+  @override
+  String get insightsReload => '已安装，尚未生效。请在当前任务结束后重启内置服务器。';
+  @override
+  String get insightsSearchTitle => '搜索供应商';
+  @override
+  String get insightsSearchDisclosure =>
+      '配置的是当前 OpenCode 服务器，不只是本条会话。密钥由服务器的集成凭据库安全保存。供应商出现在列表中不代表已经授权；固定选择后不会静默切换供应商。';
+  @override
+  String get insightsAuthorized => '已连接凭据';
+  @override
+  String get insightsNotAuthorized => '尚未授权 · 点击连接';
+  @override
+  String get insightsSelected => '已选择';
+  @override
+  String get insightsSearchOff => '关闭 AI 网页搜索';
+  @override
+  String get insightsSearchTest => '测试所选搜索供应商';
+  @override
+  String get insightsSearchTestOK => '所选供应商已返回真实网页来源。';
+  @override
   String get sessionElapsedEmpty => '还没有已记录的时间';
   @override
   String get sessionElapsedExplanation => '只显示服务端记录的时间；阶段可能重叠，未记录的时间不会估算。';

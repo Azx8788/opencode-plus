@@ -52,7 +52,10 @@ class TurnElapsed {
 
   bool get isEmpty => recorded == Duration.zero && wall == null;
 
-  static TurnElapsed fromSteps(Iterable<MessageWithParts> messages) {
+  static TurnElapsed fromSteps(
+    Iterable<MessageWithParts> messages, {
+    int? liveNow,
+  }) {
     final unique = <String, MessageWithParts>{};
     for (final message in messages) {
       if (message.info.role == 'assistant') unique[message.info.id] = message;
@@ -85,7 +88,10 @@ class TurnElapsed {
       final created = time?.created;
       final firstToken = time?.firstToken;
       final streamed = time?.streamed;
-      final completed = time?.completed;
+      final live = identical(step, steps.last) && time?.completed == null
+          ? liveNow
+          : null;
+      final completed = time?.completed ?? live;
       if (time?.recorded == false) {
         continue;
       }
@@ -114,17 +120,26 @@ class TurnElapsed {
           .where(
             (p) =>
                 !p.synthetic &&
-                p.duration != null &&
+                (p.duration != null ||
+                    (live != null && !p.ended && p.startedAt != null)) &&
                 (p.type == 'text' || p.type == 'reasoning'),
           )
           .toList();
-      thinking += _union(prose.where((p) => p.type == 'reasoning'));
-      output += _union(prose.where((p) => p.type == 'text'));
+      thinking += _union(
+        prose.where((p) => p.type == 'reasoning'),
+        liveNow: live,
+      );
+      output += _union(prose.where((p) => p.type == 'text'), liveNow: live);
       if (firstToken != null &&
           firstToken > 0 &&
           streamed != null &&
           streamed > firstToken) {
-        final covered = _union(prose, from: firstToken, to: streamed);
+        final covered = _union(
+          prose,
+          from: firstToken,
+          to: streamed,
+          liveNow: live,
+        );
         unclassified += Duration(milliseconds: streamed - firstToken) - covered;
       }
     }
@@ -139,7 +154,23 @@ class TurnElapsed {
         } else {
           anonymousCalls++;
         }
-        toolExecution += part.toolState.duration ?? Duration.zero;
+        final state = part.toolState;
+        final liveTool =
+            steps.isNotEmpty &&
+            identical(message, steps.last) &&
+            liveNow != null &&
+            state.startedAt != null &&
+            state.completedAt == null &&
+            state.status == 'running' &&
+            liveNow >= state.startedAt!.millisecondsSinceEpoch;
+        toolExecution +=
+            state.duration ??
+            (liveTool
+                ? Duration(
+                    milliseconds:
+                        liveNow - state.startedAt!.millisecondsSinceEpoch,
+                  )
+                : Duration.zero);
       }
     }
     Duration? wall;
@@ -158,11 +189,17 @@ class TurnElapsed {
     );
   }
 
-  static Duration _union(Iterable<Part> parts, {int? from, int? to}) {
+  static Duration _union(
+    Iterable<Part> parts, {
+    int? from,
+    int? to,
+    int? liveNow,
+  }) {
     final spans = <(int, int)>[];
     for (final p in parts) {
       var a = p.startedAt!.millisecondsSinceEpoch;
-      var b = p.completedAt!.millisecondsSinceEpoch;
+      var b = p.completedAt?.millisecondsSinceEpoch ?? liveNow;
+      if (b == null) continue;
       if (from != null && a < from) a = from;
       if (to != null && b > to) b = to;
       if (a > 0 && b > a) spans.add((a, b));
@@ -217,11 +254,21 @@ class SessionElapsed {
     return known ? total : null;
   }
 
-  factory SessionElapsed.fromMessages(List<MessageWithParts> messages) {
+  factory SessionElapsed.fromMessages(
+    List<MessageWithParts> messages, {
+    int? liveNow,
+  }) {
     final turns = <TurnElapsed>[];
     var steps = <MessageWithParts>[];
     void close() {
-      if (steps.isNotEmpty) turns.add(TurnElapsed.fromSteps(steps));
+      if (steps.isNotEmpty) {
+        turns.add(
+          TurnElapsed.fromSteps(
+            steps,
+            liveNow: identical(steps.last, messages.last) ? liveNow : null,
+          ),
+        );
+      }
       steps = <MessageWithParts>[];
     }
 

@@ -2,7 +2,7 @@
 
 This project is in public alpha. Only the newest preview is supported.
 
-## 0.3.25+33 — 2026-11-16
+## 0.3.25+33 — 2026-11-17
 
   * **A visual local-usage dashboard.** Activity heatmap, lifetime overview,
     7/30/90-day and all-time token cards, a selectable usage chart and model
@@ -31,6 +31,22 @@ This project is in public alpha. Only the newest preview is supported.
     server timestamps only. A streaming window without text boundaries stays
     unclassified rather than being guessed as output, and unreported cache
     data stays unknown.
+  * **Task-first timelines and live statistics.** Chat and Usage share a
+    tree/Gantt view with zoom, history and task details. User tasks, message
+    turns, subagents and model calls are counted separately; uncertain
+    associations remain pending. An app-owned OpenCode V2 plugin records
+    bounded timing and usage metadata. Reply duration and steps update while
+    work runs; speed requires matching reported tokens and generation times.
+  * **Search providers have their own configuration page.** Settings → Agent
+    → Search provider opens a full-page editor matching the existing provider
+    configuration style, including Tavily and other native OpenCode search
+    services. Save your credential, explicitly enable the provider, then test
+    a real search. Saving does not select it automatically, and failures do
+    not switch services. Search setup no longer opens the retired combined
+    Providers and MCP page.
+  * **Folding keeps reasoning reachable.** Collapsed process cards retain the
+    latest steps and a reasoning entry. Reasoning-body folding remains
+    independent, and manual process expansion or collapse is retained.
 
 ## 0.3.24+32 — 2026-11-16
 
