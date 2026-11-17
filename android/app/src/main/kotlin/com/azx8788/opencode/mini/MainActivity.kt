@@ -46,6 +46,7 @@ class MainActivity : FlutterFragmentActivity() {
         projectExport?.dispose()
         projectExport = ProjectExportBridge(this, flutterEngine.dartExecutor.binaryMessenger)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
+        ShizukuController.register(this, messenger)
         launches.configure(messenger, intent)
         ScheduledPromptChannel.captureOpen(intent)
         scheduledPrompts?.close()
@@ -67,6 +68,7 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        ShizukuController.detach()
         scheduledPrompts?.close()
         scheduledPrompts = null
         background.cancelBackgroundRequests()
@@ -93,6 +95,7 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun onResume() {
         super.onResume()
+        ShizukuController.refresh()
         try { BuiltinLinux.get(applicationContext).setActivityResumed(true) } catch (_: Exception) { }
         readAloud?.resume()
     }

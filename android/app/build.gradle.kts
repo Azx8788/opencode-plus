@@ -25,6 +25,7 @@ android {
     namespace = "com.azx8788.opencode.mini"
     buildFeatures {
         buildConfig = true
+        aidl = true
     }
     // flutter_secure_storage 11 ships AAR metadata that requires API 37;
     // Flutter 3.47 still defaults to 36. Pin explicitly until Flutter's
@@ -92,6 +93,7 @@ android {
                 else signingConfigs.getByName("debug")
             proguardFiles("widget-status-release.pro")
             proguardFiles("scheduled-prompts.pro")
+            proguardFiles("shizuku-user-service.pro")
             // Preview builds keep the QA hooks that the release rules strip.
             if (ocPreview) proguardFiles("phone-engine-instrumentation.pro")
         }
@@ -170,6 +172,8 @@ tasks.matching { it.name.startsWith("package") && it.name.endsWith("UnitTestForU
 }
 
 dependencies {
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
     implementation("androidx.work:work-runtime:2.10.5")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20180813")

@@ -11,6 +11,7 @@ const settingsGroupRowIds = <SettingsGroup, List<String>>{
     'settings-search-provider',
     'settings-category-usage',
     'settings-tools',
+    'settings-shizuku',
     'settings-agents',
   ],
   SettingsGroup.chat: [

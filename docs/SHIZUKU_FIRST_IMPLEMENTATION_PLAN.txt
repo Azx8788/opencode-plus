@@ -1,0 +1,587 @@
+OpenCode Plus：Shizuku 优先实施方案
+=================================
+
+日期：2026-11-17
+状态：方案待确认；本文不代表功能已经实现。
+工作区：/root/projects/opencode-plus
+文档位置：docs/SHIZUKU_FIRST_IMPLEMENTATION_PLAN.txt
+主项目基线：79a39803573207ae4dc594607a0b4c37a9ffecec，0.3.25+33。
+
+一、结论和优先级调整
+====================
+
+优先做一个可独立验收的 Shizuku 闭环：
+
+  设置中查看状态
+    -> 用户在系统 Shizuku 流程中授权
+    -> 用户单独启用 OpenCode Plus 的 Shizuku 能力
+    -> 运行只读诊断命令，核实真实身份
+    -> 聊天调用 Shizuku 命令工具
+    -> 返回真实输出、退出状态和耗时
+    -> 支持停止、断连、重连和未确认结果查询。
+
+Shizuku 从原总方案 S4B 中独立出来，优先级提升到第一交付批次。
+它不依赖 S4A 无障碍服务、截图、通知监听或完整工作流系统。
+
+最小依赖顺序：
+  协议及生命周期约定
+    -> 官方 SDK、Provider、状态与授权
+    -> UserService、命令执行和取消
+    -> 最小设备操作代理
+    -> OpenCode V2 插件、聊天过程显示
+    -> 真机验收。
+
+原 RA-011 应拆成独立的 Shizuku Epic；键盘功能继续留在其他任务。
+原 RA-010 Accessibility 不再是 Shizuku 的前置条件。
+
+本方案以实现所需的最小底座为限，不等待总方案中全部设备工具框架完成。
+协议保留后续扩展位置，但不提前实现 55 个工具组、工作流或远端设备中继。
+
+
+二、首版范围
+============
+
+2.1 首版完成项
+
+  A. 设置页
+     - Shizuku 管理器安装状态。
+     - Binder 是否可达、服务版本和兼容状态。
+     - 应用授权状态和独立的功能启用状态。
+     - 当前身份：ADB / ROOT / 未知。
+     - UserService 连接状态。
+     - 官方安装说明入口、打开管理器、申请授权、刷新。
+     - 只读诊断、运行状态、停止当前操作、重新连接。
+
+  B. 原生执行
+     - 通过官方 UserService 执行有限时长的 Android shell 命令。
+     - 返回标准输出、标准错误、退出码、截断标记及实际耗时。
+     - 操作 ID、作用域、重复请求识别、并发上限和执行前身份检查。
+     - 取消与超时传递到实际进程；处理 Binder 死亡及服务重启。
+     - 原生控制器独立于 Flutter 页面生命周期。
+
+  C. 聊天接入
+     - 首先支持应用管理的内置 OpenCode V2。
+     - 注册独立 Shizuku 工具，并经过现有工具权限体系。
+     - 工具结果明确标注 Android ADB/ROOT 环境。
+     - 纳入现有工具过程卡和任务关联，不新增模型循环。
+     - 关闭能力后，已缓存的工具定义也不能继续执行新命令。
+
+  D. 诊断与恢复
+     - 清楚说明未安装、未启动、未授权、版本不支持和服务失联。
+     - 重连后对账在途 operationID，结果不确定时保留 unknown。
+     - 通过真实只读命令验证链路，不能只检查开关或模拟数据。
+
+2.2 首版界限
+
+  - 主链是有限时长的前台命令，不把任意后台守护进程作为已支持能力。
+  - 包管理、appops、settings 等可由获准的命令工具执行；专用操作面板后续补。
+  - Accessibility、输入法、屏幕自动化、NFC 和工作流不列入此版验收。
+  - 远端 OpenCode 控制手机要另做设备配对与中继，不使用远端的 127.0.0.1 冒充手机。
+  - 其他 agent 的 MCP 接入留待适配，不默认它们与 V2 插件拥有相同上下文能力。
+  - Sui 若由官方 Provider 自动发现，准确显示其身份；专项兼容验证单列。
+
+
+三、已核验的事实与附件修正
+==========================
+
+3.1 官方依赖
+
+  截至本次读取，Maven Central 的 api 元数据把 13.1.5 标为 latest/release。
+  拟锁定：
+    dev.rikka.shizuku:api:13.1.5
+    dev.rikka.shizuku:provider:13.1.5
+
+  Shizuku-API 仓库 LICENSE 为 MIT，Copyright (c) 2021 RikkaW。
+  实施时再核对锁定工件的 POM、依赖树与许可证，写入现有第三方说明。
+  本应用使用 SDK，不捆绑 Shizuku 管理器，不复用其启动图标。
+
+3.2 Provider 和权限
+
+  官方文档要求注册 rikka.shizuku.ShizukuProvider：
+    authority：${applicationId}.shizuku
+    exported：true
+    multiprocess：false
+    permission：android.permission.INTERACT_ACROSS_USERS_FULL
+
+  该 permission 用于保护 Provider，不是申请让本应用获得跨用户系统权限。
+  API 权限申请使用 Shizuku 自己的监听和 requestPermission 流程。
+  管理器是否安装、Binder 是否可达、应用是否获授权是三件事。
+  Sui 路径下可能没有 Shizuku 管理器安装，不能据此判定后端不可用。
+
+3.3 身份
+
+  Shizuku.getUid()：0 表示 ROOT，2000 表示 ADB shell。
+  其他值或查询失败显示未知/不支持，不推断成 ROOT。
+  getSELinuxContext() 作为可选真实字段，取不到保持空值。
+  ADB 权限受系统版本、OEM 和 SELinux 影响；不承诺它可访问其他应用私有数据。
+
+3.4 UserService
+
+  使用 bindUserService，不采用已弃用的 newProcess 路线。
+  UserService 是独立特权进程中的 Binder 对象，不是普通 Android Service。
+  不能依赖其中的 Context 像普通应用那样注册接收器或访问所有内容服务。
+
+  UserServiceArgs 显式指定：
+    - 稳定 tag；需要区分应用包和 Android 用户。
+    - serviceVersion；服务实现改变时更新，不能只在协议改变时更新。
+    - daemon(false)；调用应用进程死亡时由框架管理该非守护服务。
+    - 独立 processNameSuffix。
+
+  协议版本、服务代码版本、服务实例 ID 分开：
+    协议版本决定报文兼容；
+    服务版本决定升级后是否替换旧实现；
+    实例 ID 决定某次响应是否来自仍然有效的进程。
+
+3.5 取消和 destroy 的区别
+
+  附件把单次取消与 destroy 链路绑定得过紧，需要调整。
+  正常取消：停止指定 operationID 对应的命令进程及可确认归属的子进程。
+  destroy：清理并关闭整个 UserService，用于停用、退出清理和版本替换。
+
+  官方规定的 destroy transaction：
+    AIDL 显式方法编号为 16777114；实际 Binder transaction code 为 16777115。
+  关闭服务先清理其拥有的命令，再结束 UserService 进程。
+  服务关闭或 Binder 死亡不能直接证明之前的命令没有产生副作用。
+
+3.6 非 SDK API
+
+  官方文档说明 UserService 进程不受普通应用的 hidden API 限制。
+  首版使用 UserService + shell，不需要为了接入而额外安装 HiddenApiBypass。
+  只有未来在主应用进程中直接调用受限系统接口时，才评估额外依赖。
+
+3.7 非 root 设备重启
+
+  系统重启后，非 root 的 Shizuku 通常需要用户重新启动。
+  Android 11 起可通过无线调试在手机上启动；更早版本通常需要电脑 ADB。
+  App 提供状态和管理器入口，不把“打开管理器”描述成“已自动启动”。
+
+3.8 附件中的许可说法需要区分
+
+  “实现相同功能就必然构成 AGPL 衍生作品”过于绝对。
+  独立实现功能与复制受保护的代码表达是不同问题。
+  MIT 与 AGPL 也不是绝对不能组合；直接复用时，组合发行需满足适用的 AGPL 条款，
+  不能仅凭当前项目写了 MIT 就免除这些义务。
+  使用独立进程或 HTTP 也不是自动免除许可义务的保证。
+
+  本模块采用明确路线：官方 Shizuku-API + Android 平台文档 + 本项目独立实现。
+  不读取或复制 rikkahub-agent 的 Shizuku 实现、AIDL、测试和提示词作为实现模板。
+  保留官方依赖来源、版本和许可证记录，不将此前整体调研称作严格洁净室。
+
+
+四、架构及责任划分
+==================
+
+4.1 调用链
+
+  Flutter 设置 / 聊天
+     -> domain/state
+     -> Native Shizuku Controller / 最小设备操作代理
+     -> Shizuku Binder
+     -> 应用自有 UserService
+     -> Android shell 命令
+
+  内置 OpenCode
+     -> 应用自有 V2 插件
+     -> 已认证的本机桥
+     -> 同一个设备操作代理
+     -> 同一个 UserService。
+
+4.2 责任
+
+  Dart domain：状态、显示数据、操作作用域和错误码。
+  Dart state/platform：设置操作、原生通道、生命周期订阅。
+  Kotlin controller：Binder 监听、权限、绑定、服务实例、设备状态。
+  操作代理：操作领取、作用域核对、状态持久化、取消、结果查询。
+  UserService：真实身份核验、命令执行、输出读取、进程停止。
+  V2 插件：从上下文取得会话身份、工具权限、向设备桥调用、传播取消。
+
+4.3 生命周期
+
+  控制器由 application 范围持有，页面只订阅状态。
+  页面销毁仅移除订阅，不能误杀其他会话仍在执行的命令。
+  实际运行任务使用已有工作租约和后台宿主；不增加无条件常驻服务。
+  关闭 Shizuku 功能时拒绝新命令，处理在途命令，然后释放本模块资源。
+  用户明确停止全部后台运行时，该模块也必须停止。
+  普通页面返回、Activity 重建和用户明确退出必须有不同处理。
+
+4.4 本机桥
+
+  优先在当前原生生命周期内提供小型 loopback 桥，绑定 127.0.0.1 随机端口。
+  只提供本模块所需的 status、submit、result、cancel 协议。
+  端口/短期凭证经应用私有文件或私有 IPC 交给内置运行时。
+  不把桥凭证交给模型，不放到工具参数、聊天消息或诊断日志。
+  明确限制请求大小、输出大小、连接数和请求期限。
+
+  启用此传输前先验证：
+    应用进程恢复后是否更新端口/凭证；
+    Ubuntu 与 Android 私有路径的映射；
+    远端服务器不会被误识别为内置运行时；
+    缺少原生宿主时返回不可用，不启动替代执行环境。
+
+  本机桥是访问控制，不是抵御同 UID 任意执行的安全沙箱。
+  若实现阶段发现稳定性问题，应先解决传输验证，再增加命令工具，不临时绕过。
+
+
+五、协议草案
+============
+
+以下字段和操作名是本项目拟建协议，不是 Shizuku 官方 API，也不是已经存在的接口。
+SHZ-001 完成后冻结为 schema，并用它驱动 Dart/Kotlin/插件之间的契约测试。
+
+5.1 状态快照
+
+  protocolVersion：1。
+  brokerInstance：本次操作代理实例 ID。
+  serviceInstance：当前 UserService 实例 ID；未连接时为空。
+  managerInstalled：true/false/unknown。
+  binderAlive：true/false。
+  serverVersion：实际读数或空。
+  permission：unknown / denied / requestable / granted。
+  enabled：用户对本模块的独立开关。
+  binding：disconnected / connecting / connected / failed。
+  uid：实际 UID 或空。
+  backend：adb / root / unknown。
+  selinuxContext：实际值或空。
+  compatibility：supported / unsupported / unknown。
+  observedAt：设备采集时间。
+
+5.2 提交命令
+
+  protocolVersion、brokerInstance、operationID。
+  source：settings_test 或 opencode_tool。
+  scope：serverIdentity、location、sessionID、toolCallID、agentID。
+  expectedServiceInstance、expectedUid。
+  command、timeoutMs、outputLimitBytes。
+
+  scope 由受信任的调用适配器根据执行上下文填入，不接受模型指定身份。
+  设置页诊断使用独立本地 scope，不伪造用户会话或模型调用。
+  用户选择的任务身份沿用现有 admission 元数据，未知关联保持待关联。
+
+5.3 操作结果
+
+  operationID、serviceInstance、uid。
+  state：queued / waiting / running / succeeded / failed / cancelled / unknown。
+  reason：有限错误码或等待原因。
+  acceptedAt、startedAt、finishedAt：未知时为空。
+  elapsedMs：执行器单调时钟测量，不能由服务器与手机跨时钟相减。
+  exitCode：只有取得真实退出码才填写。
+  stdout、stderr、truncated。
+  termination：not_requested / requested / confirmed / unconfirmed。
+
+  退出码 0 才表示命令正常结束；输出中写着“success”不能覆盖退出状态。
+  cancelled 说明已确认终止执行，不表示命令产生的所有副作用已回滚。
+
+5.4 推荐的首版资源界限
+
+  - 同一手机同时执行 1 条 Shizuku 命令。
+  - 忙时返回 busy；不先引入可能无限增长的后台命令队列。
+  - 默认超时 30 秒，可配置范围建议 1—120 秒。
+  - 命令 UTF-8 上限建议 16 KiB。
+  - stdout/stderr 合计返回上限建议 64 KiB。
+  - 到达输出上限后继续排空管道并标记截断，避免子进程因管道阻塞而挂住。
+  - 这些是初始设计值，协议冻结前结合 Binder/HTTP 开销核验。
+
+5.5 必须覆盖的报文情形
+
+  正常提交：
+    同一调用上下文生成 operationID，返回 accepted；之后查询到 running 和最终结果。
+
+  重复提交：
+    相同 operationID、scope 和参数摘要返回已有记录；不能再启动命令。
+    相同 ID 但参数或作用域不同，返回 conflict。
+
+  取消：
+    cancel 指定 operationID 和拥有者；返回取消请求已受理。
+    只有执行器确认进程结束，才返回 confirmed/cancelled。
+
+  超时晚回：
+    客户端超时后不创建新 ID 重发。
+    晚到的结果仍写入原 operationID，UI 可查询核对。
+
+  旧实例响应：
+    服务实例改变后，旧实例结果只能更新其原操作历史，不能满足新命令。
+    旧能力快照不能在新 UID 下直接执行。
+
+
+六、持久化、unknown 与恢复
+==========================
+
+6.1 存储分工
+
+  控制记录：操作 ID、拥有者、参数摘要、服务实例、状态和时间。
+  临时输出：有界、应用私有，仅供当前操作结果查看；制定清理策略。
+  展示历史：可裁剪的近期操作列表。
+  去重记录：与展示历史分开，裁剪列表不能让相同请求重新执行。
+
+  不把完整命令/输出写进 mobile-insights 或普通诊断日志。
+  正常工具消息里保留向用户返回的命令结果，遵循现有会话存储行为。
+  SDK 许可记录和协议版本随代码提交；桥凭证不进入仓库或导出包。
+
+6.2 对账触发时机
+
+  - App 冷启动。
+  - Binder 死亡或重新收到 Binder。
+  - UserService 重连或版本替换。
+  - OpenCode 插件重载/重新连接。
+  - 用户点击“刷新操作结果”。
+
+6.3 对账规则
+
+  查询本机尚未终结的 operationID，按原 serviceInstance 获取事实。
+  同一实例仍执行：恢复 running，提供停止。
+  原实例存在且已有结果：补齐最终状态。
+  原实例已消失，且没有可靠完成记录：unknown，显示“执行结果未确认”。
+  收到可信晚回：只更新原记录，不重新执行。
+  无法确认外部副作用：不自动重试；用户再次执行会产生明确的新操作。
+
+6.4 向前恢复
+
+  新增存储带 schemaVersion，升级前保留可恢复副本或采用原子迁移。
+  无法解析的记录不得被空列表覆盖；禁用执行并显示存储错误。
+  停用功能后旧操作可读、可按策略清理，未确认记录不会自动恢复运行。
+  明确提供清理本模块数据的入口，不连带删除 Ubuntu、项目或已有服务器凭据。
+
+
+七、命令执行与取消实现约束
+==========================
+
+7.1 执行前
+
+  重新核对 enabled、授权、Binder、服务实例、实际 UID、作用域和超时范围。
+  在不可逆的启动边界前写入领取记录。
+  接到取消或实例过期时，不启动新的命令进程。
+
+7.2 执行中
+
+  通过 Android 的 shell 环境执行，明确工作目录及可用 PATH。
+  不把 Ubuntu 的 /root/projects 路径当成 Android shell 的同名目录。
+  并发读取 stdout/stderr，限制结果大小并持续排空。
+  记录 PID、进程组和可验证的进程实例身份。
+  禁止用宽泛进程名匹配方式终止命令。
+
+7.3 取消和超时
+
+  首先终止明确归属的命令进程组，等待短暂清理，再按需强制终止。
+  进程组启动/管理方式需在目标 Android 系统验证，不能只假定某个 shell 工具存在。
+  Binder 取消线程不能被执行线程的长时间阻塞占住。
+  对自行 daemonize、脱离进程组的任意命令，不能保证“杀掉 shell 就杀掉全部后代”。
+  无法证明全部执行已结束时返回 unconfirmed/unknown，不虚报已全部取消。
+
+7.4 关闭 UserService
+
+  destroy 先拒绝新操作，再停止当前归属任务、关闭管道与资源，最后退出。
+  daemon(false) 与明确清理配合使用，不依赖 Activity.onDestroy 充当进程退出通知。
+  Android 杀进程时通常没有可靠 onDestroy，恢复依赖下一次启动对账。
+
+7.5 权限撤销
+
+  Shizuku API 的权限查询可能有客户端缓存；不能把单次 granted 快照当永久授权。
+  捕获服务端权限异常、Binder 状态变化并及时清除本模块就绪状态。
+  实际撤销权限时是否中止已绑定 UserService，列入真机专项测试。
+  不能用“申请过权限”作为后续执行的唯一依据。
+
+
+八、分阶段实施步骤
+==================
+
+阶段 P0：冻结协议与接口验证
+--------------------------
+任务编号：SHZ-001。
+
+  1. 锁定本方案的首版范围及官方 SDK 版本。
+  2. 将第五节变成可执行的 schema/契约测试夹具。
+  3. 验证当前 OpenCode 2.1.1 的工具上下文、权限、取消和插件加载契约。
+  4. 定义原生通道与 loopback 桥的身份来源、认证和实例更新流程。
+  5. 冻结正常、取消、超时晚回、旧实例、重复调用五类交互。
+  6. 明确进程组策略、输出边界和 operation 去重记录保留规则。
+
+交付：协议、接口能力核验结果、拟修改文件表。
+验收范围：本地静态分析/契约测试；无需 Shizuku 真机授权。
+停止条件：若锁定运行时缺少必要上下文，先修正接入方案，不使用猜测字段。
+
+阶段 P1：状态与授权设置页
+------------------------
+任务编号：SHZ-002、SHZ-003。
+
+  1. 添加官方 api/provider 依赖和第三方许可证。
+  2. 配置 Provider、管理器 package visibility、必要的原生 buildFeatures。
+  3. 编写 application 范围控制器和 Binder/权限监听。
+  4. 建立 Dart 数据模型及 platform adapter。
+  5. 设置 -> 智能体 增加 Shizuku 独立页面，并接入设置搜索。
+  6. 状态页展示安装、运行、授权、启用、身份、版本和 UserService 状态。
+  7. 提供管理器入口、官方安装入口、申请授权和刷新。
+  8. 申请授权不会自动启用命令能力。
+
+交付：真实状态和授权闭环。
+验收范围：CI 可测状态映射/Manifest/UI；安装、授权拒绝/允许需要真机。
+
+阶段 P2：UserService 执行与停止
+------------------------------
+任务编号：SHZ-004、SHZ-005。
+
+  1. 原创 AIDL 定义，独立执行/结果/取消接口与官方 destroy 编号。
+  2. 配置稳定 tag、服务代码版本、daemon(false) 和构造器保留规则。
+  3. 实现有限命令执行、双流读取、输出截断和真实退出码。
+  4. 实现截止时间、进程归属和取消通道。
+  5. 实现操作领取、重复/冲突请求识别及恢复。
+  6. 设置页加入固定只读诊断：id、getprop ro.build.version.release。
+  7. 加入短时等待命令用于取消测试，检查实际子进程结束。
+  8. 测试 Binder 死亡、服务替换、身份变化及权限撤销。
+
+交付：不经过模型也能验证的完整原生命令闭环。
+验收范围：执行状态机和边界用 CI；特权身份/真实取消/服务升级必须真机。
+
+阶段 P3：聊天工具接入
+--------------------
+任务编号：SHZ-006。
+
+  1. 安装应用自有 V2 插件，沿用现有 app-owned 安装和配置保留方式。
+  2. 工具提供 status 和 execute 能力；名称以最终运行时注册结果为准。
+  3. 插件从工具上下文获得 session/call/agent 身份，而非信任模型传参。
+  4. 命令经过现有权限策略，不借卡片确认替代工具审批。
+  5. 调用设备桥，断连后按原 operationID 查询，不盲目重发。
+  6. 将 context.signal 传到底层取消；必要时展示“停止已请求，结果未确认”。
+  7. 结果显示 ADB/ROOT、真实耗时、输出、退出码和截断状态。
+  8. 对接现有任务统计；未知关联继续待关联。
+  9. 关闭开关后，在执行入口再次校验，使旧工具快照立即失去执行能力。
+
+交付：聊天可以真实使用 Shizuku，并可停止和恢复查询。
+验收范围：插件契约/工具权限/跨作用域用 CI；完整链路需已授权手机和模型账号。
+
+阶段 P4：诊断、回归与首版交付
+----------------------------
+任务编号：SHZ-007、SHZ-008。
+
+  1. Doctor 基础项直接加入 Shizuku 页面，不等总方案 M5。
+  2. 故障状态都有对应处理入口，不把任何打开设置行为写成修复成功。
+  3. 真机验证 Android 后台、重启、恢复、Sui 条件路径和实际取消。
+  4. 回归原有聊天、搜索配置、密钥切换、任务时间线、Linux 与记忆。
+  5. 检查 preview 包与正式包 authority/tag/数据相互独立。
+  6. 更新说明文档，准确区分已验证与待设备验证。
+  7. 完成当前 CI 检查和 APK 构建，再给出可安装测试产物。
+  8. 版本升级和正式发布作为明确的后续交付动作，不在本方案阶段执行。
+
+交付：可以单独关闭、单独验证的 Shizuku 首版能力。
+工期：先完成 P0/P1 的接口与设备核验再估算，不采用附件中的固定天数承诺。
+
+
+九、拟修改文件
+==============
+
+现有入口：
+  android/app/build.gradle.kts
+    官方依赖、AIDL、release 保留规则。
+  android/app/src/main/AndroidManifest.xml
+    ShizukuProvider、管理器可见性。
+  android/app/src/main/kotlin/com/azx8788/opencode/mini/OcApplication.kt
+    application 范围控制器初始化/恢复。
+  android/app/src/main/kotlin/com/azx8788/opencode/mini/MainActivity.kt
+    设置页通道注册和权限 UI 生命周期衔接。
+  lib/builtin/builtin_linux.dart
+    应用自有插件安装和内置运行时接入。
+  lib/ui/screens/settings/settings_group_page.dart
+  lib/ui/search/search_index.dart
+  lib/ui/search/search_index/hub_rows.dart
+    设置与搜索入口。
+  lib/l10n/app_en.arb、lib/l10n/app_zh.arb
+    中英状态、动作和错误文案。
+  THIRD_PARTY_NOTICES.md、LICENSES/
+    官方依赖许可证。
+
+拟新增，文件名实施时按仓库风格确定：
+  lib/domain/shizuku.dart
+  lib/platform/shizuku.dart
+  lib/state/shizuku.dart
+  lib/ui/screens/settings/shizuku_screen.dart
+  lib/builtin/shizuku/（插件协议、安装器与执行适配）
+  android/.../mini/ShizukuController.kt
+  android/.../mini/ShizukuChannel.kt
+  android/.../mini/ShizukuOperationStore.kt
+  android/.../mini/ShizukuCommandService.kt
+  android/app/src/main/aidl/.../IShizukuCommandService.aidl
+
+现有 insights 模块只增加必要的状态投影，不承载特权执行器。
+现有 WorkLeases 和运行时所有权机制需先确认实际宿主接入位置，再作最小扩展。
+
+
+十、验收清单
+============
+
+T01 未安装管理器、无 Sui：准确显示未就绪，并能打开官方安装说明。
+T02 已安装但未启动：显示未运行，点击管理器入口不伪报启动成功。
+T03 拒绝授权：保持禁用；允许授权后，功能仍等待用户单独启用。
+T04 ADB 模式：显示 UID 2000；id 的真实输出与执行结果一致。
+T05 ROOT 模式：仅在实际有 root 测试设备时验收；否则标待验证。
+T06 版本读取：getprop 输出来自 Android，不是 Ubuntu 的系统信息。
+T07 非零退出：返回真实 exitCode，不因存在输出而显示成功。
+T08 大输出：截断标记正确，stdout/stderr 不导致死锁或无界内存。
+T09 取消：实际终止测试命令及可确认归属的后代；UI 和原生结果一致。
+T10 超时：不重复执行，晚回更新原操作，未确认结果保持 unknown。
+T11 Shizuku 重启：旧操作不自动重发，新实例经过验证后可执行新操作。
+T12 身份切换：ADB -> ROOT 或反向切换后，旧能力快照不能直接复用。
+T13 权限撤销：执行前/执行中分别验证，不能依赖缓存授权无限继续运行。
+T14 页面关闭与旋转：不丢操作归属，不把界面销毁当作成功完成。
+T15 App 进程终止：恢复后对账，没有记录的结果不猜成功或失败。
+T16 两个会话同时调用：按 busy 策略处理，不混输出和取消目标。
+T17 相同 ID 重复请求：只执行一次；改参数复用 ID 返回 conflict。
+T18 远端服务器：明确不支持本机 Shizuku；不能错误连接远端 loopback。
+T19 关闭开关：后续调用立即拒绝，已缓存工具也不能绕过。
+T20 升级：UserService 代码版本变化触发替换，旧实例操作保持可查。
+T21 预览包：Provider authority 与服务 tag 不与正式包串用。
+T22 文案与主题：中英、浅深色、大字号符合当前 Kit 风格。
+T23 记录：普通日志和 insights 不含命令正文、输出或桥凭证。
+T24 回归：原有搜索、任务、聊天、密钥、记忆、终端不因模块关闭而受影响。
+
+测试条件说明：
+  - 当前环境在手机内置 Ubuntu，没有 adb 连接到宿主手机。
+  - 原生特殊权限/服务生命周期不能只靠本环境 shell 验证。
+  - 完整 Flutter/Gradle 构建优先走 CI，真机由安装测试 APK 后验证。
+  - Android 8/10/13/16 等兼容性按实际设备或测试设施覆盖，不声明未测版本全通过。
+  - CI 通过与“用户手机上已授权且成功执行”分别报告。
+
+
+十一、用户操作与开发操作分工
+============================
+
+用户在真机验证时需要：
+  1. 安装/打开官方 Shizuku；按设备条件启动服务。
+  2. 安装后续测试版 OpenCode Plus。
+  3. 在 Shizuku 授权流程中允许 OpenCode Plus。
+  4. 在 OpenCode Plus 的 Shizuku 页单独启用能力。
+  5. 点击只读诊断，再在聊天中测试 Android 版本读取和停止。
+
+这些操作现在不需要提前完成；等测试版具备入口后再执行。
+开发阶段不要求用户把 Shizuku、模型或 GitHub 凭据贴入聊天。
+
+开发实施顺序：
+  SHZ-001 协议 -> SHZ-002 原生接入 -> SHZ-003 设置页
+    -> SHZ-004 UserService -> SHZ-005 执行与恢复
+    -> SHZ-006 聊天工具 -> SHZ-007 诊断 -> SHZ-008 验收。
+
+建议首个完成标志：
+  在设置页能够真实显示 UID 2000，执行 id 和 Android 版本读取，
+  并证明一个测试命令被真实取消。达到此标志后再接聊天工具。
+
+
+十二、来源与当前工作状态
+========================
+
+官方资料（本次已读取）：
+  https://github.com/RikkaApps/Shizuku-API
+  https://raw.githubusercontent.com/RikkaApps/Shizuku-API/master/README.md
+  https://raw.githubusercontent.com/RikkaApps/Shizuku-API/master/LICENSE
+  https://repo.maven.apache.org/maven2/dev/rikka/shizuku/api/maven-metadata.xml
+  https://raw.githubusercontent.com/RikkaApps/Shizuku-API/master/api/src/main/java/rikka/shizuku/Shizuku.java
+  https://raw.githubusercontent.com/RikkaApps/Shizuku-API/master/demo/src/main/java/rikka/shizuku/demo/service/UserService.java
+  https://raw.githubusercontent.com/RikkaApps/Shizuku-API/master/demo/src/main/aidl/rikka/shizuku/demo/IUserService.aidl
+  https://opencode.ai/v2/docs/build/plugins/server
+  https://opencode.ai/v2/docs/build/plugins/rpc
+
+原总方案：
+  /root/.opencode/plan/rikkahub-agent-integration-plan-2026-11-17.txt
+
+本次落地内容：仅本专项 TXT 方案。
+未实施 SDK 集成、原生服务、设置页、插件或发布操作。
+SHZ 编号为本地方案编号，不是已经创建的 GitHub Issues。
+
+建议采用：先按上述范围实施 P0—P2，真实执行和停止验收后，再进入 P3 聊天接入。

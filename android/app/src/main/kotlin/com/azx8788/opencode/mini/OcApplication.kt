@@ -7,5 +7,6 @@ class OcApplication : Application() {
     override fun onCreate() {
         try { NativeCrashStore(filesDir).install() } catch (_: Throwable) { }
         super.onCreate()
+        ShizukuController.initialize(this)
     }
 }

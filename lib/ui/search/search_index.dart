@@ -43,6 +43,7 @@ import '../screens/server_capabilities_screen.dart';
 import '../screens/session_import_screen.dart';
 import '../screens/settings/ai_setup_screen.dart';
 import '../screens/settings/search_provider_screen.dart';
+import '../screens/settings/shizuku_screen.dart';
 import '../screens/settings/tips_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/servers_screen.dart' show ServersRouteRequest;
