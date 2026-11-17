@@ -11,7 +11,7 @@ import '../../../l10n/app_localizations.dart';
 import '../../../state/connection.dart';
 import '../../kit/kit.dart';
 import '../../widgets/product_states.dart';
-import '../library_screen.dart';
+import 'search_provider_detail_screen.dart';
 
 /// Search settings are bound to the exact connected server and location.
 /// Catalogue, authorization, selection and live verification are distinct.
@@ -79,12 +79,60 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
 
   Future<void> _connect(SearchProviderOption provider) async {
     if (_busy) return;
+    final api = _owner;
+    final location = _location;
+    final repository = widget.controller.repository;
+    final settings = _settings;
+    if (api == null ||
+        location == null ||
+        repository == null ||
+        settings == null) {
+      return;
+    }
+    void requireCurrent() {
+      if (!_current(api, location) ||
+          !identical(widget.controller.repository, repository)) {
+        throw const FormatException('The connected server changed');
+      }
+    }
+
     await pushKitPage<void>(
       context,
-      (_) => IntegrationsScreen(
-        controller: widget.controller,
-        mode: IntegrationsMode.all,
-        connectProviderID: provider.id,
+      (_) => SearchProviderDetailScreen(
+        provider: provider,
+        settings: settings,
+        saveKey: (key) async {
+          requireCurrent();
+          final integrations = await repository.listIntegrations();
+          requireCurrent();
+          final integration = integrations
+              .where((item) => item.id == provider.id)
+              .firstOrNull;
+          if (integration == null ||
+              !integration.methods.any((method) => method.type == 'key')) {
+            throw const FormatException(
+              'This server does not offer API key authentication',
+            );
+          }
+          await repository.connectIntegrationKey(provider.id, key);
+          requireCurrent();
+          return Api2SearchSettings(api.client).load();
+        },
+        select: () async {
+          requireCurrent();
+          return Api2SearchSettings(api.client).select(provider.id);
+        },
+        test: () async {
+          requireCurrent();
+          final result = await api.searchWeb(
+            'web search documentation',
+            providerID: provider.id,
+          );
+          requireCurrent();
+          if (result.results.isEmpty) {
+            throw const FormatException('Search returned no sources');
+          }
+        },
       ),
     );
     if (mounted) await _load();
@@ -96,7 +144,7 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
       throw const FormatException('Select a search provider first');
     }
     final result = await api.searchWeb(
-      'Tavily Search API documentation',
+      'web search documentation',
       providerID: id,
     );
     if (result.results.isEmpty) {
@@ -169,11 +217,7 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
                 trailing: settings.selected == provider.id
                     ? KitRowValue(l.insightsSelected)
                     : null,
-                onTap: _busy
-                    ? null
-                    : () => provider.connected
-                          ? _select(provider.id)
-                          : _connect(provider),
+                onTap: _busy ? null : () => _connect(provider),
               ),
             SizedBox(height: t.space3),
             KitButton.secondary(
