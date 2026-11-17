@@ -30,8 +30,9 @@ class Api2TaskTrace {
     if (value is! Map ||
         value['version'] != 1 ||
         value['entries'] is! List ||
-        (value['next'] != null && value['next'] is! int))
+        (value['next'] != null && value['next'] is! int)) {
       throw Api2RequestError('Invalid task history response');
+    }
     return Api2TaskTracePage(
       (value['entries'] as List)
           .map((e) => Map<String, dynamic>.from(e))

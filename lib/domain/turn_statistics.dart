@@ -150,8 +150,9 @@ class TurnStatistics {
     // for hidden reasoning with no matching part.
     if (step.parts.any((p) => p.type == 'tool') ||
         (step.info.tokens.reasoning > 0 &&
-            !step.parts.any((p) => p.type == 'reasoning')))
+            !step.parts.any((p) => p.type == 'reasoning'))) {
       return null;
+    }
     final generated = step.parts
         .where(
           (part) =>

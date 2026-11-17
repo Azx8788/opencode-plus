@@ -53,8 +53,9 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
     });
     try {
       final api = await widget.controller.prepareActionTransport();
-      if (api is! Api2Gateway)
+      if (api is! Api2Gateway) {
         throw const FormatException('Search settings need OpenCode V2');
+      }
       final location = widget.controller.locationRevision;
       _owner = api;
       _location = location;
@@ -91,14 +92,16 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
 
   Future<void> _test() => _act((api, location) async {
     final id = _settings?.selected;
-    if (id == null)
+    if (id == null) {
       throw const FormatException('Select a search provider first');
+    }
     final result = await api.searchWeb(
       'Tavily Search API documentation',
       providerID: id,
     );
-    if (result.results.isEmpty)
+    if (result.results.isEmpty) {
       throw const FormatException('Search returned no sources');
+    }
     if (_current(api, location)) setState(() => _tested = true);
   });
 
@@ -112,8 +115,9 @@ class _SearchProviderScreenState extends State<SearchProviderScreen> {
       insightsInstallScript(),
       timeout: const Duration(seconds: 30),
     );
-    if (result.exitCode != 0)
+    if (result.exitCode != 0) {
       throw const FormatException('Search/insights plugin installation failed');
+    }
     if (_current(api, location)) setState(() => _installed = true);
   });
 

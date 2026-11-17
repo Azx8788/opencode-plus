@@ -10,6 +10,7 @@ import '../../../l10n/app_localizations.dart';
 import '../../../state/connection.dart';
 import '../../../state/task_trace.dart';
 import '../../kit/kit.dart';
+import '../../app_iconography.dart';
 import '../../widgets/product_states.dart';
 
 /// Task-first, shared by the chat and cross-session Usage entries. Tree
@@ -64,13 +65,13 @@ class _TaskTimelineScreenState extends State<TaskTimelineScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _clock(TickerMode.of(context));
+    _clock(TickerMode.valuesOf(context).enabled);
   }
 
   void _clock(bool active) {
     _tick?.cancel();
     _tick = null;
-    if (active)
+    if (active) {
       _tick = Timer.periodic(const Duration(seconds: 1), (_) {
         if (mounted &&
             (ModalRoute.of(context)?.isCurrent ?? true) &&
@@ -78,9 +79,11 @@ class _TaskTimelineScreenState extends State<TaskTimelineScreen>
               (t) =>
                   t.status == TraceTaskStatus.running ||
                   t.status == TraceTaskStatus.queued,
-            ))
+            )) {
           setState(() {});
+        }
       });
+    }
   }
 
   @override
@@ -97,17 +100,19 @@ class _TaskTimelineScreenState extends State<TaskTimelineScreen>
 
   Future<void> _refresh() async {
     if (_loading || !_current) return;
-    if (mounted)
+    if (mounted) {
       setState(() {
         _loading = true;
         _error = null;
       });
+    }
     try {
       await _store.load();
       if (widget.store == null) {
         final api = await widget.controller.prepareActionTransport();
-        if (api is! Api2Gateway || api.refreshTaskTrace == null)
+        if (api is! Api2Gateway || api.refreshTaskTrace == null) {
           throw const FormatException('Task recording needs OpenCode V2');
+        }
         await api.refreshTaskTrace!();
       }
     } catch (error) {
@@ -118,8 +123,9 @@ class _TaskTimelineScreenState extends State<TaskTimelineScreen>
   }
 
   bool _belongs(TraceTask task, TaskTraceGraph graph) {
-    if (widget.sessionID == null || task.sessionID == widget.sessionID)
+    if (widget.sessionID == null || task.sessionID == widget.sessionID) {
       return true;
+    }
     final seen = <String>{task.id};
     TraceTask? ancestor = graph.tasks[task.parentID];
     while (ancestor != null && seen.add(ancestor.id)) {
@@ -224,8 +230,8 @@ class _TaskTimelineScreenState extends State<TaskTimelineScreen>
             if (!_current) KitNotice(message: l.usageLocationChanged),
             if (_error != null || _store.error != null)
               KitNotice.error(
-                message: productErrorText(_error ?? _store.error!, l10n: l),
-                notes: [l.insightsUnavailable],
+                message:
+                    '${productErrorText(_error ?? _store.error!, l10n: l)}\n${l.insightsUnavailable}',
                 retry: KitAction(label: l.commonRetry, onPressed: _refresh),
               ),
             if (_store.truncated) KitNotice(message: l.insightsPartial),
@@ -318,8 +324,9 @@ class _TaskTimelineScreenState extends State<TaskTimelineScreen>
                           ),
                       ],
                     );
-                    if (value != null && mounted)
+                    if (value != null && mounted) {
                       setState(() => _model = value.isEmpty ? null : value);
+                    }
                   },
                 ),
                 KitButton.tertiary(
@@ -340,12 +347,13 @@ class _TaskTimelineScreenState extends State<TaskTimelineScreen>
                           ),
                       ],
                     );
-                    if (value != null && mounted)
+                    if (value != null && mounted) {
                       setState(
                         () => _status = value.isEmpty
                             ? null
                             : TraceTaskStatus.values.byName(value),
                       );
+                    }
                   },
                 ),
               ],
@@ -657,8 +665,9 @@ class _TaskPainter extends CustomPainter {
           end == null ||
           end < start ||
           start > to ||
-          end < from)
+          end < from) {
         return;
+      }
       final x = ((math.max(start, from) - from) / range * size.width).clamp(
         0.0,
         size.width,

@@ -60,6 +60,8 @@ class Api2Gateway
   )?
   onTaskPromptAccepted;
   Future<void> Function()? refreshTaskTrace;
+  List<MessageWithParts> Function(List<MessageWithParts> messages)?
+  recordedTiming;
 
   /// Notifies the app of a prompt this gateway actually accepted for dispatch.
   /// Called only for OpenCode 2 sends, with the model the caller selected;
@@ -402,7 +404,11 @@ class Api2Gateway
     final more =
         page.nextCursor?.isNotEmpty == true && page.data.length >= limit;
     return ServerPage(
-      items: mapApi2Messages(id, page.data.reversed.toList()),
+      items:
+          recordedTiming?.call(
+            mapApi2Messages(id, page.data.reversed.toList()),
+          ) ??
+          mapApi2Messages(id, page.data.reversed.toList()),
       nextCursor: more ? page.nextCursor : null,
     );
   });
@@ -593,8 +599,9 @@ class Api2Gateway
             ),
         ],
       );
-      if (metadata != null)
+      if (metadata != null) {
         onTaskPromptAccepted?.call(sessionID, receipt, metadata);
+      }
     }),
   );
 

@@ -21,8 +21,9 @@ TaskPromptIntent taskPromptIntent({
   if (RegExp(
     r'新的?独立(请求|任务)|另一个任务|新任务|\b(new|separate|independent) task\b',
     caseSensitive: false,
-  ).hasMatch(text))
+  ).hasMatch(text)) {
     return TaskPromptIntent.pending;
+  }
   return TaskPromptIntent.supplement;
 }
 
@@ -81,8 +82,9 @@ class TraceRequest {
     if (duration == null ||
         duration <= 0 ||
         usage == null ||
-        usage.output + usage.reasoning <= 0)
+        usage.output + usage.reasoning <= 0) {
       return null;
+    }
     return (usage.output + usage.reasoning) *
         Duration.microsecondsPerSecond /
         duration;
@@ -139,15 +141,17 @@ class TaskTraceGraph {
 
   void add(Map<String, dynamic> event) {
     final type = event['type'], session = event['sessionID'];
-    if (type is! String || session is! String || session.isEmpty)
+    if (type is! String || session is! String || session.isEmpty) {
       throw const FormatException('Invalid task event');
+    }
     final eventID = event['id'];
     if (eventID is String && !_seen.add(eventID)) return;
     final at = event['at'] is int && event['at'] > 0
         ? event['at'] as int
         : null;
-    if (at != null && (lastRecordedAt == null || at > lastRecordedAt!))
+    if (at != null && (lastRecordedAt == null || at > lastRecordedAt!)) {
       lastRecordedAt = at;
+    }
     final message = event['inboxID'];
     final identity = event['task'];
     if (type == 'task.admitted' ||
@@ -172,13 +176,15 @@ class TaskTraceGraph {
             association: association,
           ),
         );
-        if (task.sessionID != session)
+        if (task.sessionID != session) {
           throw const FormatException('Task scope mismatch');
+        }
         task.messageIDs.add(message);
         messageTasks[message] = id;
         task.submitted ??= at;
-        if (task.status == TraceTaskStatus.unknown)
+        if (task.status == TraceTaskStatus.unknown) {
           task.status = TraceTaskStatus.queued;
+        }
       }
       if (type == 'session.inbox.delivered' && message is String) {
         final id =
@@ -248,17 +254,19 @@ class TaskTraceGraph {
       tasks[id]!.requestIDs.add(requestID);
       return TraceRequest(id: requestID, sessionID: session, taskID: id);
     });
-    if (request.sessionID != session)
+    if (request.sessionID != session) {
       throw const FormatException('Request scope mismatch');
+    }
     final model = event['model'];
     if (model is Map) {
       request.providerID = model['providerID'];
       request.modelID = model['id'];
     }
-    if (event['tokens'] is Map)
+    if (event['tokens'] is Map) {
       request.tokens = Tokens.fromJson(
         Map<String, dynamic>.from(event['tokens']),
       );
+    }
     final error = event['error'];
     if (error is Map) {
       request.errorType = error['type'];
@@ -279,7 +287,7 @@ class TaskTraceGraph {
         request.status = TraceTaskStatus.failed;
       case 'session.retry.scheduled':
         request.retryCount++;
-        if (at != null)
+        if (at != null) {
           request.spans.add(
             TraceSpan(
               error is Map && error['status'] == 429
@@ -289,6 +297,7 @@ class TaskTraceGraph {
               end: event['retryAt'] as int?,
             ),
           );
+        }
     }
     final phase = type.startsWith('session.reasoning.')
         ? 'thinking'
@@ -341,8 +350,9 @@ class TaskTraceGraph {
     if (child == null ||
         parent == null ||
         childID == parentID ||
-        child.userTask)
+        child.userTask) {
       throw const FormatException('Invalid task link');
+    }
     final visited = <String>{childID};
     TraceTask? current = parent;
     while (current != null) {
@@ -404,11 +414,11 @@ class TaskTraceGraph {
     return MessageWithParts(
       info: message.info.withTime(
         MsgTime(
-          created: time?.created ?? r.start,
+          created: time?.recorded == true ? time?.created ?? r.start : r.start,
           firstToken: time?.firstToken ?? r.firstToken,
           streamed: time?.streamed ?? r.streamed,
-          completed: time?.completed ?? r.end,
-          recorded: time?.recorded ?? r.start != null,
+          completed: time?.recorded == true ? time?.completed ?? r.end : r.end,
+          recorded: time?.recorded == true || r.start != null,
         ),
       ),
       parts: parts,

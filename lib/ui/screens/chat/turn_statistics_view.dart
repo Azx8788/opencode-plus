@@ -20,12 +20,13 @@ Widget? _replyStatistics(
   List<MessageWithParts>? liveSteps,
   TaskTraceStore? trace,
 }) {
-  if (liveSteps != null)
+  if (liveSteps != null) {
     return _LiveReplyStatistics(
       steps: liveSteps,
       trace: trace,
       messageID: messageID,
     );
+  }
   final strings = _chatL10n(context);
   final duration = stats.duration;
   final speed = stats.tokensPerSecond;

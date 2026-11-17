@@ -53,8 +53,9 @@ class TaskTraceStore extends ChangeNotifier {
     final raw = preferences.getString(key);
     if (raw != null) {
       final value = jsonDecode(raw);
-      if (value is! Map || value['version'] != 1 || value['events'] is! List)
+      if (value is! Map || value['version'] != 1 || value['events'] is! List) {
         throw const FormatException('Unreadable task trace');
+      }
       _events = (value['events'] as List)
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
@@ -85,9 +86,9 @@ class TaskTraceStore extends ChangeNotifier {
           (e) => e['id'] is! String || seen.add(e['id'] as String),
         ),
       ];
-      // Do not prune arbitrary roots out from beneath their children. A full
-      // cache is explicitly partial; the authoritative history stays server-side.
-      final next = all.take(10000).toList();
+      // Keep recent events flowing after the cap. Lost origins remain pending,
+      // and partial coverage is disclosed instead of freezing the live view.
+      final next = all.length > 10000 ? all.sublist(all.length - 10000) : all;
       final clipped = truncated || incomplete || all.length > next.length;
       final projection = TaskTraceGraph();
       for (final e in next) {

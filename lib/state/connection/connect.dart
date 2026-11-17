@@ -285,6 +285,7 @@ extension _ConnectionControllerConnectImpl on ConnectionController {
         profile.id,
         profile.baseUrl,
       );
+      gateway.recordedTiming = (messages) => trace.graph.decorate(messages);
       Future<void>? traceRead;
       final cursors = <String, int>{};
       gateway.refreshTaskTrace = () {
@@ -306,8 +307,9 @@ extension _ConnectionControllerConnectImpl on ConnectionController {
             }
             cursors[locationKey] = after;
             if (page.next == null) return;
-            if (page.events.isEmpty || page.next! < after)
+            if (page.events.isEmpty || page.next! < after) {
               throw const FormatException('Invalid task cursor');
+            }
             after = page.next!;
           }
           throw const FormatException(

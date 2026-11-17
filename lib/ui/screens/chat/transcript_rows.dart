@@ -491,8 +491,9 @@ class _WorkGroupState extends State<_WorkGroup> {
     final steps = <Widget>[];
     int? lastThought;
     for (final run in widget.runs) {
-      if (run.parts.any((p) => p.type == 'reasoning'))
+      if (run.parts.any((p) => p.type == 'reasoning')) {
         lastThought = steps.length;
+      }
       steps.addAll(widget.buildRun(run));
     }
     final store = widget.expansionStore;
@@ -515,7 +516,7 @@ class _WorkGroupState extends State<_WorkGroup> {
         // ones fold behind "Show N earlier steps".
         tail: 2,
         retainWhenCollapsed: true,
-        pinnedSteps: {if (lastThought != null) lastThought},
+        pinnedSteps: {?lastThought},
         steps: steps,
       ),
     );

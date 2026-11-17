@@ -166,15 +166,31 @@ extension _ChatSessionMenu on _ChatScreenState {
           label: _chatL10n(context).sessionElapsedTitle,
           icon: AppIconography.timer,
           onSelected: () => unawaited(
-            pushKitPage<void>(
-              context,
-              (_) => SessionElapsedScreen(messages: List.of(_visibleHistory)),
-            ),
+            pushKitPage<void>(context, (_) {
+              final profile = _conn.profile;
+              final trace = profile == null
+                  ? null
+                  : TaskTraceStore.shared(
+                      _conn.store.prefs,
+                      profile.id,
+                      profile.baseUrl,
+                    );
+              return SessionElapsedScreen(
+                messages: List.of(_visibleHistory),
+                watch: trace,
+                readMessages: () =>
+                    trace?.graph.decorate(List.of(_visibleHistory)) ??
+                    List.of(_visibleHistory),
+                liveNow: () => _conn.busySessions.contains(widget.sessionID)
+                    ? trace?.serverNow
+                    : null,
+              );
+            }),
           ),
         ),
         KitMenuItem(
           key: const ValueKey('chat-request-timeline'),
-          label: _chatL10n(context).requestTimeline,
+          label: _chatL10n(context).insightsTitle,
           icon: AppIconography.timeline,
           onSelected: () => unawaited(
             pushKitPage<void>(
