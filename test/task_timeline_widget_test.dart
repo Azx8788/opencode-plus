@@ -186,8 +186,10 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('task-expand-root')));
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('task-bar-agent:c')), findsOneWidget);
-        await tester.ensureVisible(find.byKey(const ValueKey('task-bar-root')));
-        await tester.tap(find.byKey(const ValueKey('task-bar-root')));
+        await tester.ensureVisible(
+          find.byKey(const ValueKey('task-detail-root')),
+        );
+        await tester.tap(find.byKey(const ValueKey('task-detail-root')));
         await tester.pumpAndSettle();
         expect(find.text('Task details'), findsOneWidget);
         expect(find.text('Message turns'), findsOneWidget);

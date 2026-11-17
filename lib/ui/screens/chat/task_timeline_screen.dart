@@ -425,6 +425,9 @@ class _TaskTimelineScreenState extends State<TaskTimelineScreen>
                                     start: math.min(row.depth, 4) * 10.0,
                                   ),
                                   child: KitTappable(
+                                    tappableKey: ValueKey(
+                                      'task-detail-${row.task.id}',
+                                    ),
                                     label: row.task.id,
                                     onTap: () => _detail(row.task.id),
                                     child: Column(
