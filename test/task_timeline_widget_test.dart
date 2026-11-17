@@ -197,8 +197,8 @@ void main() {
           }
         });
         final before = store.graph.userTasks;
-        await tester.ensureVisible(find.text('+'));
-        await tester.tap(find.text('+'));
+        await tester.ensureVisible(find.byKey(const ValueKey('task-zoom-in')));
+        await tester.tap(find.byKey(const ValueKey('task-zoom-in')));
         await tester.pumpAndSettle();
         expect(store.graph.userTasks, before);
         await tester.ensureVisible(find.byKey(const ValueKey('task-bar-root')));

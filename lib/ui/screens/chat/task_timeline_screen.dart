@@ -282,25 +282,30 @@ class _TaskTimelineScreenState extends State<TaskTimelineScreen>
               spacing: t.space2,
               children: [
                 KitButton.tertiary(
+                  key: const ValueKey('task-time-earlier'),
                   label: l.insightsPrevious,
                   onPressed: () =>
                       setState(() => _anchor = now - _window.inMilliseconds),
                 ),
                 KitButton.tertiary(
+                  key: const ValueKey('task-time-now'),
                   label: l.insightsNow,
                   onPressed: () => setState(() => _anchor = null),
                 ),
                 KitButton.tertiary(
+                  key: const ValueKey('task-time-later'),
                   label: l.insightsNext,
                   onPressed: () =>
                       setState(() => _anchor = now + _window.inMilliseconds),
                 ),
                 KitButton.tertiary(
+                  key: const ValueKey('task-zoom-out'),
                   label: '−',
                   onPressed: () =>
                       setState(() => _zoom = math.max(1, _zoom / 2)),
                 ),
                 KitButton.tertiary(
+                  key: const ValueKey('task-zoom-in'),
                   label: '+',
                   onPressed: () =>
                       setState(() => _zoom = math.min(16, _zoom * 2)),
