@@ -235,28 +235,30 @@ class _TaskTimelineScreenState extends State<TaskTimelineScreen>
                 retry: KitAction(label: l.commonRetry, onPressed: _refresh),
               ),
             if (_store.truncated) KitNotice(message: l.insightsPartial),
-            KitSegmented<Duration>(
-              semanticsLabel: l.requestTimelineWindow,
+            KitPickerRow<Duration>(
+              rowKey: const ValueKey('task-time-window'),
+              sheetKey: const ValueKey('task-time-window-choices'),
+              title: l.requestTimelineWindow,
               selected: _window,
-              onChanged: (value) => setState(() {
+              onSelected: (value) => setState(() {
                 _window = value;
                 _anchor = null;
               }),
-              segments: [
-                KitSegment(
+              choices: [
+                KitChoice(
                   value: const Duration(minutes: 15),
-                  label: l.requestTimeline15m,
+                  title: l.requestTimeline15m,
                 ),
-                KitSegment(
+                KitChoice(
                   value: const Duration(hours: 1),
-                  label: l.requestTimeline1h,
+                  title: l.requestTimeline1h,
                 ),
-                KitSegment(
+                KitChoice(
                   value: const Duration(hours: 6),
-                  label: l.requestTimeline6h,
+                  title: l.requestTimeline6h,
                 ),
-                KitSegment(value: const Duration(days: 1), label: '24 h'),
-                KitSegment(value: const Duration(days: 7), label: '7 d'),
+                KitChoice(value: const Duration(days: 1), title: '24 h'),
+                KitChoice(value: const Duration(days: 7), title: '7 d'),
               ],
             ),
             SizedBox(height: t.space3),
