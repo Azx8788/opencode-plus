@@ -25,6 +25,14 @@ SearchProviderSettings settings({
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // The secret input has its own Scrollable. Target the ListView's outer
+  // Scrollable explicitly rather than asking the tester to pick among both.
+  Finder pageScroll() => find
+      .descendant(
+        of: find.byKey(const ValueKey('search-provider-detail')),
+        matching: find.byType(Scrollable),
+      )
+      .first;
   setUpAll(() async {
     for (final font in const {
       'AppSans': 'assets/fonts/geist/Geist-Variable.ttf',
@@ -114,6 +122,7 @@ void main() {
         await tester.scrollUntilVisible(
           find.byKey(const ValueKey('search-provider-select')),
           200,
+          scrollable: pageScroll(),
         );
         await tester.tap(find.byKey(const ValueKey('search-provider-select')));
         await tester.pumpAndSettle();
@@ -121,6 +130,7 @@ void main() {
         await tester.scrollUntilVisible(
           find.byKey(const ValueKey('search-provider-test')),
           150,
+          scrollable: pageScroll(),
         );
         await tester.tap(find.byKey(const ValueKey('search-provider-test')));
         await tester.pumpAndSettle();
@@ -166,6 +176,7 @@ void main() {
       await tester.scrollUntilVisible(
         find.byKey(const ValueKey('search-provider-select')),
         200,
+        scrollable: pageScroll(),
       );
       final selectButton = tester.widget<KitButton>(
         find.byKey(const ValueKey('search-provider-select')),
