@@ -215,6 +215,38 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
     }
   }
 
+  /// What the request state actually means, without turning it into a grant.
+  String _permissionRequestExplanation(String reason) => switch (reason) {
+    'sui_managed_authorization' => text(
+      'Sui owns authorization here, so there is no manager dialog to answer. Enable OpenCode Plus in Sui, then refresh.',
+      '此处由 Sui 管理授权，没有可回答的管理器弹窗。请在 Sui 中允许 OpenCode Plus，然后刷新。',
+    ),
+    'permission_callback_missing' => text(
+      'Shizuku returned no decision. Open the manager and check that OpenCode Plus is listed, then request again.',
+      'Shizuku 没有返回你的选择。请打开管理器确认列表中有 OpenCode Plus，然后重新申请。',
+    ),
+    'permission_revoked' => text(
+      "The grant is gone from Shizuku's authorized list. Request it again.",
+      'Shizuku 授权列表中的授权已不存在，请重新申请。',
+    ),
+    'permission_denied' => text(
+      'Shizuku reported a denial. The request stays available.',
+      'Shizuku 返回了拒绝，仍可重新申请。',
+    ),
+    'shizuku_not_running' => text(
+      'Shizuku is not running, so nothing was asked. Start Shizuku first.',
+      'Shizuku 未运行，没有发出申请。请先启动 Shizuku。',
+    ),
+    'permission_request_failed' => text(
+      'The request could not be handed to Shizuku. No permission was granted.',
+      '申请没有送达 Shizuku，未获得任何授权。',
+    ),
+    _ => text(
+      'Authorization request status: $reason. No permission has been inferred.',
+      '授权申请状态：$reason。不会据此推断已获授权。',
+    ),
+  };
+
   String _bindingExplanation(String reason) => switch (reason) {
     'bind_timeout' => text(
       'No UserService callback arrived. Check whether Shizuku offers to restart an older running server; some ROMs cannot initialize UserService. Authorization alone is not execution readiness.',
@@ -325,9 +357,8 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Text(
-                text(
-                  'Authorization request status: ${_state['permissionRequestReason']}. No permission has been inferred.',
-                  '授权申请状态：${_state['permissionRequestReason']}。不会据此推断已获授权。',
+                _permissionRequestExplanation(
+                  '${_state['permissionRequestReason']}',
                 ),
               ),
             ),

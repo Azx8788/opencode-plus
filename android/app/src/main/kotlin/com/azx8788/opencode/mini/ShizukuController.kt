@@ -47,10 +47,7 @@ internal object ShizukuController {
     private val brokerInstance = UUID.randomUUID().toString()
     private var app: Context? = null
     private var sink: EventChannel.EventSink? = null
-    private var permissionResult: Int? = null
-    private var permissionRequestState = "not_requested"
-    private var permissionRequestReason: String? = null
-    private var permissionRequestEpoch = 0L
+    private val permission = ShizukuPermissionRequest()
     private var connection: Pair<Long, ServiceConnection>? = null
     private var status = emptyMap<String, Any?>()
     private val waiters = mutableListOf<(ShizukuBindingState.Ready<IShizukuCommandService>?, String?) -> Unit>()
@@ -72,15 +69,18 @@ internal object ShizukuController {
     }
     private val received = Shizuku.OnBinderReceivedListener { control.execute {
         // A provider replacement can keep the same UID. It still invalidates the old execution endpoint.
+        permission.interrupt("binder_replaced")
         invalidate("binder_replaced")
         refreshNow(true)
     } }
-    private val died = Shizuku.OnBinderDeadListener { control.execute { invalidate("binder_died"); publish() } }
+    private val died = Shizuku.OnBinderDeadListener { control.execute {
+        permission.interrupt("binder_died")
+        invalidate("binder_died")
+        publish()
+    } }
     private val permissionListener = Shizuku.OnRequestPermissionResultListener { code, value ->
         if (code == REQUEST_CODE) control.execute {
-            permissionResult = value
-            permissionRequestState = if (value == PackageManager.PERMISSION_GRANTED) "granted" else "denied"
-            permissionRequestReason = null
+            permission.deliver(value == PackageManager.PERMISSION_GRANTED)
             refreshNow(true)
         }
     }
@@ -113,10 +113,13 @@ internal object ShizukuController {
         val uid = if (granted) runCatching { Shizuku.getUid() }.getOrNull() else null
         val version = if (alive) runCatching { Shizuku.getVersion() }.getOrNull() else null
         val enabled = enabled()
+        // A revocation made in the manager's list must be reported, not kept as granted.
+        if (alive) permission.sync(granted)
+        val request = permission.snapshot()
         val unavailable = when {
             !enabled -> "feature_disabled"
             !alive -> "shizuku_not_running"
-            permissionRequestState == "requesting" -> "permission_request_pending"
+            request.state == "requesting" -> "permission_request_pending"
             !granted -> "shizuku_permission_missing"
             uid !in setOf(0, 2000) -> "unsupported_identity"
             version == null || version < 11 -> "unsupported_server_version"
@@ -127,11 +130,12 @@ internal object ShizukuController {
             "managerInstalled" to runCatching { context.packageManager.getPackageInfo("moe.shizuku.privileged.api", 0) }.isSuccess,
             "binderAlive" to alive, "overlayAllowed" to android.provider.Settings.canDrawOverlays(context),
             "provider" to if (!alive) "unknown" else if (Sui.isSui()) "sui" else "shizuku",
-            "permission" to when { !alive -> "unknown"; granted -> "granted"; permissionResult == PackageManager.PERMISSION_DENIED -> "denied"; else -> "requestable" },
+            "permission" to when { !alive -> "unknown"; granted -> "granted"; request.granted == false -> "denied"; else -> "requestable" },
             "enabled" to enabled, "serverUid" to uid, "serverVersion" to version,
             "selinuxContext" to if (granted) runCatching { Shizuku.getSELinuxContext() }.getOrNull() else null,
-            "permissionResult" to permissionResult, "availabilityReason" to unavailable,
-            "permissionRequestState" to permissionRequestState, "permissionRequestReason" to permissionRequestReason,
+            "permissionResult" to request.granted?.let { if (it) PackageManager.PERMISSION_GRANTED else PackageManager.PERMISSION_DENIED },
+            "availabilityReason" to unavailable,
+            "permissionRequestState" to request.state, "permissionRequestReason" to request.reason,
         )
         if (unavailable != null && binding.snapshot().phase != "disconnected") invalidate(unavailable)
         else if (binding.snapshot().ready?.uid?.let { it != uid } == true) invalidate("identity_changed")
@@ -152,32 +156,35 @@ internal object ShizukuController {
 
     /** Only explicit user actions call this. A cached GRANTED value never skips registration/consent. */
     private fun requestPermissionFromUser() {
-        if (permissionRequestState == "requesting") return
+        if (permission.snapshot().state == "requesting") return
         if (!runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
-            permissionRequestState = "unavailable"
-            permissionRequestReason = "shizuku_not_running"
+            permission.unavailable("shizuku_not_running")
             publish()
             throw IllegalStateException("shizuku_not_running")
         }
-        permissionResult = null
-        permissionRequestState = "requesting"
-        permissionRequestReason = null
-        val epoch = ++permissionRequestEpoch
-        try { Shizuku.requestPermission(REQUEST_CODE) }
-        catch (_: Exception) {
-            permissionRequestState = "failed"
-            permissionRequestReason = "permission_request_failed"
+        // Sui has no manager to ask: the server answers a request with a denial that
+        // would be reported as the person's own choice. Sui's list is the only owner.
+        if (runCatching { Sui.isSui() }.getOrDefault(false)) {
+            permission.unavailable("sui_managed_authorization")
             publish()
-            throw IllegalStateException("permission_request_failed")
+            throw IllegalStateException("sui_managed_authorization")
         }
-        // This reports a missing callback, not denial and not a fabricated permission grant.
+        val epoch = permission.begin() ?: return
+        // The confirmation is another app's foreground activity and the SDK delivers
+        // its result on the main looper, so the call itself is issued there too.
+        // A dialog a ROM refuses to show must not be recorded as a failed request.
+        main.post {
+            if (permission.snapshot().epoch != epoch || permission.snapshot().state != "requesting") return@post
+            try { Shizuku.requestPermission(REQUEST_CODE) }
+            catch (_: Exception) { control.execute { permission.failed("permission_request_failed"); publish() } }
+        }
+        // This reports a missing callback, not denial and not a fabricated grant.
         control.schedule({
-            if (permissionRequestEpoch == epoch && permissionRequestState == "requesting") {
-                permissionRequestState = "callback_missing"
-                permissionRequestReason = "permission_callback_missing"
-                refreshNow(true)
-            }
-        }, 30_000, TimeUnit.MILLISECONDS)
+            val serverGranted = runCatching {
+                Shizuku.pingBinder() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+            }.getOrDefault(false)
+            if (permission.expire(epoch, serverGranted)) refreshNow(true)
+        }, permission.timeoutMs, TimeUnit.MILLISECONDS)
         publish()
     }
 
@@ -426,7 +433,7 @@ internal object ShizukuController {
     fun stopRuntime() { control.execute {
         for (op in operations.values.toList()) if (op.owner.source == "opencode_tool") runCatching { cancelOperation(op.id, op.owner) }
     } }
-    fun stopAll() { control.execute { invalidate("user_stopped"); publish() } }
+    fun stopAll() { control.execute { permission.interrupt("user_stopped"); invalidate("user_stopped"); publish() } }
 
     private fun reconcile(id: String, owner: ShizukuProtocol.Owner, complete: (JSONObject) -> Unit) {
         val row = journal.get(id, owner) ?: run { complete(ShizukuProtocol.error("operation_not_found")); return }
@@ -483,6 +490,7 @@ internal object ShizukuController {
                             check(app!!.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                                 .putBoolean(ENABLED, requested).commit())
                             if (requested) runCatching { requestPermissionFromUser() }
+                            else permission.interrupt("feature_disabled")
                             refreshNow(true); respond(JSONObject(snapshot()))
                         }
                         "startService" -> acquire { ready, why ->
@@ -547,7 +555,8 @@ internal object ShizukuController {
         val raw = value.get(key); require(raw is Number && raw.toDouble() == raw.toInt().toDouble()); raw.toInt()
     }
     private fun errorCode(error: Exception): String = error.message?.takeIf { it in setOf("operation_conflict", "operation_history_full",
-        "operation_storage_unavailable", "invalid_settings", "shizuku_not_running", "permission_request_failed") } ?: "invalid_request"
+        "operation_storage_unavailable", "invalid_settings", "shizuku_not_running", "permission_request_failed",
+        "sui_managed_authorization") } ?: "invalid_request"
     private fun jsonMap(value: JSONObject): Map<String, Any?> = value.keys().asSequence().associateWith {
         if (value.isNull(it)) null else value.get(it)
     }

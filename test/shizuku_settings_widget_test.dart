@@ -19,10 +19,12 @@ void main() {
   var failSave = false;
   var failLoad = false;
   var failedBinding = false;
+  String? permissionReason;
 
   setUp(() {
     failSave = failLoad = false;
     failedBinding = false;
+    permissionReason = null;
     stored = {
       'direct_read_only': true,
       'advanced_mode': false,
@@ -51,6 +53,8 @@ void main() {
             'serverVersion': 13,
             'aiBridgeReady': false,
             'provider': 'shizuku',
+            'permissionRequestState': 'not_requested',
+            'permissionRequestReason': permissionReason,
           };
         case 'settings':
           if (failLoad) throw PlatformException(code: 'load_failed');
@@ -146,6 +150,38 @@ void main() {
             .onPressed,
         isNull,
       );
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'a Sui-owned authorization is explained instead of being retried blindly',
+    (tester) async {
+      permissionReason = 'sui_managed_authorization';
+      await mount(tester);
+      expect(
+        find.textContaining('Sui owns authorization here'),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const ValueKey('shizuku-request-permission')),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'a lost decision is not displayed as a grant',
+    (tester) async {
+      permissionReason = 'permission_callback_missing';
+      await mount(tester);
+      expect(find.textContaining('returned no decision'), findsOneWidget);
+      expect(find.textContaining('Authorization request status'), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );

@@ -34,6 +34,31 @@ void main() {
       expect(manifest, contains('android.permission.SYSTEM_ALERT_WINDOW'));
     });
 
+    // ShizukuService.getApplications() lists an app in the manager's authorized
+    // list only when its manifest both requests API_V23 and advertises
+    // V3_SUPPORT. An app missing either one cannot be granted there at all, so
+    // a request appears to fail and the entry never survives.
+    test('the manager can list this app: API_V23 requested and V3_SUPPORT advertised', () {
+      final manifest = XmlDocument.parse(
+        File('android/app/src/main/AndroidManifest.xml').readAsStringSync(),
+      );
+      final requested = manifest
+          .findAllElements('uses-permission')
+          .map((element) => element.getAttribute('android:name'))
+          .toList();
+      expect(requested, contains('moe.shizuku.manager.permission.API_V23'));
+      final advertised = manifest
+          .findAllElements('meta-data')
+          .where(
+            (element) =>
+                element.getAttribute('android:name') ==
+                'moe.shizuku.client.V3_SUPPORT',
+          )
+          .toList();
+      expect(advertised, hasLength(1));
+      expect(advertised.single.getAttribute('android:value'), 'true');
+    });
+
     test(
       'Shizuku manager (moe.shizuku.privileged.api) is visible for queries',
       () {
