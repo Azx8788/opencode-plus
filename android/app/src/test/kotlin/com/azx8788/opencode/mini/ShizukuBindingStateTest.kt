@@ -54,4 +54,15 @@ class ShizukuBindingStateTest {
             assertNull(state.begin())
         }
     }
+    @Test fun `a provider replacement with the same UID still needs a new endpoint handshake`() {
+        val state = ShizukuBindingState<String>({ 0L })
+        val old = state.begin()!!
+        state.connected(old, "old-provider", "old-instance", 0)
+        state.reset("binder_replaced")
+        assertNull(state.snapshot().ready)
+        val next = state.begin()!!
+        assertFalse(state.connected(old, "old-provider", "old-instance", 0))
+        assertTrue(state.connected(next, "new-provider", "new-instance", 0))
+        assertEquals("new-instance", state.snapshot().ready!!.instance)
+    }
 }

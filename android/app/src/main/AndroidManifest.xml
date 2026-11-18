@@ -1,5 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Keep Shizuku's app-discovery declaration explicit, not only inherited from the SDK. -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23"/>
     <!-- Explicitly granted in system settings; missing permission denies Shizuku execution. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
@@ -72,6 +74,7 @@
         android:enableOnBackInvokedCallback="true"
         android:manageSpaceActivity=".ManageSpaceActivity"
         android:networkSecurityConfig="@xml/network_security_config">
+        <meta-data android:name="moe.shizuku.client.V3_SUPPORT" android:value="true" />
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="${applicationId}.shizuku"

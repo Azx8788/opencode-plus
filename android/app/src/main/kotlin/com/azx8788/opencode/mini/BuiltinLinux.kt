@@ -3701,7 +3701,8 @@ class BuiltinLinux(private val context: Context) {
         // A failed/uncertain launch keeps only this bounded admission marker.
         scheduledPhoneLease.begin(profile, token, budget, scheduledPhoneClock())
         ShizukuNativeBridge.start(context, rootfs)
-        val process = start(script, serviceLogFile(SERVER))
+        val process = try { start(script, serviceLogFile(SERVER)) }
+        catch (error: Throwable) { if (!serverRunning) ShizukuNativeBridge.stop(); throw error }
         process.outputStream.close()
         services[SERVER] = serviceStarted(SERVER, process, SERVER_DEFAULT_PORT, null, script)
         scheduledPhoneProcesses[token] = process
@@ -3819,12 +3820,15 @@ class BuiltinLinux(private val context: Context) {
 
     private fun launchServiceProcess(name: String, script: String, log: File, launch: ServiceLaunch): Process {
         if (name == SERVER) ShizukuNativeBridge.start(context, rootfs)
-        return when {
+        try { return when {
             launch.idleGeneration != null -> launchIdleResume(script, log, launch, launch.idleGeneration)
             launch.nativeOwned -> launchNativeOwned(name, script, log, launch)
             launch.expectedGeneration == null ->
                 if (name == SERVER) startManualServer(script, log) else start(script, log)
             else -> launchRecoveryAttempt(script, log, launch.expectedGeneration)
+        } } catch (error: Throwable) {
+            if (name == SERVER && !serverRunning) ShizukuNativeBridge.stop()
+            throw error
         }
     }
 

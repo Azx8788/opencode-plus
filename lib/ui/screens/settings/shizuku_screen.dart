@@ -295,6 +295,42 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
             title: Text(text('Permission', '授权')),
             subtitle: Text(permission),
           ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: FilledButton(
+                key: const ValueKey('shizuku-request-permission'),
+                onPressed:
+                    _busy || _state['permissionRequestState'] == 'requesting'
+                    ? null
+                    : () => _run(ShizukuPlatform.requestPermission),
+                child: Text(
+                  text('Request Shizuku authorization', '申请 Shizuku 授权'),
+                ),
+              ),
+            ),
+          ),
+          if (_state['permissionRequestState'] == 'requesting')
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                text(
+                  'Authorization requested. Waiting for Shizuku to return your decision.',
+                  '已发起授权申请，等待 Shizuku 返回你的选择。',
+                ),
+              ),
+            ),
+          if (_state['permissionRequestReason'] != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                text(
+                  'Authorization request status: ${_state['permissionRequestReason']}. No permission has been inferred.',
+                  '授权申请状态：${_state['permissionRequestReason']}。不会据此推断已获授权。',
+                ),
+              ),
+            ),
           ListTile(
             title: Text(text('Execution identity', '执行身份')),
             subtitle: Text('$backend${uid == null ? '' : ' · UID $uid'}'),
@@ -341,8 +377,8 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
             title: Text(text('Enable Shizuku commands', '启用 Shizuku 命令')),
             subtitle: Text(
               text(
-                'Separate from Shizuku permission and from the safety overlay.',
-                '与 Shizuku 系统授权、悬浮窗授权分开控制。',
+                'Turning this on requests Shizuku authorization. The command switch and safety overlay permission remain separate.',
+                '开启时立即申请 Shizuku 授权；命令开关和悬浮窗权限仍分别控制。',
               ),
             ),
             value: _state['enabled'] == true,
@@ -463,12 +499,6 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
                 key: const ValueKey('shizuku-reconnect'),
                 onPressed: _busy ? null : () => _run(ShizukuPlatform.reconnect),
                 child: Text(text('Reconnect UserService', '重新连接用户服务')),
-              ),
-              OutlinedButton(
-                onPressed: _busy
-                    ? null
-                    : () => _run(ShizukuPlatform.requestPermission),
-                child: Text(text('Request permission', '申请授权')),
               ),
               OutlinedButton(
                 onPressed: _busy

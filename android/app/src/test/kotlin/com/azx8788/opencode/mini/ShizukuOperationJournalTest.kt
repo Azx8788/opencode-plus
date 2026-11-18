@@ -113,4 +113,14 @@ class ShizukuOperationJournalTest {
         assertThrows(IllegalStateException::class.java) { value.cancel("op", owner.copy(callId = "other")) }
         assertThrows(IllegalStateException::class.java) { value.get("op", owner.copy(agentId = "other")) }
     }
+    @Test fun `dedup metadata contains no command or captured output`() {
+        val directory = temporary.newFolder()
+        val value = journal(directory)
+        value.admit("op", owner, ShizukuProtocol.fingerprint("PRIVATE_COMMAND_FIXTURE", null))
+        value.dispatch("op", "service", 2000)
+        value.finish("op", "service", 2000, response("op"))
+        val metadata = File(directory, "${ShizukuProtocol.hash("op")}.json").readText()
+        assertFalse(metadata.contains("PRIVATE_COMMAND_FIXTURE"))
+        assertFalse(metadata.contains("real fixture output"))
+    }
 }

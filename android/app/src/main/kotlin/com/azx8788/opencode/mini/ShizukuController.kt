@@ -48,6 +48,9 @@ internal object ShizukuController {
     private var app: Context? = null
     private var sink: EventChannel.EventSink? = null
     private var permissionResult: Int? = null
+    private var permissionRequestState = "not_requested"
+    private var permissionRequestReason: String? = null
+    private var permissionRequestEpoch = 0L
     private var connection: Pair<Long, ServiceConnection>? = null
     private var status = emptyMap<String, Any?>()
     private val waiters = mutableListOf<(ShizukuBindingState.Ready<IShizukuCommandService>?, String?) -> Unit>()
@@ -59,7 +62,7 @@ internal object ShizukuController {
         val cancelled = AtomicBoolean(false)
     }
     private val operations = mutableMapOf<String, Operation>()
-    private val nativeResults = mutableMapOf<String, (JSONObject) -> Unit>()
+    private val nativeResults = mutableMapOf<String, MutableList<(JSONObject) -> Unit>>()
 
     private val serviceArgs by lazy {
         Shizuku.UserServiceArgs(ComponentName(requireNotNull(app), ShizukuCommandService::class.java))
@@ -67,10 +70,19 @@ internal object ShizukuController {
             .tag("${requireNotNull(app).packageName}-${android.os.Process.myUid() / 100000}-shizuku")
             .processNameSuffix("shizuku")
     }
-    private val received = Shizuku.OnBinderReceivedListener { refresh() }
+    private val received = Shizuku.OnBinderReceivedListener { control.execute {
+        // A provider replacement can keep the same UID. It still invalidates the old execution endpoint.
+        invalidate("binder_replaced")
+        refreshNow(true)
+    } }
     private val died = Shizuku.OnBinderDeadListener { control.execute { invalidate("binder_died"); publish() } }
     private val permissionListener = Shizuku.OnRequestPermissionResultListener { code, value ->
-        if (code == REQUEST_CODE) control.execute { permissionResult = value; refreshNow(true) }
+        if (code == REQUEST_CODE) control.execute {
+            permissionResult = value
+            permissionRequestState = if (value == PackageManager.PERMISSION_GRANTED) "granted" else "denied"
+            permissionRequestReason = null
+            refreshNow(true)
+        }
     }
 
     fun initialize(context: Context) {
@@ -104,6 +116,7 @@ internal object ShizukuController {
         val unavailable = when {
             !enabled -> "feature_disabled"
             !alive -> "shizuku_not_running"
+            permissionRequestState == "requesting" -> "permission_request_pending"
             !granted -> "shizuku_permission_missing"
             uid !in setOf(0, 2000) -> "unsupported_identity"
             version == null || version < 11 -> "unsupported_server_version"
@@ -118,6 +131,7 @@ internal object ShizukuController {
             "enabled" to enabled, "serverUid" to uid, "serverVersion" to version,
             "selinuxContext" to if (granted) runCatching { Shizuku.getSELinuxContext() }.getOrNull() else null,
             "permissionResult" to permissionResult, "availabilityReason" to unavailable,
+            "permissionRequestState" to permissionRequestState, "permissionRequestReason" to permissionRequestReason,
         )
         if (unavailable != null && binding.snapshot().phase != "disconnected") invalidate(unavailable)
         else if (binding.snapshot().ready?.uid?.let { it != uid } == true) invalidate("identity_changed")
@@ -135,6 +149,37 @@ internal object ShizukuController {
     }
     private fun publish() { val value = snapshot(); main.post { sink?.success(value) } }
     private fun enabled() = app?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)?.getBoolean(ENABLED, false) == true
+
+    /** Only explicit user actions call this. A cached GRANTED value never skips registration/consent. */
+    private fun requestPermissionFromUser() {
+        if (permissionRequestState == "requesting") return
+        if (!runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
+            permissionRequestState = "unavailable"
+            permissionRequestReason = "shizuku_not_running"
+            publish()
+            throw IllegalStateException("shizuku_not_running")
+        }
+        permissionResult = null
+        permissionRequestState = "requesting"
+        permissionRequestReason = null
+        val epoch = ++permissionRequestEpoch
+        try { Shizuku.requestPermission(REQUEST_CODE) }
+        catch (_: Exception) {
+            permissionRequestState = "failed"
+            permissionRequestReason = "permission_request_failed"
+            publish()
+            throw IllegalStateException("permission_request_failed")
+        }
+        // This reports a missing callback, not denial and not a fabricated permission grant.
+        control.schedule({
+            if (permissionRequestEpoch == epoch && permissionRequestState == "requesting") {
+                permissionRequestState = "callback_missing"
+                permissionRequestReason = "permission_callback_missing"
+                refreshNow(true)
+            }
+        }, 30_000, TimeUnit.MILLISECONDS)
+        publish()
+    }
 
     private fun bind() {
         val epoch = binding.begin() ?: return
@@ -405,8 +450,9 @@ internal object ShizukuController {
         }
     }
     private fun deliverNative(id: String, owner: ShizukuProtocol.Owner) {
-        val callback = nativeResults.remove(id) ?: return
-        callback(runCatching { journal.get(id, owner, true) }.getOrNull() ?: ShizukuProtocol.error("operation_storage_unavailable"))
+        val callbacks = nativeResults.remove(id) ?: return
+        val value = runCatching { journal.get(id, owner, true) }.getOrNull() ?: ShizukuProtocol.error("operation_storage_unavailable")
+        callbacks.forEach { it(value) }
     }
 
     private fun handle(call: MethodCall, result: MethodChannel.Result) {
@@ -429,12 +475,14 @@ internal object ShizukuController {
                         "settings" -> main.post { result.success(readSettings()) }
                         "saveSettings" -> saveSettings(call, result)
                         "requestPermission" -> {
-                            check(Shizuku.pingBinder()) { "shizuku_not_running" }
-                            permissionResult = null; Shizuku.requestPermission(REQUEST_CODE); main.post { result.success(true) }
+                            requestPermissionFromUser()
+                            main.post { result.success(true) }
                         }
                         "setEnabled" -> {
+                            val requested = call.argument<Boolean>("enabled") == true
                             check(app!!.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                                .putBoolean(ENABLED, call.argument<Boolean>("enabled") == true).commit())
+                                .putBoolean(ENABLED, requested).commit())
+                            if (requested) runCatching { requestPermissionFromUser() }
                             refreshNow(true); respond(JSONObject(snapshot()))
                         }
                         "startService" -> acquire { ready, why ->
@@ -452,8 +500,11 @@ internal object ShizukuController {
                                 try {
                                     startOperation(id, owner, command, timeout, ready, why ?: "shizuku_not_ready")
                                     val row = checkNotNull(journal.get(id, owner, true))
-                                    if (row.getString("state") in setOf("queued", "waiting", "running")) nativeResults[id] = ::respond
-                                    else respond(row)
+                                    if (row.getString("state") in setOf("queued", "waiting", "running")) {
+                                        val callbacks = nativeResults.getOrPut(id) { mutableListOf() }
+                                        if (callbacks.size < 4) callbacks.add(::respond)
+                                        else main.post { result.error("operation_waiters_full", "This operation already has waiting callers.", null) }
+                                    } else respond(row)
                                 } catch (error: Exception) { main.post { result.error(errorCode(error), "Shizuku command was not admitted.", null) } }
                             }
                         }
@@ -496,7 +547,7 @@ internal object ShizukuController {
         val raw = value.get(key); require(raw is Number && raw.toDouble() == raw.toInt().toDouble()); raw.toInt()
     }
     private fun errorCode(error: Exception): String = error.message?.takeIf { it in setOf("operation_conflict", "operation_history_full",
-        "operation_storage_unavailable", "invalid_settings", "shizuku_not_running") } ?: "invalid_request"
+        "operation_storage_unavailable", "invalid_settings", "shizuku_not_running", "permission_request_failed") } ?: "invalid_request"
     private fun jsonMap(value: JSONObject): Map<String, Any?> = value.keys().asSequence().associateWith {
         if (value.isNull(it)) null else value.get(it)
     }
