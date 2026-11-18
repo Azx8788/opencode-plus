@@ -3700,6 +3700,7 @@ class BuiltinLinux(private val context: Context) {
         // Commit before launch: a guest can survive Android app process death.
         // A failed/uncertain launch keeps only this bounded admission marker.
         scheduledPhoneLease.begin(profile, token, budget, scheduledPhoneClock())
+        ShizukuNativeBridge.start(context, rootfs)
         val process = start(script, serviceLogFile(SERVER))
         process.outputStream.close()
         services[SERVER] = serviceStarted(SERVER, process, SERVER_DEFAULT_PORT, null, script)
@@ -3816,14 +3817,16 @@ class BuiltinLinux(private val context: Context) {
         return process
     }
 
-    private fun launchServiceProcess(name: String, script: String, log: File, launch: ServiceLaunch): Process =
-        when {
+    private fun launchServiceProcess(name: String, script: String, log: File, launch: ServiceLaunch): Process {
+        if (name == SERVER) ShizukuNativeBridge.start(context, rootfs)
+        return when {
             launch.idleGeneration != null -> launchIdleResume(script, log, launch, launch.idleGeneration)
             launch.nativeOwned -> launchNativeOwned(name, script, log, launch)
             launch.expectedGeneration == null ->
                 if (name == SERVER) startManualServer(script, log) else start(script, log)
             else -> launchRecoveryAttempt(script, log, launch.expectedGeneration)
         }
+    }
 
     private fun launchIdleResume(script: String, log: File, launch: ServiceLaunch, generation: Long): Process {
         val profile = launch.idleOwner ?: error("idle_resume_stale")
@@ -3917,6 +3920,8 @@ class BuiltinLinux(private val context: Context) {
             return
         }
         // Clear even if a crash already removed the server from the map.
+        ShizukuController.stopAll()
+        ShizukuNativeBridge.stop()
         var failure: Exception? = null
         try { setServerWanted(false) } catch (error: Exception) { failure = error }
         try { stopEveryService(services.keys.toList()) { removeService(it) } }
@@ -3932,7 +3937,10 @@ class BuiltinLinux(private val context: Context) {
         recordRunning()
         // A reply cannot run on a server that is gone: never keep the phone
         // awake for it.
-        if (!serverRunning) workLeases.serverGone()
+        if (!serverRunning) {
+            workLeases.serverGone()
+            ShizukuNativeBridge.stop()
+        }
         workLeases.agentProfiles().forEach { profile ->
             if (services["agent-host.$profile"]?.process?.isAlive != true) workLeases.helperGone(profile)
         }

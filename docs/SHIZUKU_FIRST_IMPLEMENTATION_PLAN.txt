@@ -2,7 +2,7 @@ OpenCode Plus：Shizuku 优先实施方案
 =================================
 
 日期：2026-11-17
-状态：P1/P2 基础实现进行中；尚未通过真机特权执行验收。下方最新策略优先于原始方案。
+状态：P3 AI 工具和私有原生桥已编写，正在验证；尚未通过真机特权执行验收。下方最新策略优先于原始方案。
 工作区：/root/projects/opencode-plus
 文档位置：docs/SHIZUKU_FIRST_IMPLEMENTATION_PLAN.txt
 主项目基线：79a39803573207ae4dc594607a0b4c37a9ffecec，0.3.25+33。
@@ -22,6 +22,31 @@ OpenCode Plus：Shizuku 优先实施方案
   - CI 139 已通过原生测试、APK 构建；Flutter 契约测试因将注释中的 PID API 当调用而失败。
     本轮修复误判，并新增策略、输出边界、设置页行为测试；新验证结果单独记录。
   - 聊天插件、持久化操作记录、重连对账尚未完成；本补充不声称这些功能可用。
+
+议题审计后的实现补充（2026-11-18，验证进行中）
+------------------------------------------------
+  - 对照 ExTV/rikkahub-agent #45、#107、#104 和 Shizuku #1198；议题关闭不等于 OEM 问题已解决。
+  - 绑定使用独立 epoch 和 10 秒截止时间；迟到连接/握手/死亡回调不得覆盖新连接。
+  - Binder 到达后还需 UserService.status 握手，核对协议、实现版本、服务实例、实际 UID。
+    授权/服务 UID 与执行端 UID 分开；没有握手时执行身份保持未知。
+  - 已编写应用自有 mobile-shizuku V2 插件，锁定 @opencode/plugin 2.1.1；实际 API 声明已核验。
+    工具：shizuku_status、shizuku_exec、shizuku_result；仅在内置 Ubuntu 安装，不接远端服务器。
+    命令参数不包含会话/调用身份；session/message/call/agent/directory 来自 Core 工具上下文。
+  - 原生桥采用应用私有 filesystem Unix socket，而非早期草案的 TCP loopback。
+    原生核对 peerCredentials 的真实 Android UID；0600 socket/描述文件、0700 目录、有界帧和期限。
+    桥随内置服务启动/关闭；不向 LAN 监听，不向模型提供桥凭据，不改通用 shell 路由。
+  - 相同上下文生成稳定操作 ID；参数/作用域不匹配返回 conflict。
+    本机私有原子记录先于 IPC 执行边界提交；取消先写 tombstone，再撤销悬浮窗/发送 Binder cancel。
+    UserService 也记住先到的 cancel，防止随后到达的 execute 再启动命令。
+  - 去重元数据最多 4096 条，不自动驱逐；满时拒绝新操作，不因裁剪输出而重新执行。
+    原生输出缓存仅保留最近 16 条；已有会话中的工具输出按原有会话存储处理。
+    App 重启后的在途记录为 unknown；同服务实例可查询真实结果，不执行重放。
+  - 原生命令立即关闭 stdin，持续双流排空；JSON/Binder 编码另有上限，可能早于用户字节上限截断。
+  - Core Shizuku 权限动作与本机风险悬浮窗分开；Core 拒绝必须正常传播，已保存允许不绕过红级确认。
+  - 本机已跑通 Node 行为/真实 socket 字节帧测试（夹具，不是 Android 特权验证）。
+    原生编译/行为测试、Flutter 回归与完整模型工具往返还需验证，不把夹具结果当真机结果。
+  - OEM 的 LoadedApk/UserService 初始化崩溃仍属已知兼容风险；不反射调用私有 newProcess，
+    不修改第三方 APK，不因命令退出非零/超时而静默重跑或切换后端。
 
 一、结论和优先级调整
 ====================
@@ -180,8 +205,9 @@ Shizuku 从原总方案 S4B 中独立出来，优先级提升到第一交付批�
   使用独立进程或 HTTP 也不是自动免除许可义务的保证。
 
   本模块采用明确路线：官方 Shizuku-API + Android 平台文档 + 本项目独立实现。
-  不读取或复制 rikkahub-agent 的 Shizuku 实现、AIDL、测试和提示词作为实现模板。
-  保留官方依赖来源、版本和许可证记录，不将此前整体调研称作严格洁净室。
+  后续已按用户要求阅读 rikkahub-agent 的调用架构、AIDL、行为测试和议题以审计故障。
+  新代码基于官方 SDK/平台文档独立编写，不复制该 AGPL 仓库的代码、AIDL、测试或提示词。
+  保留官方依赖来源、版本和许可证记录；不能将这次对照审计称为严格洁净室。
 
 
 四、架构及责任划分

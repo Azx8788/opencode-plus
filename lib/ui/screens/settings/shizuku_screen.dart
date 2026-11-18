@@ -24,6 +24,8 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
   bool _busy = false;
   bool _saving = false;
   bool _settingsLoaded = false;
+  bool _cancelling = false;
+  bool _cancelRequested = false;
   String? _activeOperationId;
 
   bool get _zh => Localizations.localeOf(context).languageCode == 'zh';
@@ -185,6 +187,7 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
     setState(() {
       _activeOperationId = id;
       _result = null;
+      _cancelRequested = false;
     });
     try {
       final value = await ShizukuPlatform.execute(
@@ -197,6 +200,35 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
       if (mounted) setState(() => _activeOperationId = null);
     }
   }
+
+  Future<void> _cancel() async {
+    final id = _activeOperationId;
+    if (id == null || _cancelling) return;
+    setState(() => _cancelling = true);
+    try {
+      await ShizukuPlatform.cancel(id);
+      if (mounted) setState(() => _cancelRequested = true);
+    } catch (error) {
+      if (mounted) setState(() => _error = error);
+    } finally {
+      if (mounted) setState(() => _cancelling = false);
+    }
+  }
+
+  String _bindingExplanation(String reason) => switch (reason) {
+    'bind_timeout' => text(
+      'No UserService callback arrived. Check whether Shizuku offers to restart an older running server; some ROMs cannot initialize UserService. Authorization alone is not execution readiness.',
+      '用户服务没有返回连接回调。请检查 Shizuku 是否提示重启旧服务；部分 ROM 无法初始化用户服务。已授权不代表已经能执行。',
+    ),
+    'handshake_timeout' || 'handshake_failed' => text(
+      'The Binder arrived, but execution identity and protocol could not be verified. No command was started.',
+      '已收到 Binder，但未能确认执行身份和协议。没有启动命令。',
+    ),
+    _ => text(
+      'UserService connection failed: $reason. Refresh or reconnect; no fallback is used.',
+      '用户服务连接失败：$reason。可刷新或重新连接，不会切换执行后端。',
+    ),
+  };
 
   @override
   void dispose() {
@@ -234,6 +266,8 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
     final ready =
         _settingsLoaded &&
         _state['enabled'] == true &&
+        _state['executionReady'] == true &&
+        _state['operationStorageReady'] != false &&
         _state['binding'] == 'connected' &&
         (overlayAllowed || readOnlyDirect || advanced);
     return Scaffold(
@@ -271,6 +305,38 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
               '${_state['binding'] ?? text('disconnected', '未连接')}',
             ),
           ),
+          ListTile(
+            title: Text(text('Running server API', '运行中的服务 API')),
+            subtitle: Text(
+              '${_state['serverVersion'] ?? text('Unknown', '未知')}',
+            ),
+          ),
+          _status(
+            text(
+              'AI → Android bridge (built-in server)',
+              'AI → Android 通道（内置服务器）',
+            ),
+            _state['aiBridgeReady'],
+          ),
+          if (_state['bindingReason'] != null)
+            Padding(
+              key: const ValueKey('shizuku-binding-reason'),
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                _bindingExplanation('${_state['bindingReason']}'),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+          if (_state['operationStorageReady'] == false)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                text(
+                  'Operation records are unreadable. Execution is disabled; existing data has not been overwritten.',
+                  '操作记录无法读取，已禁止执行；原有数据未被覆盖。',
+                ),
+              ),
+            ),
           SwitchListTile(
             title: Text(text('Enable Shizuku commands', '启用 Shizuku 命令')),
             subtitle: Text(
@@ -394,6 +460,11 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
             runSpacing: 8,
             children: [
               OutlinedButton(
+                key: const ValueKey('shizuku-reconnect'),
+                onPressed: _busy ? null : () => _run(ShizukuPlatform.reconnect),
+                child: Text(text('Reconnect UserService', '重新连接用户服务')),
+              ),
+              OutlinedButton(
                 onPressed: _busy
                     ? null
                     : () => _run(ShizukuPlatform.requestPermission),
@@ -443,11 +514,18 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
               ),
               if (_activeOperationId != null)
                 OutlinedButton(
-                  onPressed: () => ShizukuPlatform.cancel(_activeOperationId!),
+                  onPressed: _cancelling ? null : _cancel,
                   child: Text(text('Stop current command', '停止当前命令')),
                 ),
             ],
           ),
+          if (_cancelRequested && _activeOperationId != null)
+            Text(
+              text(
+                'Stop requested. Wait for the actual termination result; side effects are not undone.',
+                '已请求停止，请等待实际终止结果；已经产生的副作用不会回滚。',
+              ),
+            ),
           if (!overlayAllowed &&
               _state['enabled'] == true &&
               !readOnlyDirect &&
@@ -500,8 +578,19 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
       '${text('State', '状态')}: $state',
       if (value['reason'] != null)
         '${text('Reason', '原因')}: ${value['reason']}',
-      '${text('Exit code', '退出码')}: ${value['exitCode']}',
-      '${text('Elapsed', '耗时')}: ${value['elapsedMs']} ms',
+      if (value['uid'] != null)
+        '${text('Android UID', 'Android UID')}: ${value['uid']}',
+      if (value['exitCode'] != null)
+        '${text('Exit code', '退出码')}: ${value['exitCode']}',
+      if (value['elapsedMs'] != null)
+        '${text('Elapsed', '耗时')}: ${value['elapsedMs']} ms',
+      if (value['termination'] != null)
+        '${text('Termination', '终止确认')}: ${value['termination']}',
+      if (state == 'unknown')
+        text(
+          'Execution result is unconfirmed. Do not automatically retry.',
+          '执行结果尚未确认，不要自动重试。',
+        ),
       if (value['truncated'] == true) text('Output truncated.', '输出已截断。'),
     ];
     final stdout = '${value['stdout'] ?? ''}';

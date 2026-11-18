@@ -5,8 +5,8 @@ import android.system.Os
 import android.system.OsConstants
 import org.json.JSONObject
 import java.io.IOException
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
@@ -21,20 +21,27 @@ class ShizukuCommandService : IShizukuCommandService.Stub() {
     }
 
     private val active = ConcurrentHashMap<String, Running>()
-    private val executionSlot = Semaphore(1)
+    private val gate = ShizukuServiceGate()
+    private val launchLock = Any()
+    private val completed = linkedMapOf<String, String>()
 
     override fun status(): String = JSONObject()
+        .put("protocolVersion", ShizukuProtocol.VERSION)
+        .put("serviceVersion", ShizukuProtocol.SERVICE_VERSION)
         .put("uid", Os.getuid())
         .put("backend", when (Os.getuid()) { 0 -> "root"; 2000 -> "adb"; else -> "unknown" })
         .put("serviceInstance", instance)
         .toString()
 
-    override fun execute(operationId: String, command: String, timeoutMs: Int, outputLimitBytes: Int): String {
+    override fun execute(operationId: String, expectedInstance: String, expectedUid: Int,
+                         command: String, timeoutMs: Int, outputLimitBytes: Int): String {
         require(operationId.matches(Regex("[A-Za-z0-9_-]{1,80}")))
+        check(expectedInstance == instance && expectedUid == Os.getuid() && expectedUid in setOf(0, 2000)) { "identity_changed" }
         require(command.isNotBlank() && '\u0000' !in command && command.toByteArray(Charsets.UTF_8).size <= MAX_COMMAND_BYTES)
         require(timeoutMs in 1_000..120_000)
         require(outputLimitBytes in 1_024..MAX_OUTPUT_BYTES)
-        check(executionSlot.tryAcquire()) { "busy" }
+        val rejected = gate.claim(operationId)
+        if (rejected != null) return noExecution(operationId, rejected)
 
         var running: Running? = null
         try {
@@ -42,15 +49,26 @@ class ShizukuCommandService : IShizukuCommandService.Stub() {
             // positional argument, never interpolated into the wrapper script.
             val wrapper = "printf 'OCRPID=%s\\n' \"\$\$\" >&2; exec /system/bin/sh -c \"\$1\""
             var grouped = true
-            val process = try {
-                ProcessBuilder("/system/bin/setsid", "/system/bin/sh", "-c", wrapper, "oc-shizuku", command).start()
-            } catch (_: IOException) {
-                grouped = false
-                ProcessBuilder("/system/bin/sh", "-c", wrapper, "oc-shizuku", command).start()
+            fun launch(argv: List<String>): Process = ProcessBuilder(argv).apply {
+                directory(File("/")) // Android's filesystem, never an Ubuntu project directory.
+                environment()["PATH"] = "/system/bin:/system/xbin:/vendor/bin"
+            }.start()
+            val process: Process
+            synchronized(launchLock) {
+                if (gate.cancelled(operationId)) return noExecution(operationId, "cancelled_before_start")
+                process = try {
+                    launch(listOf("/system/bin/setsid", "/system/bin/sh", "-c", wrapper, "oc-shizuku", command))
+                } catch (_: IOException) {
+                    // This is the same Android backend; no user command was launched by the failed start.
+                    grouped = false
+                    launch(listOf("/system/bin/sh", "-c", wrapper, "oc-shizuku", command))
+                }
+                val owner = Running(process, SystemClock.elapsedRealtime(), grouped)
+                running = owner
+                active[operationId] = owner
             }
-            val owner = Running(process, SystemClock.elapsedRealtime(), grouped)
-            running = owner
-            check(active.putIfAbsent(operationId, owner) == null) { "duplicate_operation" }
+            val owner = checkNotNull(running)
+            val startedAt = System.currentTimeMillis()
             process.outputStream.close() // stdin is not an interactive terminal
             val output = ShizukuCommandOutput(outputLimitBytes)
             val outThread = thread(isDaemon = true, name = "shizuku-stdout") {
@@ -92,20 +110,40 @@ class ShizukuCommandService : IShizukuCommandService.Stub() {
                     exit == null -> { state = "unknown"; reason = "exit_unconfirmed" }
                     else -> { state = if (exit == 0) "succeeded" else "failed"; reason = if (exit == 0) null else "nonzero_exit" }
                 }
-                result(operationId, state, reason, exit, output.snapshot(), owner.startedAt)
+                val termination = if (!owner.cancelRequested && !timedOut) "not_requested"
+                    else if (owner.terminationConfirmed) "confirmed" else "unconfirmed"
+                val value = result(operationId, state, reason, exit, output.snapshot(), owner.startedAt, startedAt, termination)
+                synchronized(completed) {
+                    completed[operationId] = value
+                    while (completed.size > 16) completed.remove(completed.keys.first())
+                }
+                value
             }
+        } catch (_: IOException) {
+            val owner = running
+            if (owner == null) return noExecution(operationId, "process_start_failed")
+            synchronized(owner) { owner.terminationConfirmed = terminate(owner) }
+            return result(operationId, "unknown", "process_io_failed", null,
+                ShizukuCommandOutput.Snapshot("", "", true), owner.startedAt, null,
+                if (owner.terminationConfirmed) "confirmed" else "unconfirmed")
         } finally {
             running?.let { owner ->
                 active.remove(operationId, owner)
                 runCatching { owner.process.inputStream.close() }
                 runCatching { owner.process.errorStream.close() }
             }
-            executionSlot.release()
+            gate.finish(operationId)
         }
     }
 
     override fun cancel(operationId: String): Boolean {
-        val owner = active[operationId] ?: return false
+        require(ShizukuProtocol.idPattern.matches(operationId))
+        val owner: Running?
+        synchronized(launchLock) {
+            if (!gate.cancel(operationId)) return false
+            owner = active[operationId]
+        }
+        if (owner == null) return synchronized(completed) { !completed.containsKey(operationId) }
         return synchronized(owner) {
             if (owner.finished) return@synchronized false
             owner.cancelRequested = true
@@ -115,9 +153,22 @@ class ShizukuCommandService : IShizukuCommandService.Stub() {
     }
 
     override fun destroy() {
+        synchronized(launchLock) { gate.stop() }
         active.keys.toList().forEach { cancel(it) }
         System.exit(0)
     }
+
+    override fun result(operationId: String): String {
+        require(ShizukuProtocol.idPattern.matches(operationId))
+        synchronized(completed) { completed[operationId]?.let { return it } }
+        return JSONObject().put("operationId", operationId).put("serviceInstance", instance).put("uid", Os.getuid())
+            .put("state", if (active.containsKey(operationId)) "running" else "unknown").toString()
+    }
+
+    private fun noExecution(id: String, reason: String): String = result(id,
+        if (reason == "cancelled_before_start") "cancelled" else "failed", reason, null,
+        ShizukuCommandOutput.Snapshot("", "", false), null, null,
+        if (reason == "cancelled_before_start") "confirmed" else "not_requested")
 
     /** ESRCH alone proves absence; permission/other errors are not success. */
     private fun groupExists(group: Int): Boolean = try {
@@ -154,11 +205,24 @@ class ShizukuCommandService : IShizukuCommandService.Stub() {
     }
 
     private fun result(id: String, state: String, reason: String?, exit: Int?,
-                       output: ShizukuCommandOutput.Snapshot, started: Long): String = JSONObject()
-        .put("operationId", id).put("state", state).put("reason", reason ?: JSONObject.NULL)
-        .put("exitCode", exit ?: JSONObject.NULL).put("stdout", output.stdout)
-        .put("stderr", output.stderr).put("truncated", output.truncated)
-        .put("elapsedMs", SystemClock.elapsedRealtime() - started).put("serviceInstance", instance).toString()
+                       output: ShizukuCommandOutput.Snapshot, started: Long?, startedAt: Long?, termination: String): String {
+        val value = JSONObject().put("protocolVersion", ShizukuProtocol.VERSION).put("uid", Os.getuid())
+            .put("operationId", id).put("state", state).put("reason", reason ?: JSONObject.NULL)
+            .put("exitCode", exit ?: JSONObject.NULL).put("stdout", output.stdout).put("stderr", output.stderr)
+            .put("truncated", output.truncated).put("termination", termination)
+            .put("startedAt", startedAt ?: JSONObject.NULL)
+            .put("elapsedMs", started?.let { SystemClock.elapsedRealtime() - it } ?: JSONObject.NULL)
+            .put("serviceInstance", instance)
+        // Binder strings use UTF-16, and JSON escapes can multiply binary output.
+        // The configured byte cap is an upper limit, not permission to exceed Binder's frame budget.
+        var text = value.toString()
+        while (text.length > 180_000 || text.toByteArray(Charsets.UTF_8).size > 500_000) {
+            for (key in listOf("stdout", "stderr")) value.put(key, value.getString(key).take(value.getString(key).length / 2))
+            value.put("truncated", true)
+            text = value.toString()
+        }
+        return text
+    }
 
     companion object {
         private const val MAX_COMMAND_BYTES = 16 * 1024

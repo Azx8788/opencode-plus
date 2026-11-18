@@ -13,6 +13,7 @@ import '../termux/bridge.dart' show TermuxBridge, TermuxRuntime;
 import '../termux/opencode_ubuntu_setup.dart';
 import 'setup/setup_contract.dart' show setupToolsChanged;
 import 'insights/insights_install.dart';
+import 'shizuku/shizuku_install.dart';
 
 /// Where the built-in Ubuntu is in its life, as the Android side reports it.
 enum BuiltinLinuxPhase {
@@ -1552,6 +1553,7 @@ fi
         '[ -s $passwordFile ] || { echo "[oc] The server password is missing" >&2; exit 78; }\n'
         '$isolated'
         '(\n${insightsInstallScript()}) || exit 75\n'
+        '(\n${shizukuInstallScript()}) || exit 76\n'
         // Tell the agent where it runs (lib/domain/phone_agent_context.dart);
         // never blocks the start.
         '(\n${PhoneAgentContext.builtinScript}) >/dev/null 2>&1 || true\n'

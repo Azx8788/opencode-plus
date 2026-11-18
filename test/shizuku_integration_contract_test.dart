@@ -54,6 +54,8 @@ void main() {
       expect(aidl, contains('= 3;'));
       expect(aidl, contains('execute(String operationId'));
       expect(aidl, contains('boolean cancel(String operationId)'));
+      expect(aidl, contains('String expectedInstance, int expectedUid'));
+      expect(aidl, contains('String result(String operationId) = 4;'));
     });
 
     test('Shizuku SDK and UserService keep rules are pinned', () {
@@ -124,6 +126,31 @@ void main() {
         expect(_callsUnsupportedPid('val pid = process . pid ( )'), isTrue);
       },
     );
+  });
+
+  group('Android AI bridge execution contract', () {
+    test('private bridge uses UID credentials and bounded byte frames, not a LAN listener', () {
+      final bridge = File(
+        'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuNativeBridge.kt',
+      ).readAsStringSync();
+      expect(bridge, contains('LocalSocketAddress.Namespace.FILESYSTEM'));
+      expect(bridge, contains('client.peerCredentials.uid == Process.myUid()'));
+      expect(bridge, contains('ShizukuProtocol.MAX_REQUEST_BYTES'));
+      expect(
+        RegExp(r'(^|[^A-Za-z])ServerSocket\s*\(').hasMatch(bridge),
+        isFalse,
+      );
+    });
+    test('actual binding requires status handshake and has an expiry', () {
+      final controller = File(
+        'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuController.kt',
+      ).readAsStringSync();
+      expect(controller, contains('JSONObject(api.status())'));
+      expect(controller, contains('binding.expire(epoch)'));
+      expect(controller, contains('binding.connected(epoch'));
+      expect(controller, contains('journal.dispatch('));
+      expect(controller, contains('ShizukuSafetyOverlay.cancel(id)'));
+    });
   });
 }
 

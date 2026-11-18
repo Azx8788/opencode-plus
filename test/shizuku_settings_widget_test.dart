@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:opencode_mobile/background/live_background.dart';
+import 'package:opencode_mobile/state/connection.dart';
+import 'package:opencode_mobile/state/profiles.dart';
+import 'package:opencode_mobile/ui/screens/settings_screen.dart';
 import 'package:opencode_mobile/ui/screens/settings/shizuku_screen.dart';
 
 void main() {
@@ -13,9 +18,11 @@ void main() {
   late List<MethodCall> calls;
   var failSave = false;
   var failLoad = false;
+  var failedBinding = false;
 
   setUp(() {
     failSave = failLoad = false;
+    failedBinding = false;
     stored = {
       'direct_read_only': true,
       'advanced_mode': false,
@@ -34,10 +41,15 @@ void main() {
             'enabled': true,
             'binderAlive': true,
             'permission': 'granted',
-            'binding': 'connected',
+            'binding': failedBinding ? 'failed' : 'connected',
+            'bindingReason': failedBinding ? 'bind_timeout' : null,
+            'executionReady': !failedBinding,
             'overlayAllowed': false,
             'backend': 'adb',
-            'uid': 2000,
+            'uid': failedBinding ? null : 2000,
+            'serverUid': 0,
+            'serverVersion': 13,
+            'aiBridgeReady': false,
             'provider': 'shizuku',
           };
         case 'settings':
@@ -76,6 +88,67 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  testWidgets('actual Settings hub and Agent list open the Shizuku screen', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final controller = ConnectionController(
+      ProfileStore(prefs: prefs),
+      isIsolated: true,
+      backgroundLive: BackgroundLiveController(
+        preferences: prefs,
+        invoke: (method, [arguments]) async => const {},
+      ),
+    );
+    addTearDown(controller.dispose);
+    tester.view.physicalSize = const Size(460, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(home: SettingsScreen(controller: controller)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('settings-hub-row-ai')));
+    await tester.pumpAndSettle();
+    final row = find.byKey(const ValueKey('settings-shizuku'));
+    await tester.ensureVisible(row);
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+    expect(find.byType(ShizukuScreen), findsOneWidget);
+    expect(calls.any((call) => call.method == 'status'), isTrue);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+    'bind timeout is distinct from permission and an unverified UID stays unknown',
+    (tester) async {
+      failedBinding = true;
+      await mount(tester);
+      expect(
+        find.byKey(const ValueKey('shizuku-binding-reason')),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Authorization alone is not execution readiness.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('ROOT (UID 0)'), findsNothing);
+      await reveal(tester, 'shizuku-diagnostic');
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const ValueKey('shizuku-diagnostic')),
+            )
+            .onPressed,
+        isNull,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 
   testWidgets(
     'advanced mode is off by default and requires explicit confirmation',

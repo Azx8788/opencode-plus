@@ -10,9 +10,10 @@ class ShizukuPlatform {
       .where((value) => value is Map)
       .map((value) => Map<String, Object?>.from(value as Map));
 
-  static Future<Map<String, Object?>> status() async => Map<String, Object?>.from(
-    await _methods.invokeMapMethod<String, Object?>('status') ?? const {},
-  );
+  static Future<Map<String, Object?>> status() async =>
+      Map<String, Object?>.from(
+        await _methods.invokeMapMethod<String, Object?>('status') ?? const {},
+      );
 
   static Future<Map<String, Object?>> settings() async =>
       Map<String, Object?>.from(
@@ -26,21 +27,24 @@ class ShizukuPlatform {
     required int overlayTimeoutSeconds,
     required int commandTimeoutSeconds,
     required int maxOutputKiB,
-  }) async =>
-      Map<String, Object?>.from(
-        await _methods.invokeMapMethod<String, Object?>('saveSettings', {
-              'direct_read_only': directReadOnly,
-              'advanced_mode': advancedMode,
-              'allow_delay_seconds': allowDelaySeconds,
-              'overlay_timeout_seconds': overlayTimeoutSeconds,
-              'command_timeout_seconds': commandTimeoutSeconds,
-              'max_output_kib': maxOutputKiB,
-            }) ??
-            const {},
-      );
+  }) async => Map<String, Object?>.from(
+    await _methods.invokeMapMethod<String, Object?>('saveSettings', {
+          'direct_read_only': directReadOnly,
+          'advanced_mode': advancedMode,
+          'allow_delay_seconds': allowDelaySeconds,
+          'overlay_timeout_seconds': overlayTimeoutSeconds,
+          'command_timeout_seconds': commandTimeoutSeconds,
+          'max_output_kib': maxOutputKiB,
+        }) ??
+        const {},
+  );
 
   static Future<void> requestPermission() =>
       _methods.invokeMethod<void>('requestPermission');
+
+  /// Retry a failed binding and wait for the actual UserService handshake.
+  static Future<void> reconnect() =>
+      _methods.invokeMethod<void>('startService');
 
   static Future<bool> openManager() async =>
       await _methods.invokeMethod<bool>('openManager') ?? false;
@@ -50,19 +54,17 @@ class ShizukuPlatform {
 
   static Future<Map<String, Object?>> setEnabled(bool enabled) async =>
       Map<String, Object?>.from(
-        await _methods.invokeMapMethod<String, Object?>(
-              'setEnabled',
-              {'enabled': enabled},
-            ) ??
+        await _methods.invokeMapMethod<String, Object?>('setEnabled', {
+              'enabled': enabled,
+            }) ??
             const {},
       );
 
   static Future<Map<String, Object?>> diagnostic(String operationId) async =>
       Map<String, Object?>.from(
-        await _methods.invokeMapMethod<String, Object?>(
-              'diagnostic',
-              {'operationId': operationId},
-            ) ??
+        await _methods.invokeMapMethod<String, Object?>('diagnostic', {
+              'operationId': operationId,
+            }) ??
             const {},
       );
 
@@ -80,6 +82,8 @@ class ShizukuPlatform {
   );
 
   static Future<bool> cancel(String operationId) async =>
-      await _methods.invokeMethod<bool>('cancel', {'operationId': operationId}) ??
+      await _methods.invokeMethod<bool>('cancel', {
+        'operationId': operationId,
+      }) ??
       false;
 }

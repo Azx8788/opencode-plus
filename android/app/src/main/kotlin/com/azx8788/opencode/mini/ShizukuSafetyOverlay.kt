@@ -27,6 +27,14 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 internal object ShizukuSafetyOverlay {
     private var showing = false
+    private var activeId: String? = null
+    private var dismiss: (() -> Unit)? = null
+
+    fun cancel(operationId: String) {
+        Handler(Looper.getMainLooper()).post {
+            if (activeId == operationId) dismiss?.invoke()
+        }
+    }
 
     fun confirm(
         context: Context,
@@ -34,15 +42,17 @@ internal object ShizukuSafetyOverlay {
         decision: ShizukuCommandPolicy.Decision,
         allowDelaySeconds: Int,
         timeoutSeconds: Int,
+        operationId: String = "settings",
+        requestSource: String = "settings_test",
         complete: (Boolean) -> Unit,
     ) {
         // Always hop to main: WindowManager calls must be on the main thread.
         if (Looper.myLooper() != Looper.getMainLooper()) {
             Handler(Looper.getMainLooper()).post {
-                show(context, command, decision, allowDelaySeconds, timeoutSeconds, complete)
+                show(context, command, decision, allowDelaySeconds, timeoutSeconds, operationId, requestSource, complete)
             }
         } else {
-            show(context, command, decision, allowDelaySeconds, timeoutSeconds, complete)
+            show(context, command, decision, allowDelaySeconds, timeoutSeconds, operationId, requestSource, complete)
         }
     }
 
@@ -52,6 +62,8 @@ internal object ShizukuSafetyOverlay {
         decision: ShizukuCommandPolicy.Decision,
         allowDelaySeconds: Int,
         timeoutSeconds: Int,
+        operationId: String,
+        requestSource: String,
         complete: (Boolean) -> Unit,
     ) {
         if (showing) { complete(false); return }
@@ -109,7 +121,11 @@ internal object ShizukuSafetyOverlay {
             setTextColor(textColor)
             setShadowLayer(8f, 0f, 0f, Color.argb(180, 0, 0, 0))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
-            text = if (chinese) "⚠ 警告：Agent 请求执行 Shizuku 指令" else "⚠ Warning: Agent requests Shizuku command"
+            text = if (requestSource == "opencode_tool") {
+                if (chinese) "⚠ 警告：Agent 请求执行 Android 指令" else "⚠ Warning: Agent requests Android command"
+            } else {
+                if (chinese) "⚠ 警告：设置页请求测试 Android 指令" else "⚠ Warning: Settings requests Android test command"
+            }
         }
 
         val meta = TextView(context).apply {
@@ -196,6 +212,8 @@ internal object ShizukuSafetyOverlay {
             if (!finished.compareAndSet(false, true)) return
             runCatching { wm.removeView(panel) }
             showing = false
+            activeId = null
+            dismiss = null
             complete(allow)
         }
 
@@ -253,6 +271,8 @@ internal object ShizukuSafetyOverlay {
 
         try {
             showing = true
+            activeId = operationId
+            dismiss = { finish(false) }
             wm.addView(panel, params)
             main.post(countdown)
             main.postDelayed({ finish(false) }, timeoutSeconds * 1000L)

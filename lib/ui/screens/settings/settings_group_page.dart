@@ -268,6 +268,7 @@ class _SettingsGroupBodyState extends State<_SettingsGroupBody> {
         row('settings-search-provider'),
         row('settings-category-usage'),
         byServerRow('settings-tools', ByServerKind.tools),
+        row('settings-shizuku'),
         row('settings-agents'),
       ],
       SettingsGroup.chat => [
