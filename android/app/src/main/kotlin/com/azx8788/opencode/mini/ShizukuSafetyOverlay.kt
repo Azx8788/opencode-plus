@@ -7,6 +7,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.TypedValue
 import android.view.WindowManager
@@ -18,7 +19,8 @@ import android.widget.ScrollView
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * A forced, top-most Android overlay. Every Shizuku command passes through it.
+ * A forced, top-most Android overlay for every command that is not admitted
+ * directly by the checked read-only grammar or advanced-mode policy.
  *
  * Fail-closed: no overlay permission or creation failure resolves to deny.
  * Confirmation delay and timeout come from bounded user settings.
@@ -54,6 +56,10 @@ internal object ShizukuSafetyOverlay {
     ) {
         if (showing) { complete(false); return }
         if (!Settings.canDrawOverlays(context)) { complete(false); return }
+        if (allowDelaySeconds !in 0..60 || timeoutSeconds !in 10..120 || timeoutSeconds <= allowDelaySeconds) {
+            complete(false)
+            return
+        }
 
         val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val main = Handler(Looper.getMainLooper())
@@ -73,7 +79,9 @@ internal object ShizukuSafetyOverlay {
 
         val kindLabel = when (decision.kind) {
             "read_only" -> if (chinese) "只读 / 读取信息" else "Read-only / information"
+            "sensitive_read" -> if (chinese) "读取敏感数据" else "Read sensitive data"
             "write_or_configuration" -> if (chinese) "写入 / 配置变更" else "Write / configuration"
+            "low_impact" -> if (chinese) "低影响命令" else "Low-impact command"
             "delete_stop_or_remove" -> if (chinese) "删除 / 停用 / 卸载" else "Delete / stop / remove"
             "privilege_escalation_or_system" -> if (chinese) "提权 / 系统变更" else "Privilege / system change"
             "catastrophic_destructive_or_privilege" -> if (chinese) "极危险：破坏性 / 提权 / 关机" else "Catastrophic: destructive / privilege / shutdown"
@@ -191,28 +199,37 @@ internal object ShizukuSafetyOverlay {
             complete(allow)
         }
 
-        denyBtn.setOnClickListener { finish(false) }
-        allowBtn.setOnClickListener { finish(true) }
-
-        // Risk-gated delay: the Allow button becomes tappable only after the
-        // delay, with a live countdown so the person reads the command.
+        // The configured allow delay elapses before the button is tappable;
+        // the independent timeout always resolves to deny.
         val delayMs = allowDelaySeconds * 1000L
-        val startedAt = System.currentTimeMillis()
+        val startedAt = SystemClock.elapsedRealtime()
+        val timeoutMs = timeoutSeconds * 1000L
+        denyBtn.setOnClickListener { finish(false) }
+        allowBtn.setOnClickListener {
+            val elapsed = SystemClock.elapsedRealtime() - startedAt
+            if (elapsed >= timeoutMs) finish(false)
+            else if (elapsed >= delayMs && Settings.canDrawOverlays(context)) finish(true)
+        }
         val countdown = object : Runnable {
             override fun run() {
                 if (finished.get()) return
-                val elapsed = System.currentTimeMillis() - startedAt
+                val elapsed = SystemClock.elapsedRealtime() - startedAt
+                if (elapsed >= timeoutMs || !Settings.canDrawOverlays(context)) {
+                    finish(false)
+                    return
+                }
                 val remaining = (delayMs - elapsed).coerceAtLeast(0)
+                val secondsLeft = (timeoutMs - elapsed + 999) / 1000
                 if (remaining > 0) {
                     countdownText.text = if (chinese)
                         "允许按钮 ${remaining / 1000 + 1} 秒后可用" else "Allow in ${remaining / 1000 + 1}s"
-                    main.postDelayed(this, 200)
                 } else {
                     allowBtn.isEnabled = true
                     allowBtn.alpha = 1f
                     countdownText.text = if (chinese)
-                        "请仔细确认后选择" else "Review and choose"
+                        "请仔细确认后选择（$secondsLeft 秒后拒绝）" else "Review and choose (deny in ${secondsLeft}s)"
                 }
+                main.postDelayed(this, 200)
             }
         }
 

@@ -1,106 +1,116 @@
 package com.azx8788.opencode.mini
 
-/** Classifies for presentation; only the narrow grammar below is direct-read eligible. */
+/** Risk is classification, not a shell sandbox. Unverified commands still ask. */
 internal object ShizukuCommandPolicy {
     enum class Risk { GREEN, BLUE, YELLOW, RED }
 
-    data class Decision(
-        val risk: Risk,
-        val kind: String,
-        val readOnly: Boolean,
+    data class Decision(val risk: Risk, val kind: String, val readOnly: Boolean = false)
+    data class Admission(val automatic: Boolean, val allowDelaySeconds: Int)
+
+    const val DIAGNOSTIC = "id; getprop ro.build.version.release"
+    private val safeWord = Regex("[A-Za-z0-9_./:=,@%+~-]+")
+    private val namespace = setOf("system", "secure", "global")
+    private val packageLists = setOf("packages", "permissions", "libraries", "features", "users", "instrumentation")
+    private val sensitivePath = Regex(
+        "(?i)(^|/)(data|metadata|expand)(/|$)|" +
+            "(^|/)(\\.env|\\.ssh|id_rsa|id_ed25519|credentials?)(/|$)|" +
+            "(^|[./_-])(secret|token|password|api[_-]?key)([./_-]|$)|" +
+            "^ro\\.(serialno|boot\\.)|^persist\\.",
     )
 
-    // Shell operators, substitutions, quotes, globs, escapes and control chars
-    // are not accepted in the direct-read path. They remain eligible for an
-    // explicit overlay confirmation as arbitrary shell commands.
-    private val shellSyntax = Regex("[;&|<>`$(){}\\[\\]\\\\\\n\\r\"']")
-    private val safeWord = Regex("[A-Za-z0-9_./:=,@%+~-]+")
+    fun admission(decision: Decision, directReadOnly: Boolean, advanced: Boolean, delaySeconds: Int): Admission =
+        Admission(
+            automatic = (directReadOnly && decision.readOnly) || (advanced && decision.risk != Risk.RED),
+            allowDelaySeconds = if (advanced && decision.risk == Risk.RED) 3 else delaySeconds,
+        )
 
     fun inspect(command: String): Decision {
-        val lower = command.lowercase()
-        val catastrophic = Regex(
-            "\\b(rm\\s+(-[a-z]*r[a-z]*\\s+)?/(\\s|$)|" +
-                "dd\\s+if=.*of=/dev/(block|mmc)|mkfs\\.\\w+|wipe|format\\s+/dev/|" +
-                "(reboot|shutdown|halt)\\b|setenforce\\s+0|\\b(su|sh)\\s+-c\\b)",
-        )
-        val destructive = Regex(
-            "\\b(rm|rmdir|shred|unlink)\\b|" +
-                "(force-stop|disable|disable-user|uninstall|suspend|clear)\\b|" +
-                "\\b(pm\\s+(clear|uninstall|disable))\\b",
-        )
-        val privilege = Regex(
-            "\\b(su|mount|umount|setenforce|setprop\\s+persist\\.|" +
-                "chmod|chown|restorecon|magisk)\\b",
-        )
-        val write = Regex(
-            "\\b(settings\\s+(put|delete|secure|global|system))\\b|" +
-                "\\b(appops\\s+(set|reset))\\b|" +
-                "\\b(install|push|pull|am\\s+(start|broadcast|force-stop))\\b|" +
-                "\\b(cmd\\s+(notification|activity|package))\\b|[>]|\\|(te|tee)|>>",
-        )
-        val read = Regex(
-            "\\b(id|whoami|getprop|dumpsys|pm\\s+(list|dump|path)|" +
-                "ls|cat|head|tail|grep|find|du|df|ps|top|settings\\s+get|" +
-                "appops\\s+get|cmd\\s+statusbar)\\b",
-        )
+        val normalized = command.trim()
+        if (isSafeReadOnly(normalized)) return Decision(Risk.GREEN, "read_only", readOnly = true)
 
-        val risk = when {
-            catastrophic.containsMatchIn(lower) || destructive.containsMatchIn(lower) ||
-                privilege.containsMatchIn(lower) -> Risk.RED
-            write.containsMatchIn(lower) -> Risk.YELLOW
-            isSafeReadOnly(command) -> Risk.GREEN
-            read.containsMatchIn(lower) -> Risk.GREEN
-            else -> Risk.BLUE
+        val lower = normalized.lowercase()
+        // These patterns improve warning labels; none of them grants execution.
+        if (Regex("\\b(reboot|shutdown|halt|wipe|mkfs|dd)\\b").containsMatchIn(lower)) {
+            return Decision(Risk.RED, "catastrophic_destructive_or_privilege")
         }
-        val kind = when (risk) {
-            Risk.RED -> when {
-                catastrophic.containsMatchIn(lower) -> "catastrophic_destructive_or_privilege"
-                privilege.containsMatchIn(lower) -> "privilege_escalation_or_system"
-                else -> "delete_stop_or_remove"
-            }
-            Risk.YELLOW -> "write_or_configuration"
-            Risk.GREEN -> "read_only"
-            Risk.BLUE -> "unrecognized_shell"
+        if (Regex("\\b(rm|rmdir|shred|unlink|force-stop|disable|disable-user|uninstall|suspend|clear)\\b")
+                .containsMatchIn(lower)) return Decision(Risk.RED, "delete_stop_or_remove")
+        if (Regex("\\b(su|mount|umount|setenforce|chmod|chown|restorecon|magisk|setprop)\\b")
+                .containsMatchIn(lower)) return Decision(Risk.RED, "privilege_escalation_or_system")
+
+        val words = simpleWords(normalized) ?: return Decision(Risk.RED, "unverified_shell")
+        val args = words.drop(1)
+        if (sensitiveRead(words)) return Decision(Risk.RED, "sensitive_read")
+        val write = when (words[0]) {
+            "settings" -> (args.size == 4 && args[0] == "put" && args[1] in namespace) ||
+                (args.size == 3 && args[0] == "delete" && args[1] in namespace)
+            "appops" -> (args.size == 4 && args[0] == "set") ||
+                (args.size in 2..3 && args[0] == "reset")
+            "am" -> args.isNotEmpty() && args[0] in setOf("start", "startservice", "broadcast")
+            "pm" -> args.isNotEmpty() && args[0] in setOf("install", "install-existing", "enable", "enable-user")
+            "cmd" -> args.size >= 2 && args[0] == "package" &&
+                args[1] in setOf("install-existing", "set-enabled-setting", "set-harmful-app-warning")
+            else -> false
         }
-        return Decision(risk, kind, isSafeReadOnly(command))
+        if (write) return Decision(Risk.YELLOW, "write_or_configuration")
+        val lowImpact = when (words[0]) {
+            "sleep" -> args.size == 1 && args[0].toLongOrNull()?.let { it in 0..120 } == true
+            "echo" -> true
+            "true", "false" -> args.isEmpty()
+            else -> false
+        }
+        return if (lowImpact) Decision(Risk.BLUE, "low_impact") else Decision(Risk.RED, "unverified_shell")
     }
 
     /**
-     * Conservative direct-read grammar. It intentionally recognizes only a
-     * fixed set of query forms and simple tokens, never shell composition.
-     * Everything else can still run after the normal warning overlay.
+     * Direct reads are exact query forms, not matches for a word like `cat`
+     * somewhere in a script. Arbitrary scripts and service-specific subcommands
+     * remain available via explicit red confirmation (also in advanced mode).
      */
     fun isSafeReadOnly(command: String): Boolean {
         val normalized = command.trim()
-        if (normalized.isEmpty() || normalized.length > 16 * 1024 || shellSyntax.containsMatchIn(normalized)) return false
-
-        // The settings diagnostics contain exactly two known read-only calls.
-        if (normalized == "id; getprop ro.build.version.release") return true
-
-        val words = normalized.split(Regex("\\s+")).filter(String::isNotEmpty)
-        if (words.isEmpty() || words.any { !safeWord.matches(it) }) return false
-        val commandName = words[0]
+        if (normalized == DIAGNOSTIC) return true // exactly these two fixed reads
+        val words = simpleWords(normalized) ?: return false
         val args = words.drop(1)
-        return when (commandName) {
+        return when (words[0]) {
             "id", "whoami", "uname", "date", "uptime", "free", "df", "ps", "top", "mount" -> args.isEmpty()
-            "getprop" -> args.size <= 1 && args.all { it.matches(Regex("[A-Za-z0-9_.-]+")) }
-            "ls", "cat", "head", "tail", "du", "stat", "wc" -> args.isNotEmpty() && args.all(::safeReadArgument)
-            "grep" -> args.size >= 2 && args.none { it == "-exec" || it.startsWith("--") } && args.all(::safeReadArgument)
-            "dumpsys" -> args.size in 1..3 && args.all(::safeReadArgument)
-            "settings" -> args.size == 3 && args[0] == "get" &&
-                args[1] in setOf("system", "secure", "global") && safeReadArgument(args[2])
-            "appops" -> args.size in 2..3 && args[0] == "get" && args.drop(1).all(::safeReadArgument)
-            "pm" -> args.size in 1..4 && when (args[0]) {
-                "list" -> args.drop(1).all(::safeReadArgument)
-                "path" -> args.size == 2 && safeReadArgument(args[1])
-                "dump" -> args.size == 2 && safeReadArgument(args[1])
-                else -> false
-            }
-            "cmd" -> args.size in 2..4 && args[0] == "package" && args[1] == "list" && args.drop(2).all(::safeReadArgument)
+            "getprop" -> args.size <= 1 && args.all { it.matches(Regex("[A-Za-z0-9_.-]+")) } &&
+                args.none { sensitivePath.containsMatchIn(it) }
+            "ls" -> args.all(::readArgument) && !sensitiveRead(words)
+            "cat", "head", "tail", "du", "stat", "wc" -> args.isNotEmpty() && args.all(::readArgument) && !sensitiveRead(words)
+            "grep" -> args.size >= 2 && args.all(::readArgument) && !sensitiveRead(words)
+            // e.g. `dumpsys battery set level 1` can mutate service state.
+            "dumpsys" -> args.size == 1 && (args[0] == "-l" || args[0].matches(Regex("[A-Za-z0-9_.-]+")))
+            "settings" -> args.size == 3 && args[0] == "get" && args[1] in setOf("system", "global") &&
+                readArgument(args[2]) && !sensitiveRead(words)
+            "appops" -> args.size in 2..3 && args[0] == "get" && args.drop(1).all(::readArgument)
+            "pm" -> packageQuery(args)
+            "cmd" -> args.firstOrNull() == "package" && packageQuery(args.drop(1))
             else -> false
         }
     }
 
-    private fun safeReadArgument(value: String): Boolean =
-        safeWord.matches(value) && !value.startsWith("-exec") && !value.startsWith("--")
+    private fun packageQuery(args: List<String>): Boolean = when (args.firstOrNull()) {
+        "list" -> args.size in 2..5 && args[1] in packageLists && args.drop(2).all(::readArgument)
+        "path", "dump" -> args.size == 2 && !args[1].startsWith("-") && readArgument(args[1])
+        else -> false
+    }
+
+    private fun readArgument(value: String): Boolean =
+        safeWord.matches(value) && !value.startsWith("--") && !value.startsWith("-exec")
+
+    private fun sensitiveRead(words: List<String>): Boolean {
+        if (words.firstOrNull() == "settings" && words.getOrNull(1) == "get" && words.getOrNull(2) == "secure") {
+            return true
+        }
+        return words.drop(1).any(sensitivePath::containsMatchIn)
+    }
+
+    private fun simpleWords(command: String): List<String>? {
+        // Splitting only ASCII spaces/tabs means a newline/control character,
+        // expansion, glob, quote, redirect or operator fails safeWord validation.
+        if (command.isEmpty() || command.length > 16 * 1024) return null
+        val words = command.split(Regex("[ \\t]+"))
+        return words.takeIf { it.isNotEmpty() && it.all(safeWord::matches) }
+    }
 }

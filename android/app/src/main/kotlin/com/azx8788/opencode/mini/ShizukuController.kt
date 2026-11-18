@@ -30,7 +30,7 @@ internal object ShizukuController {
     private const val OVERLAY_TIMEOUT_SECONDS = "overlay_timeout_seconds"
     private const val COMMAND_TIMEOUT_SECONDS = "command_timeout_seconds"
     private const val MAX_OUTPUT_KIB = "max_output_kib"
-    private const val SERVICE_VERSION = 1
+    private const val SERVICE_VERSION = 2
     private val main = Handler(Looper.getMainLooper())
     private var app: Context? = null
     private var sink: EventChannel.EventSink? = null
@@ -162,7 +162,17 @@ internal object ShizukuController {
             "execute" -> execute(call, result)
             "cancel" -> {
                 val id = call.argument<String>("operationId")
-                result.success(runCatching { id != null && binder?.cancel(id) == true }.getOrDefault(false))
+                if (id.isNullOrBlank()) {
+                    result.success(false)
+                } else {
+                    val expectedService = binder
+                    Thread {
+                        val stopped = runCatching {
+                            expectedService != null && expectedService.cancel(id)
+                        }.getOrDefault(false)
+                        main.post { result.success(stopped) }
+                    }.start()
+                }
             }
             else -> result.notImplemented()
         }
@@ -198,15 +208,11 @@ internal object ShizukuController {
         val expectedService = binder
         val decision = ShizukuCommandPolicy.inspect(command)
         val settings = readSettings()
-        val advanced = settings[ADVANCED_MODE] == true
-
-        // Direct execution, no overlay:
-        //  - always-configurable safe read-only grammar, and
-        //  - with "advanced user" on, everything up to YELLOW included.
-        // RED commands still require explicit consent even in advanced mode.
-        val directRead = settings[DIRECT_READ_ONLY] == true && decision.readOnly
-        val advancedAuto = advanced && decision.risk.ordinal <= ShizukuCommandPolicy.Risk.YELLOW.ordinal
-        if (directRead || advancedAuto) {
+        val admission = ShizukuCommandPolicy.admission(
+            decision, settings[DIRECT_READ_ONLY] == true,
+            settings[ADVANCED_MODE] == true, settings[ALLOW_DELAY_SECONDS] as Int,
+        )
+        if (admission.automatic) {
             executeAfterAdmission(id, command, timeout, limit, expectedService, result)
             return
         }
@@ -215,16 +221,9 @@ internal object ShizukuController {
                 "Safety overlay permission is required for this command. Grant it in system settings, then retry.", null)
             return
         }
-        // Overlay consent. Advanced users still confirm RED commands, with a
-        // fixed 3-second wait instead of the configurable normal delay.
-        val allowDelay = if (advanced && decision.risk == ShizukuCommandPolicy.Risk.RED) {
-            3
-        } else {
-            settings[ALLOW_DELAY_SECONDS] as Int
-        }
         ShizukuSafetyOverlay.confirm(
             app!!, command, decision,
-            allowDelaySeconds = allowDelay,
+            allowDelaySeconds = admission.allowDelaySeconds,
             timeoutSeconds = settings[OVERLAY_TIMEOUT_SECONDS] as Int,
         ) { allowed ->
             if (!allowed) {
@@ -287,7 +286,7 @@ internal object ShizukuController {
         if (direct == null || advanced == null || delay == null || delay !in 0..60 ||
             overlayTimeout == null || overlayTimeout !in 10..120 ||
             commandTimeout == null || commandTimeout !in 1..120 ||
-            outputKiB == null || outputKiB !in 4..256) {
+            outputKiB == null || outputKiB !in 4..256 || overlayTimeout <= delay) {
             result.error("invalid_settings", "Shizuku setting is outside its allowed range.", null)
             return
         }

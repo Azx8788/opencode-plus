@@ -11,25 +11,37 @@ void main() {
       );
       final provider = manifest
           .findAllElements('provider')
-          .singleWhere((element) =>
-              element.getAttribute('android:name') ==
-              'rikka.shizuku.ShizukuProvider');
-      expect(provider.getAttribute('android:authorities'), r'${applicationId}.shizuku');
+          .singleWhere(
+            (element) =>
+                element.getAttribute('android:name') ==
+                'rikka.shizuku.ShizukuProvider',
+          );
+      expect(
+        provider.getAttribute('android:authorities'),
+        r'${applicationId}.shizuku',
+      );
       expect(provider.getAttribute('android:exported'), 'true');
       expect(provider.getAttribute('android:multiprocess'), 'false');
-      expect(provider.getAttribute('android:permission'),
-          'android.permission.INTERACT_ACROSS_USERS_FULL');
+      expect(
+        provider.getAttribute('android:permission'),
+        'android.permission.INTERACT_ACROSS_USERS_FULL',
+      );
     });
 
     test('SYSTEM_ALERT_WINDOW is declared for the safety overlay', () {
-      final manifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
+      final manifest = File('android/app/src/main/AndroidManifest.xml')
+          .readAsStringSync();
       expect(manifest, contains('android.permission.SYSTEM_ALERT_WINDOW'));
     });
 
-    test('Shizuku manager (moe.shizuku.privileged.api) is visible for queries', () {
-      final manifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
-      expect(manifest, contains('moe.shizuku.privileged.api'));
-    });
+    test(
+      'Shizuku manager (moe.shizuku.privileged.api) is visible for queries',
+      () {
+        final manifest = File('android/app/src/main/AndroidManifest.xml')
+            .readAsStringSync();
+        expect(manifest, contains('moe.shizuku.privileged.api'));
+      },
+    );
 
     test('UserService contract reserves official destroy transaction', () {
       final aidl = File(
@@ -62,20 +74,22 @@ void main() {
 
     test('read-only grammar exists and stays narrow', () {
       expect(policy, contains('isSafeReadOnly'));
-      // Pipe/redirect/backtick/dollar markers are rejected from direct reads.
-      expect(policy, contains('shellSyntax'));
-      expect(policy, contains("Regex(\"[;&|<>`\$(){}\\\\[\\\\]\\\\\\\\\\\\n\\\\r\\\"']\")"));
+      // Behavioral cases (including shell composition) run in the native
+      // ShizukuCommandPolicyTest. Do not couple this check to regex spelling.
+      expect(policy, contains('simpleWords'));
     });
 
-    test('direct execution only covers safe read-only plus advanced YELLOW', () {
-      expect(controller, contains('DIRECT_READ_ONLY'));
-      expect(controller, contains('ADVANCED_MODE'));
-      // Advanced mode still confirms RED, with a fixed 3-second wait.
-      expect(controller, contains('advanced && decision.risk == ShizukuCommandPolicy.Risk.RED'));
-      expect(controller, contains('3'));
-      // Non-direct commands still resolve to the overlay or a deny path.
-      expect(controller, contains('ShizukuSafetyOverlay.confirm'));
-    });
+    test(
+      'direct execution only covers safe read-only plus advanced YELLOW',
+      () {
+        expect(controller, contains('DIRECT_READ_ONLY'));
+        expect(controller, contains('ADVANCED_MODE'));
+        // Advanced mode still confirms RED, with a fixed 3-second wait.
+        expect(controller, contains('ShizukuCommandPolicy.admission'));
+        // Non-direct commands still resolve to the overlay or a deny path.
+        expect(controller, contains('ShizukuSafetyOverlay.confirm'));
+      },
+    );
 
     test('overlay is forced and fail-closed on timeout', () {
       final overlay = File(
@@ -93,7 +107,27 @@ void main() {
         'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuCommandService.kt',
       ).readAsStringSync();
       expect(service, contains('OCRPID='));
-      expect(service, isNot(contains('.pid()')));
+      expect(_callsUnsupportedPid(service), isFalse);
     });
+
+    test(
+      'pid call check ignores explanations but still detects real calls',
+      () {
+        expect(
+          _callsUnsupportedPid(
+            '/* Process.pid() is unavailable. */\n'
+            '// Do not use process.pid() here.\nval pid = running.pid.get()',
+          ),
+          isFalse,
+        );
+        expect(_callsUnsupportedPid('val pid = process.pid()'), isTrue);
+        expect(_callsUnsupportedPid('val pid = process . pid ( )'), isTrue);
+      },
+    );
   });
+}
+
+bool _callsUnsupportedPid(String source) {
+  final code = source.replaceAll(RegExp(r'/\*[\s\S]*?\*/|//[^\r\n]*'), '');
+  return RegExp(r'\.\s*pid\s*\(').hasMatch(code);
 }

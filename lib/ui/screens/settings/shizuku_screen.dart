@@ -23,15 +23,22 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
   Object? _error;
   bool _busy = false;
   bool _saving = false;
+  bool _settingsLoaded = false;
   String? _activeOperationId;
 
   bool get _zh => Localizations.localeOf(context).languageCode == 'zh';
   String text(String en, String zh) => _zh ? zh : en;
+  bool get _canEditSettings => _settingsLoaded && !_saving && !_busy;
 
   @override
   void initState() {
     super.initState();
-    _subscription = ShizukuPlatform.changes.listen(_update);
+    _subscription = ShizukuPlatform.changes.listen(
+      _update,
+      onError: (Object error) {
+        if (mounted) setState(() => _error = error);
+      },
+    );
     _refresh();
     _loadSettings();
   }
@@ -43,9 +50,22 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
   Future<void> _loadSettings() async {
     try {
       final value = await ShizukuPlatform.settings();
-      if (mounted && value.isNotEmpty) setState(() => _settings = value);
-    } catch (_) {
-      // Settings remain at defaults; the page still works.
+      if (value.isEmpty) {
+        throw const FormatException('Shizuku settings unavailable');
+      }
+      if (mounted) {
+        setState(() {
+          _settings = Map<String, Object?>.from(value);
+          _settingsLoaded = true;
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _settingsLoaded = false;
+          _error = error;
+        });
+      }
     }
   }
 
@@ -57,24 +77,38 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
   }
 
   Future<void> _save(Map<String, Object?> updates) async {
-    if (_saving) return;
+    if (!_canEditSettings) return;
     setState(() {
       _saving = true;
       _error = null;
     });
     try {
+      final overlayTimeout =
+          ((updates['overlay_timeout_seconds'] as int?) ??
+                  _getInt('overlay_timeout_seconds', 30))
+              .clamp(10, 120)
+              .toInt();
+      final allowDelay =
+          ((updates['allow_delay_seconds'] as int?) ??
+                  _getInt('allow_delay_seconds', 10))
+              .clamp(0, overlayTimeout - 1)
+              .toInt();
       final value = await ShizukuPlatform.saveSettings(
         directReadOnly:
-            (updates['direct_read_only'] ?? _settings['direct_read_only']) == true,
+            (updates['direct_read_only'] as bool?) ??
+            (_settings['direct_read_only'] as bool?) ??
+            true,
         advancedMode:
-            (updates['advanced_mode'] ?? _settings['advanced_mode']) == true,
-        allowDelaySeconds:
-            (updates['allow_delay_seconds'] as int?) ?? _getInt('allow_delay_seconds', 10),
-        overlayTimeoutSeconds: (updates['overlay_timeout_seconds'] as int?) ??
-            _getInt('overlay_timeout_seconds', 30),
-        commandTimeoutSeconds: (updates['command_timeout_seconds'] as int?) ??
+            (updates['advanced_mode'] as bool?) ??
+            (_settings['advanced_mode'] as bool?) ??
+            false,
+        allowDelaySeconds: allowDelay,
+        overlayTimeoutSeconds: overlayTimeout,
+        commandTimeoutSeconds:
+            (updates['command_timeout_seconds'] as int?) ??
             _getInt('command_timeout_seconds', 30),
-        maxOutputKiB: (updates['max_output_kib'] as int?) ??
+        maxOutputKiB:
+            (updates['max_output_kib'] as int?) ??
             _getInt('max_output_kib', 64),
       );
       if (mounted) setState(() => _settings = value);
@@ -97,10 +131,10 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
         content: Text(
           text(
             'YELLOW, BLUE and GREEN commands will run automatically without an '
-            'overlay. RED commands still open the warning overlay, with a fixed '
-            '3-second wait before “Allow once”. Timeout still denies.',
+                'overlay. RED commands still open the warning overlay, with a fixed '
+                '3-second wait before “Allow once”. Timeout still denies.',
             '开启后，黄色、蓝色和绿色等级的命令将不再弹窗，直接自动执行。'
-            '红色命令仍会弹出警告悬浮窗，“仅允许本次”固定等待 3 秒。超时仍然拒绝。',
+                '红色命令仍会弹出警告悬浮窗，“仅允许本次”固定等待 3 秒。超时仍然拒绝。',
           ),
         ),
         actions: [
@@ -115,7 +149,7 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
         ],
       ),
     );
-    if (confirmed == true) await _save({'advanced_mode': true});
+    if (mounted && confirmed == true) await _save({'advanced_mode': true});
   }
 
   Future<void> _refresh() async {
@@ -124,7 +158,6 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
       if (mounted) {
         setState(() {
           _state = value;
-          _error = null;
         });
       }
     } catch (error) {
@@ -186,22 +219,40 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
       'requestable' => text('Not requested', '未申请'),
       _ => text('Unknown', '未知'),
     };
-    final ready = _state['enabled'] == true &&
-        _state['overlayAllowed'] == true &&
-        _state['binding'] == 'connected';
+    final overlayTimeout = _getInt(
+      'overlay_timeout_seconds',
+      30,
+    ).clamp(10, 120).toInt();
+    final allowDelay = _getInt(
+      'allow_delay_seconds',
+      10,
+    ).clamp(0, overlayTimeout - 1).toInt();
+    final minOverlayTimeout = (allowDelay + 1).clamp(10, 120).toInt();
+    final overlayAllowed = _state['overlayAllowed'] == true;
+    final readOnlyDirect = _settings['direct_read_only'] != false;
+    final advanced = _settings['advanced_mode'] == true;
+    final ready =
+        _settingsLoaded &&
+        _state['enabled'] == true &&
+        _state['binding'] == 'connected' &&
+        (overlayAllowed || readOnlyDirect || advanced);
     return Scaffold(
       appBar: AppBar(title: Text(text('Shizuku', 'Shizuku'))),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           _status(
-            text('Shizuku manager installed (Sui may not need it)',
-                'Shizuku 管理器已安装（Sui 可能无需管理器）'),
+            text(
+              'Shizuku manager installed (Sui may not need it)',
+              'Shizuku 管理器已安装（Sui 可能无需管理器）',
+            ),
             _state['managerInstalled'],
           ),
           _status(text('Service running', '服务正在运行'), _state['binderAlive']),
-          _status(text('Safety overlay allowed', '已允许安全警告悬浮窗'),
-              _state['overlayAllowed']),
+          _status(
+            text('Safety overlay allowed', '已允许安全警告悬浮窗'),
+            _state['overlayAllowed'],
+          ),
           ListTile(
             title: Text(text('Provider', '权限提供方')),
             subtitle: Text('${_state['provider'] ?? 'unknown'}'),
@@ -232,8 +283,8 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
             onChanged: _busy
                 ? null
                 : (value) => _run(() async {
-                      _update(await ShizukuPlatform.setEnabled(value));
-                    }),
+                    _update(await ShizukuPlatform.setEnabled(value));
+                  }),
           ),
           const Divider(),
           Padding(
@@ -244,27 +295,29 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
             ),
           ),
           SwitchListTile(
+            key: const ValueKey('shizuku-advanced'),
             title: Text(text('I am an advanced user', '我是高级用户')),
             value: _settings['advanced_mode'] == true,
-            onChanged: _saving ? null : _toggleAdvanced,
+            onChanged: _canEditSettings ? _toggleAdvanced : null,
             subtitle: Text(
               text(
                 'YELLOW, BLUE and GREEN run automatically; RED still opens the '
-                'overlay with a 3-second wait.',
-                '黄、蓝、绿等级自动执行；红色仍弹窗并等待 3 秒。',
+                    'overlay with a 3-second wait. Unverified scripts and sensitive reads are RED.',
+                '黄、蓝、绿等级自动执行；红色仍弹窗并等待 3 秒。未验证的脚本和敏感读取属于红色。',
               ),
             ),
           ),
           SwitchListTile(
+            key: const ValueKey('shizuku-direct-read'),
             title: Text(text('Read-only commands run directly', '只读命令直接执行')),
             value: _settings['direct_read_only'] != false,
-            onChanged: _saving
+            onChanged: !_canEditSettings
                 ? null
                 : (value) => _save({'direct_read_only': value}),
             subtitle: Text(
               text(
                 'Only a narrow, checked read-only grammar runs without an '
-                'overlay: single commands, no pipes, redirects or operators.',
+                    'overlay: single commands, no pipes, redirects or operators.',
                 '只有经过校验的窄只读语法可以不弹窗：单条命令，不含管道、重定向和操作符。',
               ),
             ),
@@ -272,47 +325,50 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
           ListTile(
             title: Text(text('Overlay allow delay (seconds)', '弹窗允许等待（秒）')),
             subtitle: Slider(
-              value: _getInt('allow_delay_seconds', 10).toDouble(),
+              value: allowDelay.toDouble(),
               min: 0,
-              max: 60,
-              divisions: 60,
-              label: '${_getInt('allow_delay_seconds', 10)} s',
-              onChanged: _saving
+              max: (overlayTimeout - 1).clamp(0, 60).toDouble(),
+              divisions: (overlayTimeout - 1).clamp(1, 60).toInt(),
+              label: '$allowDelay s',
+              onChanged: !_canEditSettings
                   ? null
-                  : (value) => setState(() =>
-                      _settings['allow_delay_seconds'] = value.round()),
+                  : (value) => setState(
+                      () => _settings['allow_delay_seconds'] = value.round(),
+                    ),
               onChangeEnd: (_) => _save(const {}),
             ),
           ),
           ListTile(
-            title:
-                Text(text('Overlay timeout (seconds)', '弹窗超时自动拒绝（秒）')),
+            title: Text(text('Overlay timeout (seconds)', '弹窗超时自动拒绝（秒）')),
             subtitle: Slider(
-              value: _getInt('overlay_timeout_seconds', 30).toDouble(),
-              min: 10,
+              value: overlayTimeout.toDouble(),
+              min: minOverlayTimeout.toDouble(),
               max: 120,
-              divisions: 110,
-              label: '${_getInt('overlay_timeout_seconds', 30)} s',
-              onChanged: _saving
+              divisions: (120 - minOverlayTimeout).clamp(1, 110).toInt(),
+              label: '$overlayTimeout s',
+              onChanged: !_canEditSettings
                   ? null
-                  : (value) => setState(() =>
-                      _settings['overlay_timeout_seconds'] = value.round()),
+                  : (value) => setState(
+                      () =>
+                          _settings['overlay_timeout_seconds'] = value.round(),
+                    ),
               onChangeEnd: (_) => _save(const {}),
             ),
           ),
           ListTile(
-            title:
-                Text(text('Command timeout (seconds)', '命令执行超时（秒）')),
+            title: Text(text('Command timeout (seconds)', '命令执行超时（秒）')),
             subtitle: Slider(
               value: _getInt('command_timeout_seconds', 30).toDouble(),
               min: 1,
               max: 120,
               divisions: 119,
               label: '${_getInt('command_timeout_seconds', 30)} s',
-              onChanged: _saving
+              onChanged: !_canEditSettings
                   ? null
-                  : (value) => setState(() =>
-                      _settings['command_timeout_seconds'] = value.round()),
+                  : (value) => setState(
+                      () =>
+                          _settings['command_timeout_seconds'] = value.round(),
+                    ),
               onChangeEnd: (_) => _save(const {}),
             ),
           ),
@@ -324,10 +380,11 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
               max: 256,
               divisions: 63,
               label: '${_getInt('max_output_kib', 64)} KiB',
-              onChanged: _saving
+              onChanged: !_canEditSettings
                   ? null
-                  : (value) =>
-                      setState(() => _settings['max_output_kib'] = value.round()),
+                  : (value) => setState(
+                      () => _settings['max_output_kib'] = value.round(),
+                    ),
               onChangeEnd: (_) => _save(const {}),
             ),
           ),
@@ -346,8 +403,8 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
                 onPressed: _busy
                     ? null
                     : () => _run(() async {
-                          await ShizukuPlatform.openManager();
-                        }),
+                        await ShizukuPlatform.openManager();
+                      }),
                 child: Text(text('Open manager / setup', '打开管理器 / 安装说明')),
               ),
               OutlinedButton(
@@ -357,40 +414,53 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
                 child: Text(text('Allow safety overlay', '授权安全警告悬浮窗')),
               ),
               OutlinedButton(
-                onPressed: _busy ? null : _refresh,
+                onPressed: _busy
+                    ? null
+                    : () => _run(() async {
+                        await _refresh();
+                        await _loadSettings();
+                      }),
                 child: Text(text('Refresh', '刷新')),
               ),
               FilledButton(
+                key: const ValueKey('shizuku-diagnostic'),
                 onPressed: _busy || !ready
                     ? null
-                    : () => _run(() => _execute(
+                    : () => _run(
+                        () => _execute(
                           'id; getprop ro.build.version.release',
                           prefix: 'shz-diag',
-                        )),
+                        ),
+                      ),
                 child: Text(text('Run read-only check', '运行只读诊断')),
               ),
               OutlinedButton(
                 onPressed: _busy || !ready
                     ? null
-                    : () => _run(() => _execute('sleep 10', prefix: 'shz-wait')),
+                    : () =>
+                          _run(() => _execute('sleep 10', prefix: 'shz-wait')),
                 child: Text(text('Run 10s cancellation test', '运行 10 秒取消测试')),
               ),
               if (_activeOperationId != null)
                 OutlinedButton(
-                  onPressed: () =>
-                      ShizukuPlatform.cancel(_activeOperationId!),
+                  onPressed: () => ShizukuPlatform.cancel(_activeOperationId!),
                   child: Text(text('Stop current command', '停止当前命令')),
                 ),
             ],
           ),
-          if (!ready && _state['enabled'] == true)
+          if (!overlayAllowed &&
+              _state['enabled'] == true &&
+              !readOnlyDirect &&
+              !advanced)
             Padding(
               padding: const EdgeInsets.only(top: 12),
               child: Text(
                 text(
-                  'Commands stay unavailable until Shizuku is running, '
-                  'permission is granted and the UserService is connected.',
-                  '在 Shizuku 运行、获得授权并连接用户服务之前，命令保持不可用。',
+                  'Shizuku is not ready yet. Start it, grant app permission and '
+                      'connect the UserService. Non-read-only commands also require '
+                      'the system overlay permission.',
+                  'Shizuku 尚未就绪。请启动服务、授予应用权限并连接用户服务。'
+                      '非只读命令还需要系统悬浮窗权限。',
                 ),
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
@@ -409,12 +479,12 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
             child: Text(
               text(
                 'Shizuku must be started by its manager. Enabling this feature '
-                'does not grant system permission. Direct execution covers only '
-                'the checked read-only grammar (and, in advanced mode, commands '
-                'up to YELLOW risk); RED commands always ask first.',
+                    'does not grant system permission. Direct execution covers only '
+                    'the checked read-only grammar (and, in advanced mode, commands '
+                    'up to YELLOW risk); RED commands always ask first.',
                 'Shizuku 需要由管理器启动。启用此功能不会自动获得系统授权。'
-                '直接执行仅覆盖已校验的只读语法（高级模式下扩大到黄色风险等级）；'
-                '红色命令始终先询问。',
+                    '直接执行仅覆盖已校验的只读语法（高级模式下扩大到黄色风险等级）；'
+                    '红色命令始终先询问。',
               ),
               style: Theme.of(context).textTheme.bodySmall,
             ),
@@ -428,11 +498,11 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
     final state = '${value['state'] ?? 'unknown'}';
     final lines = <String>[
       '${text('State', '状态')}: $state',
-      if (value['reason'] != null) '${text('Reason', '原因')}: ${value['reason']}',
+      if (value['reason'] != null)
+        '${text('Reason', '原因')}: ${value['reason']}',
       '${text('Exit code', '退出码')}: ${value['exitCode']}',
       '${text('Elapsed', '耗时')}: ${value['elapsedMs']} ms',
-      if (value['truncated'] == true)
-        text('Output truncated.', '输出已截断。'),
+      if (value['truncated'] == true) text('Output truncated.', '输出已截断。'),
     ];
     final stdout = '${value['stdout'] ?? ''}';
     final stderr = '${value['stderr'] ?? ''}';
@@ -464,13 +534,13 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
   }
 
   Widget _status(String title, Object? value) => ListTile(
-        title: Text(title),
-        trailing: Text(
-          value == true
-              ? text('Yes', '是')
-              : value == false
-                  ? text('No', '否')
-                  : text('Unknown', '未知'),
-        ),
-      );
+    title: Text(title),
+    trailing: Text(
+      value == true
+          ? text('Yes', '是')
+          : value == false
+          ? text('No', '否')
+          : text('Unknown', '未知'),
+    ),
+  );
 }
