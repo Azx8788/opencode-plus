@@ -20,11 +20,21 @@ void main() {
   var failLoad = false;
   var failedBinding = false;
   String? permissionReason;
+  String? availabilityReason;
+  String permissionState = 'granted';
+  String? applicationId;
+  Object? shizukuRegistrationValid;
+  Object? shizukuProviderValid;
 
   setUp(() {
     failSave = failLoad = false;
     failedBinding = false;
     permissionReason = null;
+    availabilityReason = null;
+    permissionState = 'granted';
+    applicationId = null;
+    shizukuRegistrationValid = null;
+    shizukuProviderValid = null;
     stored = {
       'direct_read_only': true,
       'advanced_mode': false,
@@ -42,7 +52,7 @@ void main() {
           return {
             'enabled': true,
             'binderAlive': true,
-            'permission': 'granted',
+            'permission': permissionState,
             'binding': failedBinding ? 'failed' : 'connected',
             'bindingReason': failedBinding ? 'bind_timeout' : null,
             'executionReady': !failedBinding,
@@ -55,6 +65,10 @@ void main() {
             'provider': 'shizuku',
             'permissionRequestState': 'not_requested',
             'permissionRequestReason': permissionReason,
+            'availabilityReason': availabilityReason,
+            'applicationId': applicationId,
+            'shizukuRegistrationValid': shizukuRegistrationValid,
+            'shizukuProviderValid': shizukuProviderValid,
           };
         case 'settings':
           if (failLoad) throw PlatformException(code: 'load_failed');
@@ -174,6 +188,49 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+
+  testWidgets('an unregistered Shizuku package is not shown as authorized', (
+    tester,
+  ) async {
+    availabilityReason = 'shizuku_app_not_listable';
+    permissionState = 'not_registered';
+    await mount(tester);
+    expect(find.text('App not registered'), findsOneWidget);
+    expect(find.byKey(const ValueKey('shizuku-registration-reason')), findsOneWidget);
+    expect(find.textContaining('cannot list this installed package'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('a denied live permission check never renders as granted', (
+    tester,
+  ) async {
+    permissionState = 'requestable';
+    await mount(tester);
+    expect(find.text('Not requested'), findsOneWidget);
+    expect(find.text('Granted'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('an unverifiable permission check stays unknown, never granted', (
+    tester,
+  ) async {
+    permissionState = 'unknown';
+    availabilityReason = 'shizuku_permission_unverified';
+    await mount(tester);
+    final permissionStatus = find.byKey(
+      const ValueKey('shizuku-permission-status'),
+    );
+    expect(
+      find.descendant(of: permissionStatus, matching: find.text('Unknown')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: permissionStatus, matching: find.text('Granted')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('shizuku-permission-unverified')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   testWidgets(
     'a lost decision is not displayed as a grant',

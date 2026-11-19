@@ -225,6 +225,18 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
       'Shizuku returned no decision. Open the manager and check that OpenCode Plus is listed, then request again.',
       'Shizuku 没有返回你的选择。请打开管理器确认列表中有 OpenCode Plus，然后重新申请。',
     ),
+    'unsupported_server_version' => text(
+      'This Shizuku server is older than v11 and has no app authorization. Update Shizuku and restart it.',
+      '当前 Shizuku 服务低于 v11，不支持应用授权。请更新 Shizuku 并重新启动。',
+    ),
+    'shizuku_app_not_listable' => text(
+      'Shizuku cannot list this installed package. Check the app ID and its merged manifest, then restart Shizuku.',
+      'Shizuku 无法在应用列表中识别当前安装包。请核对应用 ID 和最终合并清单，然后重启 Shizuku。',
+    ),
+    'shizuku_permission_unverified' => text(
+      'Shizuku did not return a reliable permission status. The app will not treat this as authorized; refresh or restart Shizuku.',
+      'Shizuku 未返回可信的授权状态。应用不会将其视为已授权；请刷新或重启 Shizuku。',
+    ),
     'permission_revoked' => text(
       "The grant is gone from Shizuku's authorized list. Request it again.",
       'Shizuku 授权列表中的授权已不存在，请重新申请。',
@@ -280,6 +292,7 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
     final permission = switch (_state['permission']) {
       'granted' => text('Granted', '已授权'),
       'denied' => text('Denied', '已拒绝'),
+      'not_registered' => text('App not registered', '应用未登记'),
       'requestable' => text('Not requested', '未申请'),
       _ => text('Unknown', '未知'),
     };
@@ -323,7 +336,23 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
             title: Text(text('Provider', '权限提供方')),
             subtitle: Text('${_state['provider'] ?? 'unknown'}'),
           ),
+          if (_state['applicationId'] != null)
+            ListTile(
+              title: Text(text('Installed app ID', '当前安装包 ID')),
+              subtitle: Text('${_state['applicationId']}'),
+            ),
+          if (_state['shizukuRegistrationValid'] != null)
+            _status(
+              text('Shizuku manager listing requirements', 'Shizuku 列表登记条件'),
+              _state['shizukuRegistrationValid'],
+            ),
+          if (_state['shizukuProviderValid'] != null)
+            _status(
+              text('Shizuku Binder provider configuration', 'Shizuku Binder Provider 配置'),
+              _state['shizukuProviderValid'],
+            ),
           ListTile(
+            key: const ValueKey('shizuku-permission-status'),
             title: Text(text('Permission', '授权')),
             subtitle: Text(permission),
           ),
@@ -360,6 +389,33 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
                 _permissionRequestExplanation(
                   '${_state['permissionRequestReason']}',
                 ),
+              ),
+            ),
+          if (_state['availabilityReason'] == 'shizuku_app_not_listable')
+            Padding(
+              key: const ValueKey('shizuku-registration-reason'),
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _permissionRequestExplanation('shizuku_app_not_listable'),
+                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  ),
+                  Text(
+                    text('Installed app ID: ', '当前安装包 ID：') +
+                        '${_state['applicationId'] ?? 'unknown'}',
+                  ),
+                ],
+              ),
+            ),
+          if (_state['availabilityReason'] == 'shizuku_permission_unverified')
+            Padding(
+              key: const ValueKey('shizuku-permission-unverified'),
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                _permissionRequestExplanation('shizuku_permission_unverified'),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ),
           ListTile(

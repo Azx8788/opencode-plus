@@ -59,6 +59,30 @@ void main() {
       expect(advertised.single.getAttribute('android:value'), 'true');
     });
 
+    test('authorization does not treat Shizuku rationale metadata as a denial', () {
+      final controller = File(
+        'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuController.kt',
+      ).readAsStringSync();
+      expect(controller, isNot(contains('shouldShowRequestPermissionRationale')));
+      expect(controller, contains('permission.begin(requestCode)'));
+      expect(controller, contains('permission.deliver(code'));
+    });
+
+    test('permission status reads live server state and validates manager listing requirements', () {
+      final controller = File(
+        'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuController.kt',
+      ).readAsStringSync();
+      expect(controller, contains('IShizukuService.Stub.asInterface(binder).checkSelfPermission()'));
+      expect(controller, isNot(contains('Shizuku.checkSelfPermission()')));
+      expect(controller, contains('private fun serverPermissionGranted(): Boolean?'));
+      expect(controller, contains('permissionCheck == null -> "shizuku_permission_unverified"'));
+      expect(controller, contains('info.requestedPermissions?.contains(ShizukuProvider.PERMISSION)'));
+      expect(controller, contains('moe.shizuku.client.V3_SUPPORT'));
+      expect(controller, contains('private fun shizukuProviderValid(context: Context)'));
+      expect(controller, contains(r'"${context.packageName}.shizuku"'));
+      expect(controller, contains('"shizuku_app_not_listable"'));
+    });
+
     test(
       'Shizuku manager (moe.shizuku.privileged.api) is visible for queries',
       () {
