@@ -151,6 +151,16 @@ extension _IndexHubRows on _IndexBuild {
           (scope) => SearchProviderScreen(controller: scope.controller),
         ),
       ),
+      SearchEntry(
+        id: 'settings-shizuku',
+        kind: SearchEntryKind.hubRow,
+        group: SettingsGroup.ai,
+        icon: AppIconography.tools,
+        title: 'Shizuku',
+        keywords: 'Shizuku ADB root shell command phone tools',
+        pages: const ['shizuku-settings'],
+        open: (context, _) => _push(context, const ShizukuScreen()),
+      ),
       // The AI Team as a place of its own in Settings, not only a plugin
       // (docs/qa/team-discover-2026-09-25): the one team page (P3.4), on or
       // off; off, it sets the team up for this kind of server. The same door

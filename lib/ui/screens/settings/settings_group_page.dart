@@ -11,6 +11,7 @@ const settingsGroupRowIds = <SettingsGroup, List<String>>{
     'settings-search-provider',
     'settings-category-usage',
     'settings-tools',
+    'settings-shizuku',
     'settings-agents',
   ],
   SettingsGroup.chat: [
@@ -267,6 +268,7 @@ class _SettingsGroupBodyState extends State<_SettingsGroupBody> {
         row('settings-search-provider'),
         row('settings-category-usage'),
         byServerRow('settings-tools', ByServerKind.tools),
+        row('settings-shizuku'),
         row('settings-agents'),
       ],
       SettingsGroup.chat => [

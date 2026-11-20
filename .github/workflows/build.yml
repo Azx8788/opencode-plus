@@ -5,6 +5,12 @@ on:
     branches: [main]
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      package_only:
+        description: "Build an installable APK only; skip tests and never publish a release"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
@@ -19,6 +25,7 @@ jobs:
   # run wait ~9 minutes for work that can happen at the same time. A tag's
   # release is still refused unless every one of them passed (see `release`).
   native:
+    if: ${{ inputs.package_only != true }}
     # The Storage Access Framework root is the app's own directory, and the
     # rules that decide whether a file manager may enter it are the platform's,
     # not this app's: the picker hides a root without FLAG_SUPPORTS_IS_CHILD,
@@ -80,6 +87,7 @@ jobs:
           ./gradlew ":app:$task" --tests 'com.azx8788.opencode.mini.*'
 
   verify:
+    if: ${{ inputs.package_only != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

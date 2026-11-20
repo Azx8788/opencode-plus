@@ -145,6 +145,17 @@ referenced above. The same text ships in every `record_*` platform package.
 This package supplies stable indexed scrolling for long, mixed-height message
 timelines.
 
+### Shizuku API
+
+- Component: `dev.rikka.shizuku:api` and `dev.rikka.shizuku:provider`
+- Version: 13.1.5
+- Project: https://github.com/RikkaApps/Shizuku-API
+- Copyright: RikkaW
+- License: MIT; see `LICENSES/MIT-Shizuku-API.txt`
+
+OpenCode Plus uses the API to request Shizuku authorization and bind its own
+UserService. The Shizuku manager application is not bundled.
+
 ### mobile_scanner, and the Android libraries it pulls in
 
 - Component: `mobile_scanner` Flutter package
