@@ -1,4 +1,4 @@
-package com.azx8788.opencode.mini
+package com.azx8788.opencode.mini.shizuku
 
 import org.json.JSONObject
 import java.io.File
@@ -9,7 +9,7 @@ import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 
 /** Permanent bounded dedup metadata; only the separate recent output cache is pruned. */
-internal class ShizukuOperationJournal(private val directory: File, private val now: () -> Long,
+internal class OperationJournal(private val directory: File, private val now: () -> Long,
                                        private val capacity: Int = 4096, private val cachedResults: Int = 16) {
     private val rows = linkedMapOf<String, JSONObject>()
     private var healthy = true
@@ -26,7 +26,7 @@ internal class ShizukuOperationJournal(private val directory: File, private val 
                 check(file.name.matches(Regex("[a-f0-9]{64}\\.json")))
                 val row = JSONObject(read(file, 8192))
                 validate(row)
-                check(file.name == "${ShizukuProtocol.hash(row.getString("operationId"))}.json")
+                check(file.name == "${Protocol.hash(row.getString("operationId"))}.json")
                 rows[row.getString("operationId")] = row
             }
             // A dispatch marker was committed before IPC. No result means uncertain, not safe to retry.
@@ -45,9 +45,9 @@ internal class ShizukuOperationJournal(private val directory: File, private val 
     @Synchronized fun available() = healthy
 
     /** true only for a newly durably admitted operation. */
-    @Synchronized fun admit(id: String, owner: ShizukuProtocol.Owner, digest: String): Boolean {
+    @Synchronized fun admit(id: String, owner: Protocol.Owner, digest: String): Boolean {
         checkHealthy()
-        require(ShizukuProtocol.idPattern.matches(id) && ShizukuProtocol.validDigest(digest))
+        require(Protocol.idPattern.matches(id) && Protocol.validDigest(digest))
         rows[id]?.let {
             check(it.getString("ownerHash") == owner.ownerHash) { "operation_conflict" }
             check(it.isNull("fingerprint") || it.getString("fingerprint") == digest) { "operation_conflict" }
@@ -59,7 +59,7 @@ internal class ShizukuOperationJournal(private val directory: File, private val 
         return true
     }
 
-    @Synchronized fun get(id: String, owner: ShizukuProtocol.Owner, exact: Boolean = false): JSONObject? {
+    @Synchronized fun get(id: String, owner: Protocol.Owner, exact: Boolean = false): JSONObject? {
         checkHealthy()
         val row = rows[id] ?: return null
         check(row.getString(if (exact) "ownerHash" else "sessionHash") ==
@@ -67,7 +67,7 @@ internal class ShizukuOperationJournal(private val directory: File, private val 
         return try { expose(row) } catch (error: Exception) { healthy = false; throw error }
     }
 
-    @Synchronized fun lookup(id: String, owner: ShizukuProtocol.Owner, digest: String): JSONObject? {
+    @Synchronized fun lookup(id: String, owner: Protocol.Owner, digest: String): JSONObject? {
         checkHealthy()
         val row = rows[id] ?: return null
         check(row.getString("ownerHash") == owner.ownerHash &&
@@ -91,9 +91,9 @@ internal class ShizukuOperationJournal(private val directory: File, private val 
         return true
     }
 
-    @Synchronized fun cancel(id: String, owner: ShizukuProtocol.Owner): JSONObject {
+    @Synchronized fun cancel(id: String, owner: Protocol.Owner): JSONObject {
         checkHealthy()
-        require(ShizukuProtocol.idPattern.matches(id))
+        require(Protocol.idPattern.matches(id))
         val row = rows[id]
         if (row == null) {
             check(rows.size < capacity) { "operation_history_full" }
@@ -137,9 +137,9 @@ internal class ShizukuOperationJournal(private val directory: File, private val 
         check(result.getString("state") in terminal && result.getString("state") != "denied")
         if (row.getString("state") !in setOf("running", "unknown")) return
         val value = copy(result)
-        value.put("protocolVersion", ShizukuProtocol.VERSION).put("environment", "android").put("backend", ShizukuProtocol.backend(uid))
+        value.put("protocolVersion", Protocol.VERSION).put("environment", "android").put("backend", Protocol.backend(uid))
         val text = value.toString()
-        check(text.toByteArray(Charsets.UTF_8).size <= ShizukuProtocol.MAX_RESPONSE_BYTES)
+        check(text.toByteArray(Charsets.UTF_8).size <= Protocol.MAX_RESPONSE_BYTES)
         try {
             atomicFile(resultFile(id), text)
             val next = copy(row).put("state", value.getString("state")).put("reason", value.opt("reason") ?: JSONObject.NULL)
@@ -158,7 +158,7 @@ internal class ShizukuOperationJournal(private val directory: File, private val 
         return true
     }
 
-    private fun base(id: String, owner: ShizukuProtocol.Owner) = JSONObject().put("version", 1)
+    private fun base(id: String, owner: Protocol.Owner) = JSONObject().put("version", 1)
         .put("operationId", id).put("ownerHash", owner.ownerHash).put("sessionHash", owner.sessionHash)
         .put("source", owner.source).put("fingerprint", JSONObject.NULL).put("acceptedAt", now())
         .put("reason", JSONObject.NULL).put("serviceInstance", JSONObject.NULL).put("uid", JSONObject.NULL)
@@ -167,11 +167,11 @@ internal class ShizukuOperationJournal(private val directory: File, private val 
     private fun expose(row: JSONObject): JSONObject {
         val public = copy(row)
         for (key in listOf("ownerHash", "sessionHash", "fingerprint", "version")) public.remove(key)
-        public.put("protocolVersion", ShizukuProtocol.VERSION).put("environment", "android").put("fallback", false)
-            .put("backend", ShizukuProtocol.backend(if (row.isNull("uid")) null else row.getInt("uid")))
+        public.put("protocolVersion", Protocol.VERSION).put("environment", "android").put("fallback", false)
+            .put("backend", Protocol.backend(if (row.isNull("uid")) null else row.getInt("uid")))
         val result = resultFile(row.getString("operationId"))
         if (row.getString("state") in terminal && result.exists()) {
-            val data = JSONObject(read(result, ShizukuProtocol.MAX_RESPONSE_BYTES))
+            val data = JSONObject(read(result, Protocol.MAX_RESPONSE_BYTES))
             check(data.getString("operationId") == row.getString("operationId"))
             check(data.getString("serviceInstance") == row.getString("serviceInstance"))
             for (key in listOf("stdout", "stderr", "truncated", "startedAt", "elapsedMs", "exitCode", "termination")) {
@@ -185,15 +185,15 @@ internal class ShizukuOperationJournal(private val directory: File, private val 
         try { writeRow(row); rows[row.getString("operationId")] = row }
         catch (error: Exception) { healthy = false; throw error }
     }
-    private fun writeRow(row: JSONObject) = atomicFile(File(directory, "${ShizukuProtocol.hash(row.getString("operationId"))}.json"), row.toString())
-    private fun resultFile(id: String) = File(directory, "${ShizukuProtocol.hash(id)}.result")
+    private fun writeRow(row: JSONObject) = atomicFile(File(directory, "${Protocol.hash(row.getString("operationId"))}.json"), row.toString())
+    private fun resultFile(id: String) = File(directory, "${Protocol.hash(id)}.result")
     private fun checkHealthy() { check(healthy) { "operation_storage_unavailable" } }
     private fun copy(value: JSONObject) = JSONObject(value.toString())
 
     private fun validate(row: JSONObject) {
-        check(row.getInt("version") == 1 && ShizukuProtocol.idPattern.matches(row.getString("operationId")))
-        check(ShizukuProtocol.validDigest(row.getString("ownerHash")) && ShizukuProtocol.validDigest(row.getString("sessionHash")))
-        check(row.isNull("fingerprint") || ShizukuProtocol.validDigest(row.getString("fingerprint")))
+        check(row.getInt("version") == 1 && Protocol.idPattern.matches(row.getString("operationId")))
+        check(Protocol.validDigest(row.getString("ownerHash")) && Protocol.validDigest(row.getString("sessionHash")))
+        check(row.isNull("fingerprint") || Protocol.validDigest(row.getString("fingerprint")))
         check(row.getString("state") in terminal + setOf("queued", "waiting", "running"))
         check(row.getString("source") in setOf("settings_test", "opencode_tool"))
     }

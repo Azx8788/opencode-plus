@@ -1,7 +1,7 @@
-package com.azx8788.opencode.mini
+package com.azx8788.opencode.mini.shizuku
 
 /** Risk is classification, not a shell sandbox. Unverified commands still ask. */
-internal object ShizukuCommandPolicy {
+internal object CommandPolicy {
     enum class Risk { GREEN, BLUE, YELLOW, RED }
 
     data class Decision(val risk: Risk, val kind: String, val readOnly: Boolean = false)

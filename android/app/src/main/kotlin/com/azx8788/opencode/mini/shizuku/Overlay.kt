@@ -1,4 +1,4 @@
-package com.azx8788.opencode.mini
+package com.azx8788.opencode.mini.shizuku
 
 import android.content.Context
 import android.graphics.Color
@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Fail-closed: no overlay permission or creation failure resolves to deny.
  * Confirmation delay and timeout come from bounded user settings.
  */
-internal object ShizukuSafetyOverlay {
+internal object SafetyOverlay {
     private var showing = false
     private var activeId: String? = null
     private var dismiss: (() -> Unit)? = null
@@ -39,7 +39,7 @@ internal object ShizukuSafetyOverlay {
     fun confirm(
         context: Context,
         command: String,
-        decision: ShizukuCommandPolicy.Decision,
+        decision: CommandPolicy.Decision,
         allowDelaySeconds: Int,
         timeoutSeconds: Int,
         operationId: String = "settings",
@@ -59,7 +59,7 @@ internal object ShizukuSafetyOverlay {
     private fun show(
         context: Context,
         command: String,
-        decision: ShizukuCommandPolicy.Decision,
+        decision: CommandPolicy.Decision,
         allowDelaySeconds: Int,
         timeoutSeconds: Int,
         operationId: String,
@@ -79,13 +79,13 @@ internal object ShizukuSafetyOverlay {
         val chinese = context.resources.configuration.locales[0].language == "zh"
 
         val (bgColor, accentColor, textColor) = when (decision.risk) {
-            ShizukuCommandPolicy.Risk.GREEN ->
+            CommandPolicy.Risk.GREEN ->
                 Triple(Color.rgb(18, 102, 52), Color.rgb(40, 160, 90), Color.WHITE)
-            ShizukuCommandPolicy.Risk.BLUE ->
+            CommandPolicy.Risk.BLUE ->
                 Triple(Color.rgb(20, 70, 150), Color.rgb(50, 110, 200), Color.WHITE)
-            ShizukuCommandPolicy.Risk.YELLOW ->
+            CommandPolicy.Risk.YELLOW ->
                 Triple(Color.rgb(180, 130, 20), Color.rgb(255, 200, 60), Color.WHITE)
-            ShizukuCommandPolicy.Risk.RED ->
+            CommandPolicy.Risk.RED ->
                 Triple(Color.rgb(150, 25, 35), Color.rgb(220, 60, 60), Color.WHITE)
         }
 
@@ -101,10 +101,10 @@ internal object ShizukuSafetyOverlay {
         }
 
         val riskLabel = when (decision.risk) {
-            ShizukuCommandPolicy.Risk.GREEN -> if (chinese) "低风险" else "Low"
-            ShizukuCommandPolicy.Risk.BLUE -> if (chinese) "未知风险" else "Unknown"
-            ShizukuCommandPolicy.Risk.YELLOW -> if (chinese) "中风险" else "Medium"
-            ShizukuCommandPolicy.Risk.RED -> if (chinese) "高风险" else "High"
+            CommandPolicy.Risk.GREEN -> if (chinese) "低风险" else "Low"
+            CommandPolicy.Risk.BLUE -> if (chinese) "未知风险" else "Unknown"
+            CommandPolicy.Risk.YELLOW -> if (chinese) "中风险" else "Medium"
+            CommandPolicy.Risk.RED -> if (chinese) "高风险" else "High"
         }
 
         val panel = LinearLayout(context).apply {

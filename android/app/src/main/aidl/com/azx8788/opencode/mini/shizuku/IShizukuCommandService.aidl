@@ -1,4 +1,4 @@
-package com.azx8788.opencode.mini;
+package com.azx8788.opencode.mini.shizuku;
 
 interface IShizukuCommandService {
     void destroy() = 16777114; // Destroy method defined by Shizuku server

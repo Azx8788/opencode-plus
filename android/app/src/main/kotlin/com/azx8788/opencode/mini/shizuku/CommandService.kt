@@ -1,4 +1,4 @@
-package com.azx8788.opencode.mini
+package com.azx8788.opencode.mini.shizuku
 
 import android.os.SystemClock
 import android.system.Os
@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 
 /** Bounded UserService execution. Android has no supported Process.pid() API. */
-class ShizukuCommandService : IShizukuCommandService.Stub() {
+class CommandService : IShizukuCommandService.Stub() {
     private class Running(val process: Process, val startedAt: Long, val grouped: Boolean) {
         val pid = AtomicInteger(0)
         var cancelRequested = false
@@ -21,13 +21,13 @@ class ShizukuCommandService : IShizukuCommandService.Stub() {
     }
 
     private val active = ConcurrentHashMap<String, Running>()
-    private val gate = ShizukuServiceGate()
+    private val gate = ServiceGate()
     private val launchLock = Any()
     private val completed = linkedMapOf<String, String>()
 
     override fun status(): String = JSONObject()
-        .put("protocolVersion", ShizukuProtocol.VERSION)
-        .put("serviceVersion", ShizukuProtocol.SERVICE_VERSION)
+        .put("protocolVersion", Protocol.VERSION)
+        .put("serviceVersion", Protocol.SERVICE_VERSION)
         .put("uid", Os.getuid())
         .put("backend", when (Os.getuid()) { 0 -> "root"; 2000 -> "adb"; else -> "unknown" })
         .put("serviceInstance", instance)
@@ -70,7 +70,7 @@ class ShizukuCommandService : IShizukuCommandService.Stub() {
             val owner = checkNotNull(running)
             val startedAt = System.currentTimeMillis()
             process.outputStream.close() // stdin is not an interactive terminal
-            val output = ShizukuCommandOutput(outputLimitBytes)
+            val output = CommandOutput(outputLimitBytes)
             val outThread = thread(isDaemon = true, name = "shizuku-stdout") {
                 try { output.drainStdout(process.inputStream) } catch (_: IOException) { output.markIncomplete() }
             }
@@ -124,7 +124,7 @@ class ShizukuCommandService : IShizukuCommandService.Stub() {
             if (owner == null) return noExecution(operationId, "process_start_failed")
             synchronized(owner) { owner.terminationConfirmed = terminate(owner) }
             return result(operationId, "unknown", "process_io_failed", null,
-                ShizukuCommandOutput.Snapshot("", "", true), owner.startedAt, null,
+                CommandOutput.Snapshot("", "", true), owner.startedAt, null,
                 if (owner.terminationConfirmed) "confirmed" else "unconfirmed")
         } finally {
             running?.let { owner ->
@@ -137,7 +137,7 @@ class ShizukuCommandService : IShizukuCommandService.Stub() {
     }
 
     override fun cancel(operationId: String): Boolean {
-        require(ShizukuProtocol.idPattern.matches(operationId))
+        require(Protocol.idPattern.matches(operationId))
         val owner: Running?
         synchronized(launchLock) {
             if (!gate.cancel(operationId)) return false
@@ -159,7 +159,7 @@ class ShizukuCommandService : IShizukuCommandService.Stub() {
     }
 
     override fun result(operationId: String): String {
-        require(ShizukuProtocol.idPattern.matches(operationId))
+        require(Protocol.idPattern.matches(operationId))
         synchronized(completed) { completed[operationId]?.let { return it } }
         return JSONObject().put("operationId", operationId).put("serviceInstance", instance).put("uid", Os.getuid())
             .put("state", if (active.containsKey(operationId)) "running" else "unknown").toString()
@@ -167,7 +167,7 @@ class ShizukuCommandService : IShizukuCommandService.Stub() {
 
     private fun noExecution(id: String, reason: String): String = result(id,
         if (reason == "cancelled_before_start") "cancelled" else "failed", reason, null,
-        ShizukuCommandOutput.Snapshot("", "", false), null, null,
+        CommandOutput.Snapshot("", "", false), null, null,
         if (reason == "cancelled_before_start") "confirmed" else "not_requested")
 
     /** ESRCH alone proves absence; permission/other errors are not success. */
@@ -205,8 +205,8 @@ class ShizukuCommandService : IShizukuCommandService.Stub() {
     }
 
     private fun result(id: String, state: String, reason: String?, exit: Int?,
-                       output: ShizukuCommandOutput.Snapshot, started: Long?, startedAt: Long?, termination: String): String {
-        val value = JSONObject().put("protocolVersion", ShizukuProtocol.VERSION).put("uid", Os.getuid())
+                       output: CommandOutput.Snapshot, started: Long?, startedAt: Long?, termination: String): String {
+        val value = JSONObject().put("protocolVersion", Protocol.VERSION).put("uid", Os.getuid())
             .put("operationId", id).put("state", state).put("reason", reason ?: JSONObject.NULL)
             .put("exitCode", exit ?: JSONObject.NULL).put("stdout", output.stdout).put("stderr", output.stderr)
             .put("truncated", output.truncated).put("termination", termination)

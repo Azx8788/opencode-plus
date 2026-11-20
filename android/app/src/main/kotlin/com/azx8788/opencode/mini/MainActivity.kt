@@ -8,6 +8,7 @@ import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import com.azx8788.opencode.mini.shizuku.ShizukuRuntime
 
 class MainActivity : FlutterFragmentActivity() {
     private val handler = Handler(Looper.getMainLooper())
@@ -46,7 +47,7 @@ class MainActivity : FlutterFragmentActivity() {
         projectExport?.dispose()
         projectExport = ProjectExportBridge(this, flutterEngine.dartExecutor.binaryMessenger)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
-        ShizukuController.register(this, messenger)
+        ShizukuRuntime.register(this, messenger)
         launches.configure(messenger, intent)
         ScheduledPromptChannel.captureOpen(intent)
         scheduledPrompts?.close()
@@ -68,7 +69,7 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
-        ShizukuController.detach()
+        ShizukuRuntime.detach()
         scheduledPrompts?.close()
         scheduledPrompts = null
         background.cancelBackgroundRequests()
@@ -95,7 +96,7 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun onResume() {
         super.onResume()
-        ShizukuController.refresh()
+        ShizukuRuntime.refresh()
         try { BuiltinLinux.get(applicationContext).setActivityResumed(true) } catch (_: Exception) { }
         readAloud?.resume()
     }

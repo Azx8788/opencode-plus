@@ -3,13 +3,21 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xml/xml.dart';
 
+/// Contract checks that the packaging and the native module keep the shape the
+/// Shizuku server and this app agreed on.
+///
+/// They read the sources instead of duplicating behaviour: the behavioural
+/// checks live in the Kotlin unit tests and the widget test.
 void main() {
-  group('Shizuku manifest and build contract', () {
-    test('Shizuku provider is registered with app-scoped authority', () {
-      final manifest = XmlDocument.parse(
-        File('android/app/src/main/AndroidManifest.xml').readAsStringSync(),
-      );
-      final provider = manifest
+  const module =
+      'android/app/src/main/kotlin/com/azx8788/opencode/mini/shizuku';
+  String source(String name) => File('$module/$name').readAsStringSync();
+  String manifest() =>
+      File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
+
+  group('manager discovery', () {
+    test('the ShizukuProvider is registered the way the SDK documents', () {
+      final provider = XmlDocument.parse(manifest())
           .findAllElements('provider')
           .singleWhere(
             (element) =>
@@ -28,26 +36,19 @@ void main() {
       );
     });
 
-    test('SYSTEM_ALERT_WINDOW is declared for the safety overlay', () {
-      final manifest = File('android/app/src/main/AndroidManifest.xml')
-          .readAsStringSync();
-      expect(manifest, contains('android.permission.SYSTEM_ALERT_WINDOW'));
-    });
-
-    // ShizukuService.getApplications() lists an app in the manager's authorized
-    // list only when its manifest both requests API_V23 and advertises
-    // V3_SUPPORT. An app missing either one cannot be granted there at all, so
-    // a request appears to fail and the entry never survives.
-    test('the manager can list this app: API_V23 requested and V3_SUPPORT advertised', () {
-      final manifest = XmlDocument.parse(
-        File('android/app/src/main/AndroidManifest.xml').readAsStringSync(),
-      );
-      final requested = manifest
+    // ShizukuService.getApplications() lists a package only when it both
+    // requests API_V23 and advertises V3_SUPPORT. Missing either one means the
+    // app can never appear in the manager's list, so a request looks like it
+    // fails and nothing is remembered.
+    test('the package meets the two conditions the server filters on', () {
+      final document = XmlDocument.parse(manifest());
+      final requested = document
           .findAllElements('uses-permission')
           .map((element) => element.getAttribute('android:name'))
           .toList();
       expect(requested, contains('moe.shizuku.manager.permission.API_V23'));
-      final advertised = manifest
+
+      final advertised = document
           .findAllElements('meta-data')
           .where(
             (element) =>
@@ -59,149 +60,196 @@ void main() {
       expect(advertised.single.getAttribute('android:value'), 'true');
     });
 
-    test('authorization does not treat Shizuku rationale metadata as a denial', () {
-      final controller = File(
-        'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuController.kt',
-      ).readAsStringSync();
-      expect(controller, isNot(contains('shouldShowRequestPermissionRationale')));
-      expect(controller, contains('permission.begin(requestCode)'));
-      expect(controller, contains('permission.deliver(code'));
+    test('the provider conditions are checked separately from the list ones', () {
+      final probe = source('Probes.kt');
+      expect(probe, contains('provider.readPermission'));
+      expect(probe, contains('provider.writePermission'));
+      // ProviderInfo has no `permission` field; a build that names one does not
+      // compile, which is why the previous attempt never reached CI green.
+      expect(probe, isNot(contains('provider.permission')));
+      expect(
+        source('Model.kt'),
+        contains('val listed: Boolean get() = permissionDeclared && v3Support'),
+      );
     });
 
-    test('permission status reads live server state and validates manager listing requirements', () {
-      final controller = File(
-        'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuController.kt',
-      ).readAsStringSync();
-      expect(controller, contains('IShizukuService.Stub.asInterface(binder).checkSelfPermission()'));
-      expect(controller, isNot(contains('Shizuku.checkSelfPermission()')));
-      expect(controller, contains('private fun serverPermissionGranted(): Boolean?'));
-      expect(controller, contains('permissionCheck == null -> "shizuku_permission_unverified"'));
-      expect(controller, contains('info.requestedPermissions?.contains(ShizukuProvider.PERMISSION)'));
-      expect(controller, contains('moe.shizuku.client.V3_SUPPORT'));
-      expect(controller, contains('private fun shizukuProviderValid(context: Context)'));
-      expect(controller, contains(r'"${context.packageName}.shizuku"'));
-      expect(controller, contains('"shizuku_app_not_listable"'));
-    });
-
-    test(
-      'Shizuku manager (moe.shizuku.privileged.api) is visible for queries',
-      () {
-        final manifest = File('android/app/src/main/AndroidManifest.xml')
-            .readAsStringSync();
-        expect(manifest, contains('moe.shizuku.privileged.api'));
-      },
-    );
-
-    test('UserService contract reserves official destroy transaction', () {
-      final aidl = File(
-        'android/app/src/main/aidl/com/azx8788/opencode/mini/IShizukuCommandService.aidl',
-      ).readAsStringSync();
-      expect(aidl, contains('void destroy() = 16777114;'));
-      // AIDL requires ids on every method once one is assigned.
-      expect(aidl, contains('= 1;'));
-      expect(aidl, contains('= 2;'));
-      expect(aidl, contains('= 3;'));
-      expect(aidl, contains('execute(String operationId'));
-      expect(aidl, contains('boolean cancel(String operationId)'));
-      expect(aidl, contains('String expectedInstance, int expectedUid'));
-      expect(aidl, contains('String result(String operationId) = 4;'));
-    });
-
-    test('Shizuku SDK and UserService keep rules are pinned', () {
-      final gradle = File('android/app/build.gradle.kts').readAsStringSync();
-      expect(gradle, contains('dev.rikka.shizuku:api:13.1.5'));
-      expect(gradle, contains('dev.rikka.shizuku:provider:13.1.5'));
-      expect(gradle, contains('shizuku-user-service.pro'));
+    test('the safety overlay permission is declared', () {
+      expect(manifest(), contains('android.permission.SYSTEM_ALERT_WINDOW'));
     });
   });
 
-  group('Shizuku command policy: open but safe', () {
-    final policy = File(
-      'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuCommandPolicy.kt',
-    ).readAsStringSync();
-    final controller = File(
-      'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuController.kt',
-    ).readAsStringSync();
-
-    test('read-only grammar exists and stays narrow', () {
-      expect(policy, contains('isSafeReadOnly'));
-      // Behavioral cases (including shell composition) run in the native
-      // ShizukuCommandPolicyTest. Do not couple this check to regex spelling.
-      expect(policy, contains('simpleWords'));
+  group('authorization is read from the server, not from a cache', () {
+    test('the live transaction is used and the cached SDK call is not', () {
+      // Comments may name the API they explain; only code counts.
+      final probe = _stripComments(source('Probes.kt'));
+      expect(probe, contains('IShizukuService.Stub.asInterface(binder)'));
+      expect(probe, contains('service.checkSelfPermission()'));
+      expect(probe, isNot(contains('Shizuku.checkSelfPermission')));
+      // The rationale field is a server-side "explicitly denied" flag, not
+      // "not granted", so it must not decide anything.
+      expect(probe, isNot(contains('shouldShowRequestPermissionRationale')));
     });
 
-    test(
-      'direct execution only covers safe read-only plus advanced YELLOW',
-      () {
-        expect(controller, contains('DIRECT_READ_ONLY'));
-        expect(controller, contains('ADVANCED_MODE'));
-        // Advanced mode still confirms RED, with a fixed 3-second wait.
-        expect(controller, contains('ShizukuCommandPolicy.admission'));
-        // Non-direct commands still resolve to the overlay or a deny path.
-        expect(controller, contains('ShizukuSafetyOverlay.confirm'));
-      },
-    );
+    test('an answer that could not be read is never "granted"', () {
+      final model = source('Model.kt');
+      expect(model, contains('UNKNOWN("unknown")'));
+      expect(
+        model,
+        contains(
+          'state == AuthorizationState.GRANTED && evidence == AuthorizationEvidence.SERVER',
+        ),
+      );
+      expect(model, contains('val executionAdmitted: Boolean'));
+    });
 
-    test('overlay is forced and fail-closed on timeout', () {
-      final overlay = File(
-        'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuSafetyOverlay.kt',
-      ).readAsStringSync();
+    test('a missing callback is recorded as unconfirmed, not as a denial', () {
+      final request = source('Authorization.kt');
+      expect(request, contains('RequestPhase.UNCONFIRMED'));
+      expect(request, contains('"callback_missing"'));
+      expect(request, contains('fun interrupt('));
+    });
+
+    test('a revocation replaces a remembered grant', () {
+      final request = source('Authorization.kt');
+      expect(request, contains('"permission_revoked"'));
+      expect(request, contains('fun sync(live: AuthorizationReading)'));
+    });
+  });
+
+  group('execution admission', () {
+    test('every fact has its own reason instead of one boolean', () {
+      final model = source('Model.kt');
+      for (final reason in [
+        'feature_disabled',
+        'app_not_listed',
+        'provider_misconfigured',
+        'shizuku_not_running',
+        'shizuku_binder_dead',
+        'authorization_pending',
+        'authorization_unknown',
+        'authorization_denied',
+        'identity_unsupported',
+        'operation_storage_unavailable',
+        'user_service_not_ready',
+      ]) {
+        expect(model, contains('"$reason"'), reason: reason);
+      }
+    });
+
+    test('a command is re-checked against the live answer before dispatch', () {
+      final runtime = source('Runtime.kt');
+      expect(runtime, contains('journal.dispatch('));
+      expect(runtime, contains('if (!live.grantsExecution)'));
+      expect(runtime, contains('authorization_unconfirmed'));
+    });
+
+    test('the UserService is bound through the SDK and handshaken by status', () {
+      final runtime = source('Runtime.kt');
+      expect(runtime, contains('Shizuku.bindUserService('));
+      expect(runtime, contains('JSONObject(api.status())'));
+      expect(runtime, contains('session.expire(epoch)'));
+      expect(runtime, contains('session.connected(epoch'));
+      expect(runtime, contains('handshake.protocol != Protocol.VERSION'));
+      expect(runtime, contains('handshake.uid != serverUid'));
+    });
+
+    test('the overlay is fail-closed and cancels by operation id', () {
+      final overlay = source('Overlay.kt');
       expect(overlay, contains('TYPE_APPLICATION_OVERLAY'));
       expect(overlay, contains('FLAG_SECURE'));
       expect(overlay, contains('canDrawOverlays'));
       expect(overlay, contains('complete(false)'));
-      expect(overlay, contains('timeoutSeconds'));
+      expect(source('Runtime.kt'), contains('SafetyOverlay.cancel(id)'));
     });
 
-    test('service reports its own pid instead of using Process.pid', () {
-      final service = File(
-        'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuCommandService.kt',
-      ).readAsStringSync();
-      expect(service, contains('OCRPID='));
-      expect(_callsUnsupportedPid(service), isFalse);
-    });
-
-    test(
-      'pid call check ignores explanations but still detects real calls',
-      () {
+    test('the old module is gone instead of running next to the new one', () {
+      for (final legacy in [
+        'ShizukuController.kt',
+        'ShizukuPermissionRequest.kt',
+        'ShizukuBindingState.kt',
+      ]) {
         expect(
-          _callsUnsupportedPid(
-            '/* Process.pid() is unavailable. */\n'
-            '// Do not use process.pid() here.\nval pid = running.pid.get()',
-          ),
+          File(
+            'android/app/src/main/kotlin/com/azx8788/opencode/mini/$legacy',
+          ).existsSync(),
           isFalse,
+          reason: '$legacy must not survive the rewrite',
         );
-        expect(_callsUnsupportedPid('val pid = process.pid()'), isTrue);
-        expect(_callsUnsupportedPid('val pid = process . pid ( )'), isTrue);
-      },
-    );
+      }
+    });
   });
 
-  group('Android AI bridge execution contract', () {
-    test('private bridge uses UID credentials and bounded byte frames, not a LAN listener', () {
-      final bridge = File(
-        'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuNativeBridge.kt',
+  group('UserService wire contract', () {
+    final aidl = File(
+      'android/app/src/main/aidl/com/azx8788/opencode/mini/shizuku/IShizukuCommandService.aidl',
+    ).readAsStringSync();
+
+    test('the official destroy transaction id is reserved', () {
+      expect(aidl, contains('void destroy() = 16777114;'));
+      expect(aidl, contains('String execute(String operationId'));
+      expect(aidl, contains('String expectedInstance, int expectedUid'));
+      expect(aidl, contains('boolean cancel(String operationId) = 2;'));
+      expect(aidl, contains('String status() = 3;'));
+      expect(aidl, contains('String result(String operationId) = 4;'));
+    });
+
+    test('the service class and its stub survive minification', () {
+      final rules = File(
+        'android/app/shizuku-user-service.pro',
       ).readAsStringSync();
+      expect(
+        rules,
+        contains('com.azx8788.opencode.mini.shizuku.CommandService'),
+      );
+      expect(
+        rules,
+        contains('com.azx8788.opencode.mini.shizuku.IShizukuCommandService'),
+      );
+      expect(rules, contains('rikka.shizuku.ShizukuProvider'));
+      final gradle = File('android/app/build.gradle.kts').readAsStringSync();
+      expect(gradle, contains('shizuku-user-service.pro'));
+      expect(gradle, contains('dev.rikka.shizuku:api:13.1.5'));
+      expect(gradle, contains('dev.rikka.shizuku:provider:13.1.5'));
+    });
+
+    test('the service reports its own pid instead of Process.pid', () {
+      final service = source('CommandService.kt');
+      expect(service, contains('OCRPID='));
+      expect(_callsUnsupportedPid(service), isFalse);
+      expect(_callsUnsupportedPid('val pid = process.pid()'), isTrue);
+      expect(_callsUnsupportedPid('val pid = process . pid ( )'), isTrue);
+      expect(
+        _callsUnsupportedPid(
+          '/* Process.pid() is unavailable. */\n// Do not use process.pid() here.\nval pid = running.pid.get()',
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('AI bridge', () {
+    test('the socket is filesystem-scoped and the peer uid is checked', () {
+      final bridge = source('NativeBridge.kt');
       expect(bridge, contains('LocalSocketAddress.Namespace.FILESYSTEM'));
-      expect(bridge, contains('client.peerCredentials.uid == Process.myUid()'));
-      expect(bridge, contains('ShizukuProtocol.MAX_REQUEST_BYTES'));
+      expect(bridge, contains('peerCredentials'));
+      expect(bridge, contains('Protocol.MAX_REQUEST_BYTES'));
       expect(
         RegExp(r'(^|[^A-Za-z])ServerSocket\s*\(').hasMatch(bridge),
         isFalse,
       );
     });
-    test('actual binding requires status handshake and has an expiry', () {
-      final controller = File(
-        'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuController.kt',
-      ).readAsStringSync();
-      expect(controller, contains('JSONObject(api.status())'));
-      expect(controller, contains('binding.expire(epoch)'));
-      expect(controller, contains('binding.connected(epoch'));
-      expect(controller, contains('journal.dispatch('));
-      expect(controller, contains('ShizukuSafetyOverlay.cancel(id)'));
+
+    test('a stale broker or service instance cannot submit a command', () {
+      final runtime = source('Runtime.kt');
+      expect(runtime, contains('bridgeInstance'));
+      expect(runtime, contains('instance_changed'));
+      expect(runtime, contains('serviceInstance'));
     });
   });
 }
+
+String _stripComments(String source) =>
+    source.replaceAll(RegExp(r'/\*[\s\S]*?\*/|//[^\r\n]*'), '');
 
 bool _callsUnsupportedPid(String source) {
   final code = source.replaceAll(RegExp(r'/\*[\s\S]*?\*/|//[^\r\n]*'), '');

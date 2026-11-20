@@ -1,4 +1,4 @@
-package com.azx8788.opencode.mini
+package com.azx8788.opencode.mini.shizuku
 
 import android.content.Context
 import android.net.LocalServerSocket
@@ -22,7 +22,7 @@ import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Private filesystem socket shared with the app's Ubuntu. No LAN listener or model-visible credential. */
-internal object ShizukuNativeBridge {
+internal object NativeBridge {
     const val GUEST_SOCKET = "/tmp/.oc-shizuku/s"
     const val GUEST_DESCRIPTOR = "/root/.oc-builtin/shizuku-bridge.json"
     @Volatile var available = false
@@ -36,7 +36,7 @@ internal object ShizukuNativeBridge {
 
     @Synchronized fun start(context: Context, rootfs: File) {
         if (endpoint != null) return
-        ShizukuController.initialize(context)
+        ShizukuRuntime.initialize(context)
         try {
             val canonical = File(context.filesDir.canonicalFile, "linux/ubuntu")
             check(rootfs.canonicalFile == canonical)
@@ -46,7 +46,7 @@ internal object ShizukuNativeBridge {
             val runtimeId = if (runtimeFile.exists()) {
                 safeFile(runtimeFile, 80)
                 runtimeFile.readText().trim().also { check(it.matches(Regex("[a-f0-9-]{36}"))) }
-            } else UUID.randomUUID().toString().also { ShizukuOperationJournal.atomicFile(runtimeFile, "$it\n") }
+            } else UUID.randomUUID().toString().also { OperationJournal.atomicFile(runtimeFile, "$it\n") }
             val socketDir = File(canonical, "tmp/.oc-shizuku")
             val marker = File(socketDir, "opencode-plus-owned")
             if (socketDir.exists()) {
@@ -55,7 +55,7 @@ internal object ShizukuNativeBridge {
                 check(marker.readText() == "shizuku-bridge-v1\n")
             }
             privateDirectory(socketDir)
-            if (!marker.exists()) ShizukuOperationJournal.atomicFile(marker, "shizuku-bridge-v1\n")
+            if (!marker.exists()) OperationJournal.atomicFile(marker, "shizuku-bridge-v1\n")
             val file = File(socketDir, "s")
             check(file.path.toByteArray(Charsets.UTF_8).size < 108)
             // The main app is the only socket owner. A cold start may leave its old filesystem inode.
@@ -71,7 +71,7 @@ internal object ShizukuNativeBridge {
             available = false
             reason = "android_bridge_unavailable" // No paths, commands or credentials in diagnostics.
         }
-        ShizukuController.refresh()
+        ShizukuRuntime.refresh()
     }
 
     @Synchronized fun stop() {
@@ -81,7 +81,7 @@ internal object ShizukuNativeBridge {
         endpoint?.close()
         endpoint = null
         reason = null
-        ShizukuController.stopRuntime()
+        ShizukuRuntime.stopRuntime()
     }
 
     private fun privateDirectory(file: File) {
@@ -118,7 +118,7 @@ internal object ShizukuNativeBridge {
             bound = true
             Os.chmod(file.path, 0x180)
             server = LocalServerSocket(listener.fileDescriptor)
-            ShizukuOperationJournal.atomicFile(descriptor, JSONObject().put("protocolVersion", ShizukuProtocol.VERSION)
+            OperationJournal.atomicFile(descriptor, JSONObject().put("protocolVersion", Protocol.VERSION)
                 .put("socketPath", GUEST_SOCKET).put("runtimeId", runtimeId).put("bridgeInstance", instance).toString())
             active = true
             Thread({
@@ -142,7 +142,7 @@ internal object ShizukuNativeBridge {
                     try {
                         value.put("runtimeId", runtimeId).put("bridgeInstance", instance)
                         val bytes = value.toString().toByteArray(Charsets.UTF_8)
-                        check(bytes.size <= ShizukuProtocol.MAX_RESPONSE_BYTES)
+                        check(bytes.size <= Protocol.MAX_RESPONSE_BYTES)
                         DataOutputStream(client.outputStream).apply { writeInt(bytes.size); write(bytes); flush() }
                     } catch (_: Exception) { /* A lost reply is reconciled by operation ID, never resubmitted. */ }
                     finally { main.removeCallbacks(timeout); release(client) }
@@ -153,15 +153,15 @@ internal object ShizukuNativeBridge {
                 client.soTimeout = 5000
                 val input = DataInputStream(client.inputStream)
                 val size = input.readInt()
-                check(size in 1..ShizukuProtocol.MAX_REQUEST_BYTES)
+                check(size in 1..Protocol.MAX_REQUEST_BYTES)
                 val bytes = ByteArray(size).also { input.readFully(it) }
                 val text = Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
                     .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString()
                 val request = JSONObject(text)
-                if (!active || request.getString("bridgeInstance") != instance) { reply(ShizukuProtocol.error("bridge_instance_changed")); return }
-                ShizukuController.bridge(request, runtimeId, ::reply)
+                if (!active || request.getString("bridgeInstance") != instance) { reply(Protocol.error("bridge_instance_changed")); return }
+                ShizukuRuntime.bridge(request, runtimeId, ::reply)
             } catch (_: Exception) {
-                reply(ShizukuProtocol.error("invalid_bridge_request"))
+                reply(Protocol.error("invalid_bridge_request"))
             }
         }
         private fun release(client: LocalSocket) {

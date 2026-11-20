@@ -1,12 +1,12 @@
-package com.azx8788.opencode.mini
+package com.azx8788.opencode.mini.shizuku
 
 import org.json.JSONObject
 import java.security.MessageDigest
 
 /** App-owned wire contract. Model arguments never contain a caller's identity. */
-internal object ShizukuProtocol {
-    const val VERSION = 1
-    const val SERVICE_VERSION = 3
+internal object Protocol {
+    const val VERSION = ShizukuContract.BRIDGE_PROTOCOL
+    const val SERVICE_VERSION = ShizukuContract.SERVICE_VERSION
     const val MAX_REQUEST_BYTES = 131_072
     const val MAX_RESPONSE_BYTES = 786_432
     val idPattern = Regex("[A-Za-z0-9_-]{1,80}")

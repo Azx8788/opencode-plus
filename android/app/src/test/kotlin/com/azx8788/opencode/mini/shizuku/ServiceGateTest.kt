@@ -1,17 +1,17 @@
-package com.azx8788.opencode.mini
+package com.azx8788.opencode.mini.shizuku
 
 import org.junit.Assert.*
 import org.junit.Test
 
-class ShizukuServiceGateTest {
+class ServiceGateTest {
     @Test fun `a cancel arriving before the Binder execute transaction prevents launch`() {
-        val gate = ShizukuServiceGate()
+        val gate = ServiceGate()
         assertTrue(gate.cancel("late"))
         assertEquals("cancelled_before_start", gate.claim("late"))
         assertNull(gate.claim("other"))
     }
     @Test fun `finishing a command frees the slot but never its dedup claim`() {
-        val gate = ShizukuServiceGate()
+        val gate = ServiceGate()
         assertNull(gate.claim("first"))
         assertEquals("busy", gate.claim("second"))
         gate.finish("first")
@@ -21,7 +21,7 @@ class ShizukuServiceGateTest {
         assertEquals("busy", gate.claim("third"))
     }
     @Test fun `cancel after claim but before ProcessBuilder start remains observable`() {
-        val gate = ShizukuServiceGate()
+        val gate = ServiceGate()
         assertNull(gate.claim("starting"))
         assertTrue(gate.cancel("starting"))
         assertTrue(gate.cancelled("starting"))
@@ -29,7 +29,7 @@ class ShizukuServiceGateTest {
         assertEquals("service_stopping", gate.claim("new"))
     }
     @Test fun `capacity exhaustion fails closed instead of forgetting old IDs`() {
-        val gate = ShizukuServiceGate(1)
+        val gate = ServiceGate(1)
         assertNull(gate.claim("first"))
         gate.finish("first")
         assertEquals("operation_history_full", gate.claim("second"))

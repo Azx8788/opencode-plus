@@ -1,4 +1,4 @@
-package com.azx8788.opencode.mini
+package com.azx8788.opencode.mini.shizuku
 
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -8,19 +8,19 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.nio.file.Files
 
-class ShizukuOperationJournalTest {
+class OperationJournalTest {
     @get:Rule val temporary = TemporaryFolder()
-    private val owner = ShizukuProtocol.Owner("opencode_tool", "runtime", "/project", "ses1", "msg1", "call1", "build")
-    private val fingerprint = ShizukuProtocol.fingerprint("id", null)
+    private val owner = Protocol.Owner("opencode_tool", "runtime", "/project", "ses1", "msg1", "call1", "build")
+    private val fingerprint = Protocol.fingerprint("id", null)
     private fun journal(directory: File, capacity: Int = 4096, cached: Int = 16) =
-        ShizukuOperationJournal(directory, { 1000L }, capacity, cached)
+        OperationJournal(directory, { 1000L }, capacity, cached)
 
     @Test fun `identical operation is admitted exactly once and changed input or scope conflicts`() {
         val value = journal(temporary.newFolder())
         assertTrue(value.admit("op", owner, fingerprint))
         assertFalse(value.admit("op", owner, fingerprint))
         assertEquals("queued", value.lookup("op", owner, fingerprint)!!.getString("state"))
-        assertThrows(IllegalStateException::class.java) { value.admit("op", owner, ShizukuProtocol.fingerprint("getprop", null)) }
+        assertThrows(IllegalStateException::class.java) { value.admit("op", owner, Protocol.fingerprint("getprop", null)) }
         assertThrows(IllegalStateException::class.java) { value.admit("op", owner.copy(sessionId = "ses2"), fingerprint) }
         assertThrows(IllegalStateException::class.java) { value.get("op", owner.copy(directory = "/other")) }
     }
@@ -96,7 +96,7 @@ class ShizukuOperationJournalTest {
 
     @Test fun `unreadable metadata and symlinked storage are not overwritten`() {
         val directory = temporary.newFolder()
-        val corrupt = File(directory, "${ShizukuProtocol.hash("op")}.json").apply { writeText("not json") }
+        val corrupt = File(directory, "${Protocol.hash("op")}.json").apply { writeText("not json") }
         val value = journal(directory)
         assertFalse(value.available())
         assertThrows(IllegalStateException::class.java) { value.admit("new", owner, fingerprint) }
@@ -116,10 +116,10 @@ class ShizukuOperationJournalTest {
     @Test fun `dedup metadata contains no command or captured output`() {
         val directory = temporary.newFolder()
         val value = journal(directory)
-        value.admit("op", owner, ShizukuProtocol.fingerprint("PRIVATE_COMMAND_FIXTURE", null))
+        value.admit("op", owner, Protocol.fingerprint("PRIVATE_COMMAND_FIXTURE", null))
         value.dispatch("op", "service", 2000)
         value.finish("op", "service", 2000, response("op"))
-        val metadata = File(directory, "${ShizukuProtocol.hash("op")}.json").readText()
+        val metadata = File(directory, "${Protocol.hash("op")}.json").readText()
         assertFalse(metadata.contains("PRIVATE_COMMAND_FIXTURE"))
         assertFalse(metadata.contains("real fixture output"))
     }

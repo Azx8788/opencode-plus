@@ -1,6 +1,10 @@
 OpenCode Plus：Shizuku 优先实施方案
 =================================
 
+[已取代] 本文描述的实现已在 rewrite/shizuku-integration 分支被整体重写，
+文件路径、类名与状态模型均已失效。当前设计与验证证据见
+docs/SHIZUKU_INTEGRATION.md。本文仅作为早期需求与决策的历史记录保留。
+
 日期：2026-11-17
 状态：P3 AI 工具和私有原生桥已编写，正在验证；尚未通过真机特权执行验收。下方最新策略优先于原始方案。
 工作区：/root/projects/opencode-plus

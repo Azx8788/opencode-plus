@@ -1,10 +1,10 @@
-package com.azx8788.opencode.mini
+package com.azx8788.opencode.mini.shizuku
 
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 
 /** Byte-bounded, thread-safe capture. Draining never allocates a complete line. */
-internal class ShizukuCommandOutput(limitBytes: Int) {
+internal class CommandOutput(limitBytes: Int) {
     private val stdoutLimit = limitBytes / 2
     private val stderrLimit = limitBytes - stdoutLimit
     private val stdout = ByteArrayOutputStream()

@@ -1,7 +1,7 @@
-package com.azx8788.opencode.mini
+package com.azx8788.opencode.mini.shizuku
 
 /** Cancellation can arrive before execute's Binder transaction. Never forget that tombstone. */
-internal class ShizukuServiceGate(private val capacity: Int = 4096) {
+internal class ServiceGate(private val capacity: Int = 4096) {
     private val claimed = mutableSetOf<String>()
     private val cancelled = mutableSetOf<String>()
     private var active: String? = null
