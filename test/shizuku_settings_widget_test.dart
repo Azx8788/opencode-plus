@@ -32,6 +32,7 @@ void main() {
   Object? shizukuProviderValid;
   late List<Completer<Map<String, Object?>>> executionReplies;
   Completer<bool>? cancellationReply;
+  Map<String, Object?>? executionResult;
   var statusRevision = 0;
 
   setUp(() {
@@ -48,6 +49,7 @@ void main() {
     shizukuProviderValid = null;
     executionReplies = [];
     cancellationReply = null;
+    executionResult = null;
     statusRevision = 0;
     stored = {
       'direct_read_only': true,
@@ -99,7 +101,8 @@ void main() {
           if (executionReplies.isNotEmpty) {
             return executionReplies.removeAt(0).future;
           }
-          return {'state': 'succeeded', 'stdout': 'read-result', 'exitCode': 0};
+          return executionResult ??
+              {'state': 'succeeded', 'stdout': 'read-result', 'exitCode': 0};
         case 'cancel':
           return cancellationReply?.future ?? true;
         case 'requestPermission':
@@ -466,4 +469,28 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+
+  for (final reason in ['confirmation_user_denied', 'confirmation_timeout']) {
+    testWidgets('settings diagnostics explain $reason without resubmitting', (
+      tester,
+    ) async {
+      executionResult = {
+        'state': 'denied',
+        'reason': reason,
+        'executionStage': 'not_dispatched',
+      };
+      await mount(tester);
+      await reveal(tester, 'shizuku-diagnostic');
+      await tester.tap(find.byKey(const ValueKey('shizuku-diagnostic')));
+      await tester.pumpAndSettle();
+      await reveal(tester, 'shizuku-result-explanation');
+      final expected = reason == 'confirmation_user_denied'
+          ? 'You declined. The Android command did not run.'
+          : 'Confirmation timed out. The Android command did not run.';
+      expect(find.text(expected), findsOneWidget);
+      expect(calls.where((call) => call.method == 'execute'), hasLength(1));
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
 }

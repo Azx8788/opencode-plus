@@ -47,6 +47,38 @@ class ShizukuOperationJournalTest {
         assertEquals("cancelled", value.get("op", owner)!!.getString("state"))
     }
 
+    @Test fun `user rejection and timeout stay distinct and survive cancellation and restart`() {
+        for (reason in listOf("confirmation_user_denied", "confirmation_timeout")) {
+            val directory = temporary.newFolder()
+            val value = journal(directory)
+            value.admit("op", owner, fingerprint)
+            value.waiting("op")
+            value.failBeforeDispatch("op", reason)
+            value.cancel("op", owner) // Late tool interruption must not relabel a decision.
+            value.failBeforeDispatch("op", "instance_changed")
+            val restored = journal(directory)
+            val result = restored.get("op", owner)!!
+            assertEquals("denied", result.getString("state"))
+            assertEquals(reason, result.getString("reason"))
+            assertEquals("not_dispatched", result.getString("executionStage"))
+            assertFalse(result.has("dispatchAt"))
+            assertFalse(result.has("exitCode"))
+            assertFalse(restored.admit("op", owner, fingerprint))
+            assertFalse(restored.dispatch("op", "service", 2000))
+        }
+    }
+
+    @Test fun `dispatch marker distinguishes uncertain execution from admission alone`() {
+        val value = journal(temporary.newFolder())
+        value.admit("op", owner, fingerprint)
+        assertEquals("not_dispatched", value.get("op", owner)!!.getString("executionStage"))
+        value.dispatch("op", "service", 2000)
+        value.uncertain("op", "service_call_timeout")
+        val result = value.get("op", owner)!!
+        assertEquals("unknown", result.getString("state"))
+        assertEquals("dispatched", result.getString("executionStage"))
+    }
+
     @Test fun `after a process restart an in-flight command is uncertain not safe to rerun`() {
         val directory = temporary.newFolder()
         val value = journal(directory)

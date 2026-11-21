@@ -16694,6 +16694,17 @@
   "@kitToolDeclined": {
     "description": "KitToolRow: the word for a step the person declined"
   },
+  "kitToolUnconfirmed": "Result unconfirmed",
+  "@kitToolUnconfirmed": {
+    "description": "KitToolRow: the tool ended without evidence of what it did"
+  },
+  "shizukuReceiptUserDenied": "You declined. The Android command did not run.",
+  "shizukuReceiptTimedOut": "Confirmation timed out. The Android command did not run.",
+  "shizukuReceiptNotExecuted": "The Android command did not run.",
+  "shizukuReceiptCancelledBeforeStart": "Cancelled before the Android command started.",
+  "shizukuReceiptCancelled": "The Android command stopped. Any changes it made were not undone.",
+  "shizukuReceiptFailed": "The Android command failed.",
+  "shizukuReceiptUnconfirmed": "The Android command result is unconfirmed. It was not retried automatically.",
   "kitToolStopped": "Stopped",
   "@kitToolStopped": {
     "description": "KitToolRow: the word for a step stopped by the person or the server"

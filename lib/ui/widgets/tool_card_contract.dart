@@ -416,6 +416,7 @@ class _ToolContract {
 
   /// A shell command's exit code, when the server reported one.
   final int? exitCode;
+  final ShizukuReceipt? androidReceipt;
   final bool nativeSubagent;
 
   /// A background task's notice: how the task ended.
@@ -430,6 +431,7 @@ class _ToolContract {
     this.added,
     this.removed,
     this.exitCode,
+    this.androidReceipt,
     this.nativeSubagent = false,
     this.noticeEnd,
   });
@@ -443,6 +445,13 @@ class _ToolContract {
     final name = rawName.trim().toLowerCase();
     final input = state.input;
     final metadata = state.metadata ?? const <String, dynamic>{};
+    final receipt = ShizukuReceipt.forTool(
+      name,
+      output: state.outputValue ?? state.output,
+      metadata: metadata,
+      inFlight: state.inFlight,
+      declined: state.declined,
+    );
     final details = <String>[];
 
     _ToolKind kind;
@@ -717,6 +726,10 @@ class _ToolContract {
           subtitle = null;
         }
     }
+    if (receipt != null) {
+      final words = shizukuReceiptCopy(receipt, strings);
+      if (words != null) details.insert(0, words);
+    }
     if (metadata['truncated'] == true &&
         !details.contains(strings.chatUiTruncated)) {
       details.add(strings.chatUiTruncated);
@@ -730,6 +743,7 @@ class _ToolContract {
       added: added,
       removed: removed,
       exitCode: exitCode,
+      androidReceipt: receipt,
       nativeSubagent: name == 'subagent',
       noticeEnd: noticeEnd,
     );

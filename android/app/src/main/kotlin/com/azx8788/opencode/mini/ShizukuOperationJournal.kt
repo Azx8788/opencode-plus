@@ -178,6 +178,9 @@ internal class ShizukuOperationJournal(directory: File, private val now: () -> L
         for (key in listOf("ownerHash", "sessionHash", "fingerprint", "version")) public.remove(key)
         public.put("protocolVersion", ShizukuProtocol.VERSION).put("environment", "android").put("fallback", false)
             .put("backend", ShizukuProtocol.backend(if (row.isNull("uid")) null else row.getInt("uid")))
+        // The marker precedes Binder dispatch. Absence is evidence of no
+        // dispatch; presence alone cannot prove the shell actually started.
+        public.put("executionStage", if (row.has("dispatchAt") && !row.isNull("dispatchAt")) "dispatched" else "not_dispatched")
         val result = resultFile(row.getString("operationId"))
         if (row.getString("state") in terminal && result.exists()) {
             val data = JSONObject(read(result, ShizukuProtocol.MAX_RESPONSE_BYTES))

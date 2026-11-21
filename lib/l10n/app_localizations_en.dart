@@ -14615,6 +14615,35 @@ class AppLocalizationsEn extends AppLocalizations {
   String get kitToolDeclined => 'You declined this';
 
   @override
+  String get kitToolUnconfirmed => 'Result unconfirmed';
+
+  @override
+  String get shizukuReceiptUserDenied =>
+      'You declined. The Android command did not run.';
+
+  @override
+  String get shizukuReceiptTimedOut =>
+      'Confirmation timed out. The Android command did not run.';
+
+  @override
+  String get shizukuReceiptNotExecuted => 'The Android command did not run.';
+
+  @override
+  String get shizukuReceiptCancelledBeforeStart =>
+      'Cancelled before the Android command started.';
+
+  @override
+  String get shizukuReceiptCancelled =>
+      'The Android command stopped. Any changes it made were not undone.';
+
+  @override
+  String get shizukuReceiptFailed => 'The Android command failed.';
+
+  @override
+  String get shizukuReceiptUnconfirmed =>
+      'The Android command result is unconfirmed. It was not retried automatically.';
+
+  @override
   String get kitToolStopped => 'Stopped';
 
   @override

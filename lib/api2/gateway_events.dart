@@ -14,6 +14,7 @@ library;
 import 'package:flutter/foundation.dart' show ValueListenable;
 
 import '../domain/models.dart';
+import '../domain/shizuku_receipt.dart';
 import '../domain/server_gateway.dart';
 import 'events.dart';
 import 'gateway_mappers.dart' show v1ToolTimeJson;
@@ -30,6 +31,8 @@ class Api2EventAdapter {
   static const _maxTracked = 256;
 
   final _toolCalls = <String, _ToolCall>{};
+  final _shizukuPermissionCalls =
+      <String, ({String sessionID, String callKey, String action})>{};
   final _stepCreated = <String, int>{};
   final _stepRecorded = <String, bool>{};
   final _stepFirstToken = <String, int>{};
@@ -510,6 +513,7 @@ class Api2EventAdapter {
             input: event.input,
             startedAt: envelope.created,
             executed: event.executed,
+            metadata: call.metadata,
           ),
         );
         return [
@@ -520,13 +524,27 @@ class Api2EventAdapter {
         ];
 
       case Api2SessionToolProgressEvent():
-        final call =
-            _toolCalls[_callKey(event.assistantMessageID, event.callID)];
+        final key = _callKey(event.assistantMessageID, event.callID);
+        final call = _toolCalls[key];
+        if (call != null && ShizukuReceipt.handlesTool(call.name)) {
+          _remember(
+            _toolCalls,
+            key,
+            _ToolCall(
+              sessionID: call.sessionID,
+              name: call.name,
+              input: call.input,
+              startedAt: call.startedAt,
+              executed: call.executed,
+              metadata: {...?call.metadata, ...event.metadata},
+            ),
+          );
+        }
         return [
           _toolPart(event.sessionID, event.assistantMessageID, event.callID, {
             'status': 'running',
             'input': call?.input ?? const <String, dynamic>{},
-            'metadata': event.metadata,
+            'metadata': {...?call?.metadata, ...event.metadata},
           }),
         ];
 
@@ -557,8 +575,10 @@ class Api2EventAdapter {
                   event.error?.message ??
                   (text.isNotEmpty ? text : 'Tool failed'),
             'attachments': attachments,
-            if (event.metadata != null) 'metadata': event.metadata,
-            if (event.executed != null) 'executed': event.executed,
+            if (event.metadata != null || call?.metadata != null)
+              'metadata': {...?call?.metadata, ...?event.metadata},
+            if (event.executed != null || call?.executed != null)
+              'executed': event.executed ?? call?.executed,
             'time': {'start': ?call?.startedAt, 'end': ?envelope.created},
           }, toolName: call?.name),
           // The call started before this stream (a reconnect): its name and
@@ -616,6 +636,19 @@ class Api2EventAdapter {
 
       case Api2PermissionAskedEvent():
         final request = event.request;
+        final source = request.source;
+        if (const {'shizuku', 'shizuku_result'}.contains(request.action) &&
+            request.sessionID?.isNotEmpty == true &&
+            source != null &&
+            source.type == 'tool' &&
+            source.messageID?.isNotEmpty == true &&
+            source.id?.isNotEmpty == true) {
+          _remember(_shizukuPermissionCalls, request.id, (
+            sessionID: request.sessionID!,
+            callKey: _callKey(source.messageID!, source.id!),
+            action: request.action,
+          ));
+        }
         return [
           _env('permission.v2.asked', {
             'id': request.id,
@@ -638,6 +671,32 @@ class Api2EventAdapter {
         ];
 
       case Api2PermissionRepliedEvent():
+        final permission = _shizukuPermissionCalls.remove(event.requestID);
+        final call = permission == null ? null : _toolCalls[permission.callKey];
+        if (permission != null &&
+            permission.sessionID == event.sessionID &&
+            call != null &&
+            call.sessionID == event.sessionID &&
+            event.reply == 'reject') {
+          _remember(
+            _toolCalls,
+            permission.callKey,
+            _ToolCall(
+              sessionID: call.sessionID,
+              name: call.name,
+              input: call.input,
+              startedAt: call.startedAt,
+              executed: call.executed,
+              metadata: {
+                ...?call.metadata,
+                'shizukuApproval': {
+                  'decision': 'reject',
+                  'action': permission.action,
+                },
+              },
+            ),
+          );
+        }
         return [
           _env('permission.v2.replied', {
             'sessionID': event.sessionID,
@@ -877,6 +936,8 @@ class Api2EventAdapter {
             'time': {'start': known!.startedAt},
           if (!state.containsKey('executed') && known?.executed != null)
             'executed': known!.executed,
+          if (!state.containsKey('metadata') && known?.metadata != null)
+            'metadata': known!.metadata,
         },
       },
     });
@@ -933,11 +994,16 @@ class Api2EventAdapter {
       if (onlyMessageID != null && messageID != onlyMessageID) continue;
       if (exceptMessageID != null && messageID == exceptMessageID) continue;
       _toolCalls.remove(key);
+      final approval = call.metadata?['shizukuApproval'];
+      final rejected = approval is Map && approval['decision'] == 'reject';
       out.add(
         _toolPart(sessionID, messageID, key.substring(slash + 1), {
-          'status': failure != null ? 'error' : 'completed',
+          'status': failure != null || rejected ? 'error' : 'completed',
           'input': call.input ?? const <String, dynamic>{},
-          'error': ?failure,
+          'error': ?(rejected ? 'The user declined this tool call' : failure),
+          'metadata': ?call.metadata,
+          'executed': ?call.executed,
+          'time': {'start': ?call.startedAt},
         }, toolName: call.name),
       );
     }
@@ -963,12 +1029,14 @@ class _ToolCall {
   final Map<String, dynamic>? input;
   final int? startedAt;
   final bool? executed;
+  final Map<String, dynamic>? metadata;
   const _ToolCall({
     required this.sessionID,
     required this.name,
     this.input,
     this.startedAt,
     this.executed,
+    this.metadata,
   });
 }
 

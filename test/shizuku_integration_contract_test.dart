@@ -248,7 +248,12 @@ void main() {
       expect(overlay, contains('TYPE_APPLICATION_OVERLAY'));
       expect(overlay, contains('FLAG_SECURE'));
       expect(overlay, contains('canDrawOverlays'));
-      expect(overlay, contains('complete(false)'));
+      expect(
+        overlay,
+        contains('ShizukuConfirmationOutcome.PERMISSION_MISSING'),
+      );
+      expect(overlay, contains('ShizukuConfirmation('));
+      expect(overlay, contains('confirmation.tick('));
       expect(overlay, contains('timeoutSeconds'));
     });
 

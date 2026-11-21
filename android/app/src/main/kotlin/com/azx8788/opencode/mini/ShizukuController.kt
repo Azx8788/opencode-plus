@@ -470,12 +470,16 @@ internal object ShizukuController {
         if (!android.provider.Settings.canDrawOverlays(requireNotNull(app))) { deny(op, "overlay_permission_missing"); return }
         journal.waiting(id)
         ShizukuSafetyOverlay.confirm(app!!, command, decision, admission.allowDelaySeconds,
-            settings[OVERLAY_TIMEOUT_SECONDS] as Int, operationId = id, requestSource = owner.source) { allowed ->
+            settings[OVERLAY_TIMEOUT_SECONDS] as Int, operationId = id, requestSource = owner.source) { outcome ->
             control.execute {
                 if (op.cancelled.get() || operations[id] !== op) return@execute
-                if (!allowed) deny(op, "confirmation_denied_or_timeout")
-                else if (!current(op.ready)) deny(op, "instance_changed")
-                else dispatch(op)
+                when (outcome) {
+                    ShizukuConfirmationOutcome.CANCELLED -> cancelOperation(op.id, op.owner)
+                    ShizukuConfirmationOutcome.ALLOWED -> {
+                        if (!current(op.ready)) deny(op, "instance_changed") else dispatch(op)
+                    }
+                    else -> deny(op, checkNotNull(outcome.reason))
+                }
             }
         }
     }
@@ -487,6 +491,7 @@ internal object ShizukuController {
         journal.failBeforeDispatch(op.id, why)
         operations.remove(op.id, op)
         deliverNative(op.id, op.owner)
+        publish()
     }
     private fun dispatch(op: Operation) {
         refreshNow(false) // Recheck permission and actual server UID after the confirmation wait.

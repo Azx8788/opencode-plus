@@ -142,6 +142,24 @@ class _ToolBody extends StatelessWidget {
   }
 
   List<Widget> _blocks(BuildContext context) {
+    if (contract.androidReceipt case final receipt?) {
+      final words = shizukuReceiptCopy(receipt, _chatL10n(context));
+      return [
+        if (words != null)
+          KitText(words, key: const Key('shizuku-receipt-explanation')),
+        if (receipt.operationId case final id?)
+          KitDetailsFold(
+            values: [
+              KitTechnicalValue(
+                _chatL10n(context).shellOutputDetailId,
+                id,
+                key: const Key('shizuku-operation-id'),
+              ),
+            ],
+          ),
+        ..._genericBody(context),
+      ];
+    }
     // A failed delegation still shows who was asked to do what; the error
     // lands in the result instead of replacing the whole body.
     if (contract.kind == _ToolKind.task && !suppressOutput) {

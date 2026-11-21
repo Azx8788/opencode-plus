@@ -16,7 +16,6 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.ScrollView
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * A forced, top-most Android overlay for every command that is not admitted
@@ -44,7 +43,7 @@ internal object ShizukuSafetyOverlay {
         timeoutSeconds: Int,
         operationId: String = "settings",
         requestSource: String = "settings_test",
-        complete: (Boolean) -> Unit,
+        complete: (ShizukuConfirmationOutcome) -> Unit,
     ) {
         // Always hop to main: WindowManager calls must be on the main thread.
         if (Looper.myLooper() != Looper.getMainLooper()) {
@@ -64,18 +63,17 @@ internal object ShizukuSafetyOverlay {
         timeoutSeconds: Int,
         operationId: String,
         requestSource: String,
-        complete: (Boolean) -> Unit,
+        complete: (ShizukuConfirmationOutcome) -> Unit,
     ) {
-        if (showing) { complete(false); return }
-        if (!Settings.canDrawOverlays(context)) { complete(false); return }
+        if (showing) { complete(ShizukuConfirmationOutcome.UNAVAILABLE); return }
+        if (!Settings.canDrawOverlays(context)) { complete(ShizukuConfirmationOutcome.PERMISSION_MISSING); return }
         if (allowDelaySeconds !in 0..60 || timeoutSeconds !in 10..120 || timeoutSeconds <= allowDelaySeconds) {
-            complete(false)
+            complete(ShizukuConfirmationOutcome.UNAVAILABLE)
             return
         }
 
         val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val main = Handler(Looper.getMainLooper())
-        val finished = AtomicBoolean(false)
         val chinese = context.resources.configuration.locales[0].language == "zh"
 
         val (bgColor, accentColor, textColor) = when (decision.risk) {
@@ -208,34 +206,31 @@ internal object ShizukuSafetyOverlay {
             topMargin = dp(6)
         })
 
-        fun finish(allow: Boolean) {
-            if (!finished.compareAndSet(false, true)) return
+        val delayMs = allowDelaySeconds * 1000L
+        val startedAt = SystemClock.elapsedRealtime()
+        val timeoutMs = timeoutSeconds * 1000L
+        val confirmation = ShizukuConfirmation(delayMs, timeoutMs) { outcome ->
+            main.removeCallbacksAndMessages(null)
             runCatching { wm.removeView(panel) }
             showing = false
             activeId = null
             dismiss = null
-            complete(allow)
+            complete(outcome)
         }
 
         // The configured allow delay elapses before the button is tappable;
         // the independent timeout always resolves to deny.
-        val delayMs = allowDelaySeconds * 1000L
-        val startedAt = SystemClock.elapsedRealtime()
-        val timeoutMs = timeoutSeconds * 1000L
-        denyBtn.setOnClickListener { finish(false) }
+        denyBtn.setOnClickListener {
+            confirmation.choose(false, SystemClock.elapsedRealtime() - startedAt, Settings.canDrawOverlays(context))
+        }
         allowBtn.setOnClickListener {
-            val elapsed = SystemClock.elapsedRealtime() - startedAt
-            if (elapsed >= timeoutMs) finish(false)
-            else if (elapsed >= delayMs && Settings.canDrawOverlays(context)) finish(true)
+            confirmation.choose(true, SystemClock.elapsedRealtime() - startedAt, Settings.canDrawOverlays(context))
         }
         val countdown = object : Runnable {
             override fun run() {
-                if (finished.get()) return
                 val elapsed = SystemClock.elapsedRealtime() - startedAt
-                if (elapsed >= timeoutMs || !Settings.canDrawOverlays(context)) {
-                    finish(false)
-                    return
-                }
+                confirmation.tick(elapsed, Settings.canDrawOverlays(context))
+                if (confirmation.isFinished) return
                 val remaining = (delayMs - elapsed).coerceAtLeast(0)
                 val secondsLeft = (timeoutMs - elapsed + 999) / 1000
                 if (remaining > 0) {
@@ -272,12 +267,12 @@ internal object ShizukuSafetyOverlay {
         try {
             showing = true
             activeId = operationId
-            dismiss = { finish(false) }
+            dismiss = { confirmation.finish(ShizukuConfirmationOutcome.CANCELLED) }
             wm.addView(panel, params)
             main.post(countdown)
-            main.postDelayed({ finish(false) }, timeoutSeconds * 1000L)
+            main.postDelayed({ confirmation.tick(SystemClock.elapsedRealtime() - startedAt, Settings.canDrawOverlays(context)) }, timeoutMs)
         } catch (_: Exception) {
-            finish(false)
+            confirmation.finish(ShizukuConfirmationOutcome.UNAVAILABLE)
         }
     }
 }

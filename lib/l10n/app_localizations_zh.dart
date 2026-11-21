@@ -13763,6 +13763,30 @@ class AppLocalizationsZh extends AppLocalizations {
   String get kitToolDeclined => '你已拒绝';
 
   @override
+  String get kitToolUnconfirmed => '结果未确认';
+
+  @override
+  String get shizukuReceiptUserDenied => '你已拒绝，本次 Android 命令未执行。';
+
+  @override
+  String get shizukuReceiptTimedOut => '确认超时，本次 Android 命令未执行。';
+
+  @override
+  String get shizukuReceiptNotExecuted => '本次 Android 命令未执行。';
+
+  @override
+  String get shizukuReceiptCancelledBeforeStart => '已取消，Android 命令尚未启动。';
+
+  @override
+  String get shizukuReceiptCancelled => 'Android 命令已停止，已产生的变更不会撤销。';
+
+  @override
+  String get shizukuReceiptFailed => 'Android 命令执行失败。';
+
+  @override
+  String get shizukuReceiptUnconfirmed => 'Android 命令的执行结果未确认，未自动重试。';
+
+  @override
   String get kitToolStopped => '已停止';
 
   @override

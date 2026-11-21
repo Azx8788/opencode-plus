@@ -77,6 +77,9 @@ enum KitToolStatus {
   /// The person said no to this call: their choice, not a failure.
   declined,
 
+  /// No final receipt; neither success nor no execution has been confirmed.
+  unconfirmed,
+
   /// Started and handed to the background (a background sub-agent).
   background,
 }
@@ -294,6 +297,7 @@ class KitToolRow extends StatefulWidget {
       KitToolStatus.failed => l10n.kitToolFailed,
       KitToolStatus.stopped => l10n.kitToolStopped,
       KitToolStatus.declined => l10n.kitToolDeclined,
+      KitToolStatus.unconfirmed => l10n.kitToolUnconfirmed,
       KitToolStatus.background => l10n.kitToolBackground,
     };
   }
@@ -334,6 +338,7 @@ bool _finished(KitToolStatus status) =>
     status == KitToolStatus.done ||
     status == KitToolStatus.failed ||
     status == KitToolStatus.stopped ||
+    status == KitToolStatus.unconfirmed ||
     status == KitToolStatus.declined;
 
 class _KitToolRowState extends State<KitToolRow>
@@ -706,6 +711,7 @@ class _KitToolRowState extends State<KitToolRow>
       KitToolStatus.failed => KitStepNodeState.failed,
       KitToolStatus.stopped => KitStepNodeState.stopped,
       KitToolStatus.declined => KitStepNodeState.none,
+      KitToolStatus.unconfirmed => KitStepNodeState.none,
     };
     return KitStepTimeline.node(
       context,
@@ -1216,7 +1222,9 @@ Widget? _stepMark(KitToolStatus status) => switch (status) {
   KitToolStatus.failed => const KitStatusMark(state: KitMarkState.failed),
   KitToolStatus.stopped ||
   KitToolStatus.declined => const KitTaskMark(state: KitTaskState.stopped),
-  KitToolStatus.done || KitToolStatus.notRun => null,
+  KitToolStatus.done ||
+  KitToolStatus.notRun ||
+  KitToolStatus.unconfirmed => null,
 };
 
 /// The visible words beside the mark: the status word ("Waiting for you" is
@@ -1248,6 +1256,7 @@ Widget? _stepWords(
     KitToolStatus.pending ||
     KitToolStatus.waitingForYou ||
     KitToolStatus.stopped ||
+    KitToolStatus.unconfirmed ||
     KitToolStatus.declined ||
     KitToolStatus.notRun => text(word, KitTextTone.secondary),
   };

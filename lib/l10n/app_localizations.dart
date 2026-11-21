@@ -23436,6 +23436,54 @@ abstract class AppLocalizations {
   /// **'You declined this'**
   String get kitToolDeclined;
 
+  /// KitToolRow: the tool ended without evidence of what it did
+  ///
+  /// In en, this message translates to:
+  /// **'Result unconfirmed'**
+  String get kitToolUnconfirmed;
+
+  /// No description provided for @shizukuReceiptUserDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'You declined. The Android command did not run.'**
+  String get shizukuReceiptUserDenied;
+
+  /// No description provided for @shizukuReceiptTimedOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirmation timed out. The Android command did not run.'**
+  String get shizukuReceiptTimedOut;
+
+  /// No description provided for @shizukuReceiptNotExecuted.
+  ///
+  /// In en, this message translates to:
+  /// **'The Android command did not run.'**
+  String get shizukuReceiptNotExecuted;
+
+  /// No description provided for @shizukuReceiptCancelledBeforeStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancelled before the Android command started.'**
+  String get shizukuReceiptCancelledBeforeStart;
+
+  /// No description provided for @shizukuReceiptCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'The Android command stopped. Any changes it made were not undone.'**
+  String get shizukuReceiptCancelled;
+
+  /// No description provided for @shizukuReceiptFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The Android command failed.'**
+  String get shizukuReceiptFailed;
+
+  /// No description provided for @shizukuReceiptUnconfirmed.
+  ///
+  /// In en, this message translates to:
+  /// **'The Android command result is unconfirmed. It was not retried automatically.'**
+  String get shizukuReceiptUnconfirmed;
+
   /// KitToolRow: the word for a step stopped by the person or the server
   ///
   /// In en, this message translates to:

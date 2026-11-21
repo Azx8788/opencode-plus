@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../platform/shizuku.dart';
+import '../../../domain/shizuku_receipt.dart';
+import '../../../l10n/app_localizations.dart';
+import '../../widgets/shizuku_receipt_copy.dart';
 
 /// Shizuku status, explicit enablement, command checks and policy controls.
 ///
@@ -801,6 +804,13 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
 
   Widget _resultCard(BuildContext context, Map<String, Object?> value) {
     final state = '${value['state'] ?? 'unknown'}';
+    final receipt =
+        ShizukuReceipt.fromMap(value) ??
+        const ShizukuReceipt(ShizukuReceiptKind.unconfirmed);
+    final words = shizukuReceiptCopy(
+      receipt,
+      lookupAppLocalizations(Localizations.localeOf(context)),
+    );
     final lines = <String>[
       '${text('State', '状态')}: $state',
       if (value['reason'] != null)
@@ -813,11 +823,6 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
         '${text('Elapsed', '耗时')}: ${value['elapsedMs']} ms',
       if (value['termination'] != null)
         '${text('Termination', '终止确认')}: ${value['termination']}',
-      if (state == 'unknown')
-        text(
-          'Execution result is unconfirmed. Do not automatically retry.',
-          '执行结果尚未确认，不要自动重试。',
-        ),
       if (value['truncated'] == true) text('Output truncated.', '输出已截断。'),
     ];
     final stdout = '${value['stdout'] ?? ''}';
@@ -829,6 +834,8 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (words != null)
+              Text(words, key: const ValueKey('shizuku-result-explanation')),
             Text(lines.join('\n')),
             if (stdout.isNotEmpty)
               Padding(

@@ -516,6 +516,8 @@ class ToolState {
   /// person's choice, not a failure.
   bool get declined {
     if (status != 'error') return false;
+    final approval = metadata?['shizukuApproval'];
+    if (approval is Map && approval['decision'] == 'reject') return true;
     final text = (output ?? '').toLowerCase();
     return text.contains('user declined') ||
         text.contains('user rejected permission');

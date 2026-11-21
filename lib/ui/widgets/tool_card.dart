@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/widgets.dart';
 
 import '../../domain/models.dart';
+import '../../domain/shizuku_receipt.dart';
 import '../../domain/connector_search_result.dart';
 import '../../domain/mobile_tool_view.dart';
 import '../../domain/tool_label.dart';
@@ -28,6 +29,7 @@ import '../kit/kit_tokens.dart';
 import 'file_preview.dart';
 import 'mobile_task_view.dart';
 import 'product_states.dart' show productErrorText;
+import 'shizuku_receipt_copy.dart';
 
 part 'tool_card_contract.dart';
 part 'tool_card_body.dart';
@@ -355,6 +357,25 @@ class _ToolCardState extends State<ToolCard> {
   /// them, never running.
   KitToolStatus _statusOf(_ToolContract contract) {
     final state = widget.state;
+    if (contract.androidReceipt case final receipt?) {
+      if (receipt.isLive && widget.waitingForYou) {
+        return KitToolStatus.waitingForYou;
+      }
+      return switch (receipt.kind) {
+        ShizukuReceiptKind.pending => KitToolStatus.pending,
+        ShizukuReceiptKind.waiting => KitToolStatus.waitingForYou,
+        ShizukuReceiptKind.running => KitToolStatus.running,
+        ShizukuReceiptKind.succeeded => KitToolStatus.done,
+        ShizukuReceiptKind.userDenied => KitToolStatus.declined,
+        ShizukuReceiptKind.confirmationTimedOut ||
+        ShizukuReceiptKind.notExecuted ||
+        ShizukuReceiptKind.cancelledBeforeStart => KitToolStatus.notRun,
+        ShizukuReceiptKind.cancelled => KitToolStatus.stopped,
+        ShizukuReceiptKind.failed => KitToolStatus.failed,
+        ShizukuReceiptKind.unconfirmed => KitToolStatus.unconfirmed,
+      };
+    }
+    if (state.declined) return KitToolStatus.declined;
     if (!state.executed) return KitToolStatus.notRun;
     if (_backgroundLaunch) return KitToolStatus.background;
     final live = state.status == 'pending' || state.status == 'running';
@@ -504,7 +525,10 @@ class _ToolCardState extends State<ToolCard> {
     final interleaved = _interleavedSegments;
     // A shell step already ends with "Run this command again"; a second
     // "Try again" under the title would be the same action twice.
-    final VoidCallback? retry = isShell ? null : widget.onRetry;
+    final VoidCallback? retry =
+        isShell || ShizukuReceipt.handlesTool(widget.toolName)
+        ? null
+        : widget.onRetry;
     final command = _stepCommandOf(
       context,
       contract,

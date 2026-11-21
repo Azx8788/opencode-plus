@@ -27,15 +27,18 @@ function fixture(options = {}) {
         backend: 'adb', risk: 'green', operationType: 'read_only', automatic: true, brokerInstance: 'fixture-broker' });
       case 'submit': {
         if (existing?.state === 'cancelled') return envelope(existing);
+        const waiting = options.waiting?.(request);
         const value = { command: request.command, operationId: request.operationId, serviceInstance: 'fixture-service', uid: 2000,
-          backend: 'adb', state: options.waiting?.(request) ? 'waiting' : 'succeeded', stdout: 'fixture Android output', stderr: '', exitCode: 0,
-          elapsedMs: 11, termination: 'not_requested' };
+          backend: 'adb', ...(options.outcome ?? { state: waiting ? 'waiting' : 'succeeded',
+            executionStage: waiting ? 'not_dispatched' : 'dispatched',
+            stdout: 'fixture Android output', stderr: '', exitCode: 0, elapsedMs: 11, termination: 'not_requested' }) };
         records.set(request.operationId, value);
         if (options.lostReply) throw new BridgeError('bridge_reply_lost');
         return envelope(value);
       }
       case 'result': return envelope(existing ?? { error: 'operation_not_found', state: 'not_executed' });
       case 'cancel': {
+        if (existing && ['succeeded', 'failed', 'denied', 'cancelled'].includes(existing.state)) return envelope(existing);
         const value = { ...existing, operationId: request.operationId, state: 'cancelled', termination: 'confirmed' };
         records.set(request.operationId, value); return envelope(value);
       }
@@ -91,6 +94,34 @@ const output = value => JSON.parse(value.content);
   assert.equal(output(await f.exec({ command: 'id' }, f.context())).state, 'succeeded');
   assert.equal(f.requests.filter(r => r.method === 'submit').length, 1);
   assert.ok(f.requests.some(r => r.method === 'result'));
+}
+for (const reason of ['confirmation_user_denied', 'confirmation_timeout', 'overlay_permission_missing', 'busy']) {
+  const f = fixture({ lostReply: true, outcome: { state: 'denied', reason, executionStage: 'not_dispatched' } });
+  const answer = await f.exec({ command: 'write fixture' }, f.context());
+  const value = output(answer);
+  assert.equal(value.state, 'denied'); assert.equal(value.reason, reason);
+  assert.equal(value.executionStage, 'not_dispatched');
+  assert.equal(answer.metadata.android.reason, reason);
+  assert.equal(answer.metadata.android.operationId, value.operationId);
+  const replay = output(await f.exec({ command: 'write fixture' }, f.context()));
+  assert.equal(replay.reason, reason);
+  assert.equal(f.requests.filter(r => r.method === 'submit').length, 1);
+}
+{
+  const f = fixture({ outcome: { state: 'succeeded', exitCode: 0, stdout: '', stderr: '', executionStage: 'dispatched' } });
+  const answer = await f.exec({ command: 'empty-output fixture' }, f.context());
+  assert.equal(output(answer).exitCode, 0); assert.equal(output(answer).stdout, '');
+  assert.equal(answer.metadata.android.state, 'succeeded');
+}
+{
+  const controller = new AbortController();
+  let reference;
+  const f = fixture({ permission: async () => { controller.abort(); } });
+  await assert.rejects(() => f.exec({ command: 'write fixture' }, f.context('rejected', controller, data => {
+    if (data.android?.operationId) reference = data.android.operationId;
+  })), { name: 'AbortError' });
+  assert.match(reference, /^[a-f0-9]{64}$/);
+  assert.ok(!f.requests.some(r => r.method === 'submit'));
 }
 {
   const controller = new AbortController();
