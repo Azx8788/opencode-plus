@@ -2,6 +2,28 @@
 
 This project is in public alpha. Only the newest preview is supported.
 
+## 0.3.27+35 — 2026-11-21
+
+  * **Telegram relay: run the phone's agent from your private chat.**
+    Settings → Conversations → Telegram bot connects one allowlisted Telegram
+    account to the OpenCode server on this phone. Text sent to the bot becomes
+    an ordinary agent prompt; the agent's progress notices and final reply come
+    back to the same private chat. `/status`, `/stop` and `/new` report and
+    steer the bound conversation. Only that account's private chat is accepted.
+  * **The bot starts working without extra chores.** Enabling it claims the
+    token for long polling — an old webhook is removed and the command menu is
+    published — so a bot left by another setup no longer sits there connected
+    but deaf. A token still held by another poller is reported as a conflict.
+  * **Failures are readable, not silent.** The settings page and `/status` show
+    the reason in words (invalid token, another poller, rate limit, network)
+    instead of an unexplained retry, and "verify token" reports the bot's
+    username plus whether the private chat is reachable yet.
+  * **The relay is covered end to end.** A test drives the shipping bridge
+    against a local stand-in for the Bot API: allowlist, dispatch, session
+    binding, `/status`, `/stop`, `/new`, conflict reporting and the reply
+    direction all run for real. The bot token stays in Android secure storage
+    and is deleted with its server profile.
+
 ## 0.3.26+34 — 2026-11-21
 
   * **Shizuku: Android commands from the phone, under your control.**
