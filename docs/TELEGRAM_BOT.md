@@ -8,24 +8,32 @@ Android app; it is not a public bot service or a separate VPS deployment.
 
 1. Create a bot with [@BotFather](https://t.me/BotFather) and copy its token.
 2. Get your numeric Telegram user ID from [@userinfobot](https://t.me/userinfobot).
-3. In OpenCode Plus, open **Settings → Conversations → Telegram bot**.
-4. Enter the bot token and your user ID, verify the token, then enable and save.
-5. Open the bot's private chat and send `/start`.
+3. Open the bot's private chat and send `/start`. Telegram does not let a bot
+   write first, so this is what makes the chat reachable.
+4. In OpenCode Plus, open **Settings → Conversations → Telegram bot**.
+5. Enter the bot token and your user ID, verify the token, then enable and save.
+   Verification reports the bot's `@username` and whether the private chat is
+   reachable yet.
 6. Connect the app to its built-in OpenCode server and open a project. Opening a
    conversation binds that session for progress and replies. A Telegram text
    sent before a session is bound starts a separate conversation in the
    currently open project.
 
+Enabling the relay claims the bot for long polling: it removes any webhook and
+publishes the command menu (`/status`, `/stop`, `/new`, `/help`) so the bot is
+not left "connected but deaf" by an earlier setup. Only one receiver can poll a
+bot token; if another program keeps polling it, Telegram answers `409` and the
+settings page shows that as a conflict instead of a healthy state.
+
 To receive messages while the app is backgrounded, enable the app's background
 connection and keep Android from stopping the app. Android may still stop a
-process; start the app again to resume polling. The bot token can only have one
-active Telegram update receiver: remove any webhook and stop any other poller
-for that bot.
+process; start the app again to resume polling.
 
 ## Telegram messages
 
 - Send normal text to give the local agent an instruction.
-- `/status` reports the connection and selected session state.
+- `/status` reports the connection, the project, the bound session, the poll
+  state, and the last transport error when there is one.
 - `/stop` requests interruption of the bound session. It does not undo actions
   already completed.
 - `/new` binds the next Telegram prompt to a new session; it does not cancel an
@@ -49,3 +57,13 @@ Telegram instructions are sent through the app's existing OpenCode connection
 and ordinary permission policy. Agent reply text and short progress notices are
 sent to Telegram, so Telegram receives that content. Do not relay information
 you do not want sent to Telegram. See [PRIVACY.md](../PRIVACY.md).
+
+## Tests
+
+`test/telegram_bot_contract_test.dart` covers the allowlist and message
+chunking. `test/telegram_bot_relay_test.dart` runs the shipping bridge against a
+local stand-in for the Bot API: it asserts the webhook is cleared and the menu
+published before the first poll, that a plain message reaches the agent and
+binds its session, that `/status`, `/stop` and `/new` answer correctly, that a
+foreign account is ignored, that a `409` is reported rather than hidden, and
+that agent progress and the finished reply come back to Telegram.

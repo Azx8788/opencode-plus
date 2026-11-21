@@ -77,6 +77,7 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
       _notice = null;
     });
     try {
+      var notice = _text('Settings saved.', '设置已保存。');
       if (_enabled) {
         await _bridge.saveConfiguration(
           token: _token.text,
@@ -84,7 +85,7 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
           enabled: false,
         );
         _enabled = false;
-        await _bridge.testConnection(chatID: _chatID.text);
+        notice = await _bridge.testConnection(chatID: _chatID.text);
         await _bridge.saveConfiguration(chatID: _chatID.text, enabled: true);
         _enabled = true;
       } else {
@@ -97,7 +98,7 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
       _token.clear();
       _replacingToken = false;
       _chatEdited = false;
-      _notice = _text('Settings saved.', '设置已保存。');
+      _notice = notice;
     } on FormatException catch (error) {
       _error = error.message;
     } on Object {
@@ -115,13 +116,9 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
       _notice = null;
     });
     try {
-      await _bridge.testConnection(
+      _notice = await _bridge.testConnection(
         replacementToken: _token.text,
         chatID: _chatID.text,
-      );
-      _notice = _text(
-        'Bot token verified. Enable the relay, then open the bot chat and send /start.',
-        'Bot Token 验证成功。启用转发后，请打开机器人私聊并发送 /start。',
       );
     } on FormatException catch (error) {
       _error = error.message;
@@ -149,9 +146,15 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
       _enabled = false;
       _replacingToken = false;
       _chatEdited = false;
-      _notice = _text('Telegram bot configuration removed.', 'Telegram 机器人配置已删除。');
+      _notice = _text(
+        'Telegram bot configuration removed.',
+        'Telegram 机器人配置已删除。',
+      );
     } on Object {
-      _error = _text('Could not remove Telegram settings.', '无法删除 Telegram 设置。');
+      _error = _text(
+        'Could not remove Telegram settings.',
+        '无法删除 Telegram 设置。',
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -159,10 +162,22 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
 
   String _phaseText(TelegramBotPhase phase) => switch (phase) {
     TelegramBotPhase.disabled => _text('Off', '已关闭'),
-    TelegramBotPhase.needsSetup => _text('Waiting for local OpenCode', '等待本机 OpenCode'),
-    TelegramBotPhase.starting => _text('Connecting to Telegram…', '正在连接 Telegram…'),
-    TelegramBotPhase.polling => _text('Listening for Telegram messages', '正在接收 Telegram 消息'),
-    TelegramBotPhase.error => _text('Connection problem; retrying', '连接异常，正在重试'),
+    TelegramBotPhase.needsSetup => _text(
+      'Waiting for local OpenCode',
+      '等待本机 OpenCode',
+    ),
+    TelegramBotPhase.starting => _text(
+      'Connecting to Telegram…',
+      '正在连接 Telegram…',
+    ),
+    TelegramBotPhase.polling => _text(
+      'Listening for Telegram messages',
+      '正在接收 Telegram 消息',
+    ),
+    TelegramBotPhase.error => _text(
+      'Connection problem; retrying',
+      '连接异常，正在重试',
+    ),
   };
 
   @override
@@ -174,13 +189,12 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
       TelegramBotPhase.polling => KitTextTone.success,
       TelegramBotPhase.error => KitTextTone.attention,
       TelegramBotPhase.starting => KitTextTone.accent,
-      TelegramBotPhase.disabled || TelegramBotPhase.needsSetup => KitTextTone.secondary,
+      TelegramBotPhase.disabled ||
+      TelegramBotPhase.needsSetup => KitTextTone.secondary,
     };
 
     return KitScreen(
-      topBar: KitTopBar(
-        title: _text('Telegram bot', 'Telegram 机器人'),
-      ),
+      topBar: KitTopBar(title: _text('Telegram bot', 'Telegram 机器人')),
       width: KitScreenWidth.reading,
       body: ListView(
         padding: KitScreen.padding(context),
@@ -194,10 +208,22 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
           ),
           SizedBox(height: tokens.space3),
           KitText(
-            _text('Status: ${_phaseText(snapshot.phase)}', '状态：${_phaseText(snapshot.phase)}'),
+            _text(
+              'Status: ${_phaseText(snapshot.phase)}',
+              '状态：${_phaseText(snapshot.phase)}',
+            ),
             role: KitTextRole.secondary,
             tone: phaseTone,
           ),
+          if (snapshot.phase == TelegramBotPhase.error &&
+              snapshot.lastError != null) ...[
+            SizedBox(height: tokens.space2),
+            KitText(
+              snapshot.lastError!,
+              role: KitTextRole.caption,
+              tone: KitTextTone.attention,
+            ),
+          ],
           if (!localServer) ...[
             SizedBox(height: tokens.space3),
             KitGroupNote(
@@ -245,12 +271,17 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
               '保存后开始长轮询；Bot Token 不能同时用于其他轮询程序或 Webhook。后台接收需要保持 App 进程运行。',
             ),
             value: _enabled,
-            onChanged: _busy ? null : (value) => setState(() => _enabled = value),
+            onChanged: _busy
+                ? null
+                : (value) => setState(() => _enabled = value),
           ),
           if (snapshot.sessionID != null) ...[
             SizedBox(height: tokens.space2),
             KitText(
-              _text('Bound to an OpenCode conversation.', '已绑定到一个 OpenCode 会话。'),
+              _text(
+                'Bound to an OpenCode conversation.',
+                '已绑定到一个 OpenCode 会话。',
+              ),
               role: KitTextRole.caption,
               tone: KitTextTone.secondary,
             ),

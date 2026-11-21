@@ -11,6 +11,12 @@ import '../ui/kit/kit_redact.dart';
 
 enum TelegramBotPhase { disabled, needsSetup, starting, polling, error }
 
+/// The Telegram Bot API origin. Production always talks to
+/// `https://api.telegram.org`; the contract test points this at a local fake
+/// server so the poll, dispatch and reply paths run for real.
+@visibleForTesting
+String telegramApiOrigin = 'https://api.telegram.org';
+
 @visibleForTesting
 bool telegramPrivateMessageAllowed({
   required String allowedUserID,
@@ -54,6 +60,7 @@ class TelegramBotSnapshot {
     required this.enabled,
     required this.hasToken,
     required this.phase,
+    this.lastError,
   });
 
   final String? profileID;
@@ -62,6 +69,10 @@ class TelegramBotSnapshot {
   final bool enabled;
   final bool hasToken;
   final TelegramBotPhase phase;
+
+  /// The last transport failure in words the person can act on, cleared when
+  /// polling recovers. Null while everything works.
+  final String? lastError;
 
   bool get configured => hasToken && chatID.isNotEmpty;
 }
@@ -119,7 +130,7 @@ class TelegramBotBridge extends ChangeNotifier {
   final bool Function() _supported;
   final void Function(VoidCallback listener) _addHostListener;
   final void Function(VoidCallback listener) _removeHostListener;
-  final Future<void> Function(String text) _sendPrompt;
+  final Future<String> Function(String text) _sendPrompt;
   final Future<void> Function() _stopAgent;
   final Future<String?> Function() _readLatestReply;
   final String Function() _agentStatus;
@@ -145,6 +156,7 @@ class TelegramBotBridge extends ChangeNotifier {
   HttpClient? _http;
   Future<void>? _initializing;
   int _consecutiveFailures = 0;
+  String? _lastError;
   TelegramBotPhase _phase = TelegramBotPhase.needsSetup;
 
   TelegramBotSnapshot get snapshot => TelegramBotSnapshot(
@@ -154,6 +166,7 @@ class TelegramBotBridge extends ChangeNotifier {
     enabled: _enabled,
     hasToken: _token != null,
     phase: _phase,
+    lastError: _lastError,
   );
 
   Future<void> initialize() => _initializing ??= _doInitialize();
@@ -197,19 +210,26 @@ class TelegramBotBridge extends ChangeNotifier {
     _token = null;
     _enabled = false;
     _offset = null;
+    _lastError = null;
     if (owner != null && owner.isNotEmpty) {
       try {
-        _token = await _secureStorage.read(key: _profileKey(tokenKeyPrefix, owner));
+        _token = await _secureStorage.read(
+          key: _profileKey(tokenKeyPrefix, owner),
+        );
         if (_token?.isNotEmpty == true) KitRedact.registerKnownSecret(_token!);
-        _chatID = _preferences.getString(_profileKey(chatIDKeyPrefix, owner)) ?? '';
-        _sessionID = _preferences.getString(_profileKey(sessionIDKeyPrefix, owner));
+        _chatID =
+            _preferences.getString(_profileKey(chatIDKeyPrefix, owner)) ?? '';
+        _sessionID = _preferences.getString(
+          _profileKey(sessionIDKeyPrefix, owner),
+        );
         _sessionDirectory = _preferences.getString(
           _profileKey(directoryKeyPrefix, owner),
         );
         _sessionWorkspace = _preferences.getString(
           _profileKey(workspaceKeyPrefix, owner),
         );
-        _enabled = _preferences.getBool(_profileKey(enabledKeyPrefix, owner)) ?? false;
+        _enabled =
+            _preferences.getBool(_profileKey(enabledKeyPrefix, owner)) ?? false;
         _offset = _preferences.getInt(_profileKey(_offsetPrefix, owner));
         if (generation != _loadGeneration || _disposed) return;
       } catch (_) {
@@ -251,9 +271,18 @@ class TelegramBotBridge extends ChangeNotifier {
       _sessionID = normalized;
       _sessionDirectory = directory;
       _sessionWorkspace = workspace;
-      await _preferences.setString(_profileKey(sessionIDKeyPrefix, owner), normalized);
-      await _preferences.setString(_profileKey(directoryKeyPrefix, owner), directory);
-      await _preferences.setString(_profileKey(workspaceKeyPrefix, owner), workspace);
+      await _preferences.setString(
+        _profileKey(sessionIDKeyPrefix, owner),
+        normalized,
+      );
+      await _preferences.setString(
+        _profileKey(directoryKeyPrefix, owner),
+        directory,
+      );
+      await _preferences.setString(
+        _profileKey(workspaceKeyPrefix, owner),
+        workspace,
+      );
       if (!_sessionRunning && _isSessionBusy(normalized)) {
         _sessionRunning = true;
         _lastSentAssistantText = null;
@@ -283,14 +312,18 @@ class TelegramBotBridge extends ChangeNotifier {
       throw const FormatException('Select the phone OpenCode server first.');
     }
     final normalizedChatID = chatID.trim();
-    final validChatID = RegExp(r'^[1-9][0-9]{0,19}$').hasMatch(normalizedChatID);
+    final validChatID = RegExp(
+      r'^[1-9][0-9]{0,19}$',
+    ).hasMatch(normalizedChatID);
     if (enabled && !validChatID) {
       throw const FormatException('Enter a positive numeric Telegram user ID.');
     }
     final newToken = token?.trim();
     if (newToken != null && newToken.isNotEmpty) {
       if (!RegExp(r'^[0-9]{5,20}:[A-Za-z0-9_-]{20,}$').hasMatch(newToken)) {
-        throw const FormatException('The Telegram bot token format is invalid.');
+        throw const FormatException(
+          'The Telegram bot token format is invalid.',
+        );
       }
       await _secureStorage.write(
         key: _profileKey(tokenKeyPrefix, owner),
@@ -314,7 +347,10 @@ class TelegramBotBridge extends ChangeNotifier {
         )) {
       throw const FormatException('Could not save the Telegram chat ID.');
     }
-    if (!await _preferences.setBool(_profileKey(enabledKeyPrefix, owner), enabled)) {
+    if (!await _preferences.setBool(
+      _profileKey(enabledKeyPrefix, owner),
+      enabled,
+    )) {
       throw const FormatException('Could not save the Telegram setting.');
     }
     await _loadCurrentProfile();
@@ -341,23 +377,54 @@ class TelegramBotBridge extends ChangeNotifier {
     await _loadCurrentProfile();
   }
 
-  Future<void> testConnection({String? replacementToken, String? chatID}) async {
+  /// Verifies the credential and whether the owner can be written to.
+  ///
+  /// Returns a notice for the settings page. A missing private chat is not an
+  /// error: Telegram forbids a bot from writing first, so the relay can still
+  /// be enabled and starts working the moment the owner sends `/start`.
+  Future<String> testConnection({
+    String? replacementToken,
+    String? chatID,
+  }) async {
     final owner = _profileID();
-    if (owner == null) throw const FormatException('No server profile selected.');
+    if (owner == null) {
+      throw const FormatException('No server profile selected.');
+    }
     final token = replacementToken?.trim().isNotEmpty == true
         ? replacementToken!.trim()
         : await _secureStorage.read(key: _profileKey(tokenKeyPrefix, owner));
     final chat = chatID?.trim().isNotEmpty == true
         ? chatID!.trim()
-        : _preferences.getString(_profileKey(chatIDKeyPrefix, owner)) ?? _chatID;
+        : _preferences.getString(_profileKey(chatIDKeyPrefix, owner)) ??
+              _chatID;
     if (token == null || token.isEmpty || chat.isEmpty) {
-      throw const FormatException('Save a bot token and Telegram user ID first.');
+      throw const FormatException(
+        'Save a bot token and Telegram user ID first.',
+      );
     }
-    final me = await _request(token, 'getMe', const {}, timeout: const Duration(seconds: 12));
-    if (me['ok'] != true) throw const FormatException('Telegram could not verify this bot token.');
-    // The owner must start the bot first; Telegram does not allow a bot to
-    // initiate a private conversation. getMe verifies the credential without
-    // sending an unsolicited message.
+    final Map<String, dynamic> me;
+    try {
+      me = await _request(
+        token,
+        'getMe',
+        const {},
+        timeout: const Duration(seconds: 12),
+      );
+    } on _TelegramFailure catch (error) {
+      throw FormatException(error.message);
+    }
+    final result = me['result'];
+    final username = result is Map ? result['username']?.toString() ?? '' : '';
+    final botName = username.isEmpty ? '该机器人' : '@$username';
+    try {
+      await _request(token, 'getChat', {
+        'chat_id': chat,
+      }, timeout: const Duration(seconds: 12));
+    } on _TelegramFailure {
+      return 'Token 验证成功（$botName），但还没有与该用户的私聊。'
+          '请先在 Telegram 中打开机器人私聊并发送 /start，再回来启用。';
+    }
+    return 'Token 验证成功（$botName），可以与该用户私聊。';
   }
 
   Future<void> _pollLoop(String owner, String token, String chatID) async {
@@ -365,6 +432,7 @@ class TelegramBotBridge extends ChangeNotifier {
     final generation = _pollGeneration;
     _phase = TelegramBotPhase.starting;
     _notify();
+    await _prepareBot(token);
     while (!_disposed &&
         generation == _pollGeneration &&
         _polling &&
@@ -372,7 +440,8 @@ class TelegramBotBridge extends ChangeNotifier {
         _token == token &&
         _chatID == chatID &&
         _supported()) {
-      final http = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+      final http = HttpClient()
+        ..connectionTimeout = const Duration(seconds: 10);
       _http = http;
       try {
         final query = <String, String>{
@@ -391,32 +460,38 @@ class TelegramBotBridge extends ChangeNotifier {
         if (!_polling || generation != _pollGeneration || _ownerID != owner) {
           break;
         }
-        if (result['ok'] != true || result['result'] is! List) {
-          throw const _TelegramFailure();
+        if (result['result'] is! List) {
+          throw const _TelegramFailure('Telegram 返回了无法识别的消息格式。');
         }
         if (_phase != TelegramBotPhase.polling) {
           _phase = TelegramBotPhase.polling;
+          _lastError = null;
           _notify();
         }
         _consecutiveFailures = 0;
+        _lastError = null;
         for (final raw in result['result'] as List) {
           if (raw is! Map || raw['update_id'] is! int) continue;
           final updateID = raw['update_id'] as int;
           // Advance before dispatch: a process death cannot replay an agent
           // prompt whose delivery to OpenCode may already have succeeded.
           _offset = updateID + 1;
-          await _preferences.setInt(_profileKey(_offsetPrefix, owner), _offset!);
+          await _preferences.setInt(
+            _profileKey(_offsetPrefix, owner),
+            _offset!,
+          );
           await _handleUpdate(token, chatID, Map<String, dynamic>.from(raw));
         }
-      } on Object {
+      } on Object catch (error) {
         if (!_polling || generation != _pollGeneration || _disposed) break;
         _consecutiveFailures = (_consecutiveFailures + 1).clamp(1, 5);
         _phase = TelegramBotPhase.error;
+        _lastError = error is _TelegramFailure
+            ? error.message
+            : '与 Telegram 的连接中断，正在重试。';
         _notify();
         final seconds = 1 << _consecutiveFailures;
-        await Future<void>.delayed(
-          Duration(seconds: seconds.clamp(5, 60)),
-        );
+        await Future<void>.delayed(Duration(seconds: seconds.clamp(5, 60)));
         if (!_polling || generation != _pollGeneration || _disposed) break;
         _phase = TelegramBotPhase.starting;
         _notify();
@@ -428,8 +503,39 @@ class TelegramBotBridge extends ChangeNotifier {
     if (generation == _pollGeneration) _polling = false;
     if (generation != _pollGeneration) return;
     if (!_disposed && _enabled) {
-      _phase = _supported() ? TelegramBotPhase.starting : TelegramBotPhase.needsSetup;
+      _phase = _supported()
+          ? TelegramBotPhase.starting
+          : TelegramBotPhase.needsSetup;
       _notify();
+    }
+  }
+
+  /// Claims the bot for long polling and gives it a visible command menu.
+  ///
+  /// A webhook left behind by another setup answers `getUpdates` with 409 and
+  /// the relay would look "connected but deaf", so removing it is part of
+  /// starting up rather than something the person has to remember. Both calls
+  /// are best-effort: a network hiccup here must not stop the poll loop, which
+  /// reports its own failures.
+  Future<void> _prepareBot(String token) async {
+    try {
+      await _request(token, 'deleteWebhook', const {
+        'drop_pending_updates': false,
+      }, timeout: const Duration(seconds: 12));
+    } on Object {
+      // getUpdates still reports 409 if a webhook really is in the way.
+    }
+    try {
+      await _request(token, 'setMyCommands', const {
+        'commands': [
+          {'command': 'status', 'description': '查看连接与会话状态'},
+          {'command': 'stop', 'description': '停止当前 Agent 任务'},
+          {'command': 'new', 'description': '开始新的 Agent 会话'},
+          {'command': 'help', 'description': '显示使用说明'},
+        ],
+      }, timeout: const Duration(seconds: 12));
+    } on Object {
+      // The menu is a convenience; commands work when typed.
     }
   }
 
@@ -441,14 +547,19 @@ class TelegramBotBridge extends ChangeNotifier {
     Duration timeout = const Duration(seconds: 15),
     HttpClient? client,
   }) async {
-    final http = client ?? (HttpClient()..connectionTimeout = const Duration(seconds: 10));
+    final http =
+        client ??
+        (HttpClient()..connectionTimeout = const Duration(seconds: 10));
     final ownsClient = client == null;
     try {
-      final uri = Uri.https(
-        'api.telegram.org',
-        '/bot$token/$method',
-        get ? {for (final entry in values.entries) entry.key: '${entry.value}'} : null,
-      );
+      var uri = Uri.parse('$telegramApiOrigin/bot$token/$method');
+      if (get) {
+        uri = uri.replace(
+          queryParameters: {
+            for (final entry in values.entries) entry.key: '${entry.value}',
+          },
+        );
+      }
       final request = get
           ? await http.getUrl(uri).timeout(const Duration(seconds: 12))
           : await http.postUrl(uri).timeout(const Duration(seconds: 12));
@@ -458,18 +569,51 @@ class TelegramBotBridge extends ChangeNotifier {
         request.write(jsonEncode(values));
       }
       final httpResponse = await request.close().timeout(timeout);
-      final body = await httpResponse.transform(utf8.decoder).join().timeout(timeout);
-      if (httpResponse.statusCode != HttpStatus.ok) throw const _TelegramFailure();
-      final decoded = jsonDecode(body);
-      if (decoded is! Map) throw const _TelegramFailure();
-      final payload = Map<String, dynamic>.from(decoded);
-      if (payload['ok'] != true) throw const _TelegramFailure();
-      return payload;
+      final body = await httpResponse
+          .transform(utf8.decoder)
+          .join()
+          .timeout(timeout);
+      final payload = _telegramPayload(body);
+      if (httpResponse.statusCode != HttpStatus.ok || payload?['ok'] != true) {
+        throw _TelegramFailure(
+          _telegramErrorText(payload, httpResponse.statusCode),
+        );
+      }
+      return payload!;
+    } on _TelegramFailure {
+      rethrow;
     } on Object {
-      throw const _TelegramFailure();
+      throw const _TelegramFailure('无法连接 Telegram，请检查网络后重试。');
     } finally {
       if (ownsClient) http.close(force: true);
     }
+  }
+
+  static Map<String, dynamic>? _telegramPayload(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      return decoded is Map ? Map<String, dynamic>.from(decoded) : null;
+    } on FormatException {
+      return null;
+    }
+  }
+
+  /// Telegram's own words when it gives any, plus the one failure people
+  /// actually hit: a second poller or a webhook holding the same bot.
+  static String _telegramErrorText(
+    Map<String, dynamic>? payload,
+    int statusCode,
+  ) {
+    final raw = payload?['error_code'];
+    final code = raw is int ? raw : statusCode;
+    final description = payload?['description']?.toString().trim() ?? '';
+    return switch (code) {
+      401 || 404 => 'Bot Token 无效或已被撤销，请重新生成。',
+      409 => '该 Bot 已被其他程序或 Webhook 占用，无法同时接收消息。',
+      429 => 'Telegram 请求过于频繁，稍后会自动重试。',
+      _ when description.isNotEmpty => 'Telegram 返回错误：$description',
+      _ => 'Telegram 请求失败（HTTP $statusCode）。',
+    };
   }
 
   Future<void> _handleUpdate(
@@ -478,7 +622,9 @@ class TelegramBotBridge extends ChangeNotifier {
     Map<String, dynamic> update,
   ) async {
     final message = update['message'];
-    if (message is! Map || message['chat'] is! Map || message['from'] is! Map) return;
+    if (message is! Map || message['chat'] is! Map || message['from'] is! Map) {
+      return;
+    }
     final chat = message['chat'] as Map;
     final from = message['from'] as Map;
     if (!telegramPrivateMessageAllowed(
@@ -492,14 +638,19 @@ class TelegramBotBridge extends ChangeNotifier {
     }
     final rawText = message['text'];
     if (rawText is! String || rawText.trim().isEmpty) {
-      await _sendTelegram(token, allowedID, '目前只支持文字消息。');
+      await _reply(token, allowedID, '目前只支持文字消息。');
       return;
     }
     final text = rawText.trim();
-    final command = text.split(RegExp(r'\s+')).first.split('@').first.toLowerCase();
+    final command = text
+        .split(RegExp(r'\s+'))
+        .first
+        .split('@')
+        .first
+        .toLowerCase();
     switch (command) {
       case '/start' || '/help':
-        await _sendTelegram(
+        await _reply(
           token,
           allowedID,
           '已连接到 OpenCode Plus。直接发送文字即可作为 Agent 指令。\n'
@@ -507,29 +658,29 @@ class TelegramBotBridge extends ChangeNotifier {
         );
         return;
       case '/status':
-        await _sendTelegram(token, allowedID, _agentStatus());
+        await _reply(token, allowedID, _statusText());
         return;
       case '/stop':
         try {
           await _stopAgent();
-          await _sendTelegram(token, allowedID, '已请求停止当前 Agent 任务。');
+          await _reply(token, allowedID, '已请求停止当前 Agent 任务。');
         } on Object {
-          await _sendTelegram(token, allowedID, '无法停止任务；请检查 App 与本机 Agent 连接。');
+          await _reply(token, allowedID, '无法停止任务；请检查 App 与本机 Agent 连接。');
         }
         return;
       case '/new':
         await bindSession(null);
         _sessionRunning = false;
         _lastSentAssistantText = null;
-        await _sendTelegram(token, allowedID, '下条消息将开始一个新的 Agent 会话；已有任务不会被取消。');
+        await _reply(token, allowedID, '下条消息将开始一个新的 Agent 会话；已有任务不会被取消。');
         return;
       default:
         try {
           final sessionID = await _sendPrompt(text);
           if (sessionID != _sessionID) await bindSession(sessionID);
-          await _sendTelegram(token, allowedID, '已转发给本地 Agent。');
+          await _reply(token, allowedID, '已转发给本地 Agent。');
         } on Object {
-          await _sendTelegram(
+          await _reply(
             token,
             allowedID,
             '没有发送成功。请确认 App 已连接到本机 OpenCode、已打开项目，并检查是否有待处理的权限确认。',
@@ -538,6 +689,50 @@ class TelegramBotBridge extends ChangeNotifier {
         return;
     }
   }
+
+  /// Sends a reply without letting a send failure end the poll loop: the
+  /// conversation is already advanced, and the next poll should still run.
+  Future<void> _reply(String token, String chatID, String text) async {
+    try {
+      await _sendTelegram(token, chatID, text);
+    } on Object {
+      // Nothing useful to do; polling reports its own transport state.
+    }
+  }
+
+  /// `/status`: the connection as the app sees it, plus what this bridge is
+  /// bound to, so "why is nothing arriving?" is answerable from the chat.
+  String _statusText() {
+    final buffer = StringBuffer(_agentStatus());
+    final directory = _directory() ?? '';
+    if (directory.isNotEmpty) {
+      final parts = directory
+          .split(RegExp(r'[\\/]'))
+          .where((part) => part.isNotEmpty)
+          .toList();
+      if (parts.isNotEmpty) buffer.write('\n项目：${parts.last}');
+    }
+    final sessionID = _sessionID;
+    buffer.write(
+      sessionID == null || sessionID.isEmpty
+          ? '\n会话：未绑定（发送任意文字会新建会话）'
+          : '\n会话：${sessionID.length > 12 ? sessionID.substring(0, 12) : sessionID}',
+    );
+    buffer.write('\n机器人：${_phaseText(_phase)}');
+    final error = _lastError;
+    if (error != null && _phase == TelegramBotPhase.error) {
+      buffer.write('\n错误：$error');
+    }
+    return buffer.toString();
+  }
+
+  static String _phaseText(TelegramBotPhase phase) => switch (phase) {
+    TelegramBotPhase.disabled => '已关闭',
+    TelegramBotPhase.needsSetup => '等待本机 OpenCode 连接',
+    TelegramBotPhase.starting => '正在连接 Telegram',
+    TelegramBotPhase.polling => '正在接收消息',
+    TelegramBotPhase.error => '连接异常，正在重试',
+  };
 
   void _onEvent(EventEnvelope event) {
     final props = event.properties;
@@ -561,10 +756,14 @@ class TelegramBotBridge extends ChangeNotifier {
         _sessionWorkspace != (_workspace() ?? '')) {
       return;
     }
-    if (sessionID == null || props['sessionID']?.toString() != sessionID) return;
+    if (sessionID == null || props['sessionID']?.toString() != sessionID) {
+      return;
+    }
     if (event.type == 'session.status') {
       final status = props['status'];
-      final type = status is Map ? status['type']?.toString() : status?.toString();
+      final type = status is Map
+          ? status['type']?.toString()
+          : status?.toString();
       if (type == 'busy') {
         if (!_sessionRunning) {
           _sessionRunning = true;
@@ -582,10 +781,15 @@ class TelegramBotBridge extends ChangeNotifier {
       final state = part['state'];
       if (state is! Map || state['status'] != 'running') return;
       final now = DateTime.now();
-      if (_lastProgress != null && now.difference(_lastProgress!) < const Duration(seconds: 25)) return;
+      if (_lastProgress != null &&
+          now.difference(_lastProgress!) < const Duration(seconds: 25)) {
+        return;
+      }
       _lastProgress = now;
       final rawTool = part['tool']?.toString() ?? '';
-      final tool = RegExp(r'^[a-zA-Z0-9_-]{1,32}$').hasMatch(rawTool) ? rawTool : '工具';
+      final tool = RegExp(r'^[a-zA-Z0-9_-]{1,32}$').hasMatch(rawTool)
+          ? rawTool
+          : '工具';
       unawaited(_sendToAllowed('Agent 进度：正在使用 $tool。'));
     } else if (event.type == 'message.updated') {
       final info = props['info'];
@@ -714,5 +918,7 @@ class TelegramBotBridge extends ChangeNotifier {
 }
 
 class _TelegramFailure implements Exception {
-  const _TelegramFailure();
+  const _TelegramFailure([this.message = 'Telegram 请求失败。']);
+
+  final String message;
 }

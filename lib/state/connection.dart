@@ -1164,9 +1164,6 @@ class ConnectionController extends ChangeNotifier
       );
     }
     var transport = await _requireActionTransport();
-    if (transport is! PromptGateway || transport is! SessionGateway) {
-      throw const ProductException('This server cannot accept Telegram prompts.');
-    }
     await ensureInteractiveSendAllowed(expectedApi: transport);
     final owner = (_connectedProfile ?? profile)?.id;
     if (owner == null) throw const ProductException('No OpenCode server is selected.');
@@ -1188,15 +1185,12 @@ class ConnectionController extends ChangeNotifier
         );
       }
       transport = await _requireActionTransport();
-      if (transport is! PromptGateway) {
-        throw const ProductException('The OpenCode connection changed. Try again.');
-      }
     }
     await telegramBot.bindSession(sessionID);
     await ensureInteractiveSendAllowed(expectedApi: transport);
     final agent = selectedAgent.trim();
     final variant = selectedVariant.trim();
-    await (transport as PromptGateway).promptAsync(
+    await transport.promptAsync(
       sessionID,
       text: text,
       model: selectedModel,
@@ -1229,9 +1223,6 @@ class ConnectionController extends ChangeNotifier
       throw const ProductException('The Telegram session is not running a task.');
     }
     final transport = await _requireActionTransport();
-    if (transport is! PromptGateway) {
-      throw const ProductException('This server cannot stop agent tasks.');
-    }
     await ensureInteractiveSendAllowed(expectedApi: transport);
     noteStopFromThisApp(sessionID);
     try {
@@ -1244,9 +1235,9 @@ class ConnectionController extends ChangeNotifier
 
   Future<String?> _readLatestTelegramReply() async {
     final sessionID = telegramBot.snapshot.sessionID;
-    final transport = api;
-    if (sessionID == null || transport is! SessionGateway) return null;
-    final messages = await transport.messages(sessionID);
+    final gateway = api;
+    if (sessionID == null || gateway == null) return null;
+    final messages = await gateway.messages(sessionID);
     for (final message in messages.reversed) {
       if (message.info.role != 'assistant') continue;
       if (message.info.time?.isDone != true) return null;
