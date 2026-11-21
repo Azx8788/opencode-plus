@@ -128,7 +128,14 @@ void main() {
         controller,
         contains('if (!connections.isCurrent(epoch, this)) return@execute'),
       );
-      expect(controller, contains('connections.take(epoch, this)'));
+      expect(controller, contains('detachConnection(epoch, this, false)'));
+      expect(
+        controller,
+        contains(
+          'if (connections.take(epoch, conn) != null) '
+          'unbindConnection(conn, remove)',
+        ),
+      );
       expect(controller, contains('ThreadPoolExecutor(\n        1, 1'));
       expect(
         controller,

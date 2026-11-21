@@ -245,6 +245,11 @@ void main() {
   ) async {
     operationHistoryFull = true;
     await mount(tester);
+    await reveal(tester, 'shizuku-operation-history-full');
+    expect(
+      find.byKey(const ValueKey('shizuku-operation-history-full')),
+      findsOneWidget,
+    );
     await reveal(tester, 'shizuku-diagnostic');
     expect(
       tester
@@ -253,10 +258,6 @@ void main() {
           )
           .onPressed,
       isNull,
-    );
-    expect(
-      find.byKey(const ValueKey('shizuku-operation-history-full')),
-      findsOneWidget,
     );
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -336,7 +337,15 @@ void main() {
           .onChanged,
       isNull,
     );
-    expect(find.textContaining('invalid_shizuku_settings'), findsOneWidget);
+    await reveal(tester, 'shizuku-error');
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('shizuku-error')),
+        matching: find.textContaining('invalid_shizuku_settings'),
+      ),
+      findsOneWidget,
+    );
+    expect(calls.where((call) => call.method == 'saveSettings'), isEmpty);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
