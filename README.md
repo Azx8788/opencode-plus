@@ -89,6 +89,19 @@ request or automatic write. The tool must be installed on the current agent;
 unsupported agents do not silently use files or a different model instead.
 See [MEMORY.md](MEMORY.md) for the contract and host limits.
 
+## Shizuku
+
+Settings → Shizuku lets the agents run Android commands through a UserService
+the app binds itself, as uid 0 or 2000 — no ADB, no root and no hidden
+fallback. Read-only queries may run directly; writes and red commands (delete,
+stop, uninstall, privilege changes) wait for the system overlay, and advanced
+mode only removes that overlay for non-red commands. Each operation is
+journalled before dispatch, so a lost reply is reported as unconfirmed and is
+never retried; cancel and timeout target the command's process group. The
+bridge from the built-in Ubuntu is a private socket that only this app's UID
+can open. See [docs/SHIZUKU_HANDOFF_2026-11-21.md](docs/SHIZUKU_HANDOFF_2026-11-21.md)
+for the state machine, the known limits and the on-device checklist.
+
 ## Conversation layout
 
 Each reply shows live elapsed time and model-step counts independently of its

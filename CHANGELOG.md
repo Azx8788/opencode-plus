@@ -2,6 +2,46 @@
 
 This project is in public alpha. Only the newest preview is supported.
 
+## 0.3.26+34 — 2026-11-21
+
+  * **Shizuku: Android commands from the phone, under your control.**
+    Settings → Shizuku turns on the app's own broker and reports the
+    authorization that actually exists — a grant revoked in the manager is
+    shown as revoked, not read from a stale cache. Commands run in a
+    UserService the app binds itself, as uid 0 or 2000. There is no hidden
+    ADB or root fallback, and nothing runs while the switch is off.
+  * **Two gates, not one.** Read-only queries (`id`, `getprop`, `ls`, `cat`,
+    `dumpsys -l`, `settings get`, `pm list`) may run directly when direct
+    read-only is on. Writes and service starts are yellow; deletes, stops,
+    uninstalls and privilege changes are red and wait for a system overlay
+    with a countdown. Without the overlay permission the command is refused,
+    not executed.
+  * **Advanced mode is explicit.** After a confirmation, yellow, blue and
+    green commands skip the overlay; red still opens it, with a fixed
+    three-second wait before “Allow once”. A timeout denies the command.
+  * **Cancelling a command cancels its process group.** Every run starts
+    through `setsid`, and cancel or timeout signals the group and reports
+    whether the processes are gone. “Cancelled” is never claimed when
+    termination was not confirmed.
+  * **“Unconfirmed” is its own outcome.** Each operation is written to a
+    durable journal before dispatch, so a lost reply, Binder death or an app
+    restart reports the result as unconfirmed and never resubmits the
+    command. Journal and output are bounded: a full history refuses new
+    commands instead of dropping records.
+  * **The AI bridge stays on the phone.** The built-in Ubuntu reaches the
+    broker over a private Unix socket that only the app's own UID can open,
+    with bounded frames. There is no network listener and no credential in
+    the model's context. Under the Landlock sandbox the bridge reports
+    itself unavailable instead of pretending to connect.
+  * **Receipts you can read.** Chat and the settings page tell a refusal, a
+    confirmation timeout, a command that never ran, a cancellation, a
+    failure and an unconfirmed result apart, in English and Simplified
+    Chinese. The agent is told which one happened and is not invited to
+    retry a refusal.
+  * **Third-party.** Adds the Shizuku API/Provider 13.1.5 (MIT); the Shizuku
+    manager application is not bundled. Requires Shizuku v11 or newer, or
+    Sui, plus the overlay permission for red commands.
+
 ## 0.3.25+33 — 2026-11-17
 
   * **A visual local-usage dashboard.** Activity heatmap, lifetime overview,
