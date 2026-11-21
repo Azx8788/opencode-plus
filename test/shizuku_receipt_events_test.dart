@@ -33,14 +33,17 @@ void main() {
     });
   }
 
-  ToolState tool(List<EventEnvelope> events) {
+  Map<String, dynamic> wireState(List<EventEnvelope> events) {
     final part =
         events
                 .firstWhere((e) => e.type == 'message.part.updated')
                 .properties['part']
             as Map;
-    return ToolState.fromJson(part['state']);
+    return Map<String, dynamic>.from(part['state'] as Map);
   }
+
+  ToolState tool(List<EventEnvelope> events) =>
+      ToolState.fromJson(wireState(events));
 
   test('progress operation reference survives an interrupted step', () {
     start();
@@ -56,9 +59,13 @@ void main() {
       'sessionID': 'ses1',
       'reason': 'user',
     });
-    final state = tool(events);
+    final raw = wireState(events);
+    expect(raw['executed'], isFalse);
+    // ToolState normalizes the provider-side flag on terminal tools for beta
+    // compatibility. Neither that normalized flag nor progress proves what
+    // the Android command did.
+    final state = ToolState.fromJson(raw);
     expect(state.metadata?['android']['operationId'], 'original');
-    expect(state.executed, isFalse);
     final receipt = ShizukuReceipt.forTool(
       'shizuku_exec',
       metadata: state.metadata,

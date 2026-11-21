@@ -123,6 +123,21 @@ void main() {
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
+    await mount(
+      tester,
+      ToolState.fromJson({
+        'status': 'error',
+        'executed': false,
+        'error': 'Tool execution interrupted',
+        'metadata': {
+          'android': {'operationId': 'original', 'state': 'waiting'},
+        },
+      }),
+    );
+    expect(
+      tester.widget<KitToolRow>(find.byType(KitToolRow)).status,
+      KitToolStatus.unconfirmed,
+    );
   });
 
   testWidgets('Android receipt overrides enclosing tool execution flag', (

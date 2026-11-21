@@ -37,6 +37,8 @@
 
 本机阶段结果：17 项纯 JVM JUnit 回归通过；7 项纯 Dart 回执规则通过（仅将测试 runner 从 `flutter_test` 换为 `test`，未运行 widget）；Node 插件/帧夹具通过；Dart 格式检查及回执规则单文件分析通过。完整 Flutter、Gradle 和新 APK 真机结果仍待确认。
 
+CI #148：静态分析、原生回归、APK 编译/签名/ABI 校验通过；Flutter 553 通过、1 失败。失败位于新增事件测试：误把 `ToolState` 兼容归一化后的 `executed` 当原始标志。测试已改为分别核对 wire flag 和 Android 回执，并覆盖经过实际归一化后仍显示“未确认”；不删除断言，也不修改现有 beta 兼容行为。修订需下一轮完整 CI。
+
 ## 参考与许可
 
 参考 [ExTV/rikkahub-agent](https://github.com/ExTV/rikkahub-agent/tree/a88f5854b4d2e2706ea2ae8304a7d66a3f9f2bbc) 的“拒绝作为终态并向模型返回明确原因”的处理思路，及 [OpenCode V2 插件的 Permissions 契约](https://opencode.ai/v2/docs/build/plugins/server#permissions)。
