@@ -123,6 +123,7 @@ import 'team_glance.dart';
 import 'orchestration_store.dart';
 import 'elsewhere_attention.dart';
 import 'profiles.dart';
+import '../telegram/telegram_bot.dart';
 import 'task_trace.dart';
 import '../domain/task_trace.dart';
 import '../api2/task_trace.dart';
@@ -332,6 +333,25 @@ class ConnectionController extends ChangeNotifier
         _ConnectionControllerSideConnections {
   final ProfileStore store;
   final BackgroundLiveController backgroundLive;
+
+  /// Optional private Telegram relay, kept alive with the app's primary
+  /// connection controller rather than with its settings screen.
+  late final TelegramBotBridge telegramBot = TelegramBotBridge(
+    preferences: store.prefs,
+    secureStorage: store.secure,
+    events: events,
+    profileID: () => (_connectedProfile ?? profile)?.id,
+    directory: () => directory,
+    workspace: () => workspace,
+    supported: _telegramSupported,
+    addHostListener: addListener,
+    removeHostListener: removeListener,
+    sendPrompt: _sendTelegramPrompt,
+    stopAgent: _stopTelegramAgent,
+    readLatestReply: _readLatestTelegramReply,
+    agentStatus: _telegramAgentStatus,
+    isSessionBusy: (sessionID) => busySessions.contains(sessionID),
+  );
 
   /// Answers to agents' requests held briefly so they can be undone (see
   /// delayed_answers.dart); shared by the chat and the Conversations list.
@@ -792,6 +812,7 @@ class ConnectionController extends ChangeNotifier
       paseoUsageMonitor.start();
       if (_hasUsageReaders) usageSubscriptions.start();
       _paWarmUp();
+      unawaited(telegramBot.initialize());
     }
   }
   void _quotaMonitorChanged() {
@@ -1053,6 +1074,7 @@ class ConnectionController extends ChangeNotifier
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    if (_ownsProfileServices) telegramBot.dispose();
     _forgetTurnStalls();
     _mcpChatDispose();
     _connectorSearchDispose();
@@ -1121,6 +1143,133 @@ class ConnectionController extends ChangeNotifier
   void _notifyListeners() {
     _syncTurnStallsOnNotify();
     notifyListeners();
+  }
+
+  bool _telegramSupported() =>
+      !_disposed &&
+      platformCapabilities.supportsBackgroundService &&
+      looksLikeInAppServer(_connectedProfile ?? profile) &&
+      isConnected &&
+      api is Api2Gateway;
+
+  Future<String> _sendTelegramPrompt(String text) async {
+    if (!_telegramSupported()) {
+      throw const ProductException(
+        'Connect to this phone’s OpenCode server before sending Telegram commands.',
+      );
+    }
+    if (directory == null || workspaceChoiceRequired) {
+      throw const ProductException(
+        'Open a project folder in OpenCode Plus before sending Telegram commands.',
+      );
+    }
+    var transport = await _requireActionTransport();
+    if (transport is! PromptGateway || transport is! SessionGateway) {
+      throw const ProductException('This server cannot accept Telegram prompts.');
+    }
+    await ensureInteractiveSendAllowed(expectedApi: transport);
+    final owner = (_connectedProfile ?? profile)?.id;
+    if (owner == null) throw const ProductException('No OpenCode server is selected.');
+    final sessionKey = '${TelegramBotBridge.sessionIDKeyPrefix}$owner';
+    final directoryKey = '${TelegramBotBridge.directoryKeyPrefix}$owner';
+    final workspaceKey = '${TelegramBotBridge.workspaceKeyPrefix}$owner';
+    var sessionID = store.prefs.getString(sessionKey);
+    final savedDirectory = store.prefs.getString(directoryKey);
+    final savedWorkspace = store.prefs.getString(workspaceKey);
+    if (sessionID == null ||
+        savedDirectory != directory ||
+        savedWorkspace != workspace) {
+      sessionID = (await createSession()).id;
+      if (!await store.prefs.setString(sessionKey, sessionID) ||
+          !await store.prefs.setString(directoryKey, directory!) ||
+          !await store.prefs.setString(workspaceKey, workspace ?? '')) {
+        throw const ProductException(
+          'The Telegram session could not be saved. No prompt was sent.',
+        );
+      }
+      transport = await _requireActionTransport();
+      if (transport is! PromptGateway) {
+        throw const ProductException('The OpenCode connection changed. Try again.');
+      }
+    }
+    await telegramBot.bindSession(sessionID);
+    await ensureInteractiveSendAllowed(expectedApi: transport);
+    final agent = selectedAgent.trim();
+    final variant = selectedVariant.trim();
+    await (transport as PromptGateway).promptAsync(
+      sessionID,
+      text: text,
+      model: selectedModel,
+      agent: agent.isEmpty ? null : agent,
+      variant: variant.isEmpty ? null : variant,
+    );
+    return sessionID;
+  }
+
+  Future<void> _stopTelegramAgent() async {
+    final sessionID = telegramBot.snapshot.sessionID;
+    if (sessionID == null || sessionID.isEmpty) {
+      throw const ProductException('There is no Telegram session to stop.');
+    }
+    final owner = (_connectedProfile ?? profile)?.id;
+    if (owner == null ||
+        store.prefs.getString(
+              '${TelegramBotBridge.directoryKeyPrefix}$owner',
+            ) !=
+            directory ||
+        store.prefs.getString(
+              '${TelegramBotBridge.workspaceKeyPrefix}$owner',
+            ) !=
+            (workspace ?? '')) {
+      throw const ProductException(
+        'The Telegram conversation belongs to a different project. Open it in the app first.',
+      );
+    }
+    if (!busySessions.contains(sessionID)) {
+      throw const ProductException('The Telegram session is not running a task.');
+    }
+    final transport = await _requireActionTransport();
+    if (transport is! PromptGateway) {
+      throw const ProductException('This server cannot stop agent tasks.');
+    }
+    await ensureInteractiveSendAllowed(expectedApi: transport);
+    noteStopFromThisApp(sessionID);
+    try {
+      await transport.abort(sessionID);
+    } on Object {
+      noteStopFromThisApp(sessionID, asked: false);
+      rethrow;
+    }
+  }
+
+  Future<String?> _readLatestTelegramReply() async {
+    final sessionID = telegramBot.snapshot.sessionID;
+    final transport = api;
+    if (sessionID == null || transport is! SessionGateway) return null;
+    final messages = await transport.messages(sessionID);
+    for (final message in messages.reversed) {
+      if (message.info.role != 'assistant') continue;
+      if (message.info.time?.isDone != true) return null;
+      final text = message.parts
+          .where((part) => part.type == 'text' && !part.synthetic)
+          .map((part) => part.text)
+          .where((part) => part.trim().isNotEmpty)
+          .join('\n')
+          .trim();
+      if (text.isNotEmpty) return text;
+    }
+    return null;
+  }
+
+  String _telegramAgentStatus() {
+    if (!_telegramSupported() || !isConnected || api is! Api2Gateway) {
+      return '本机 OpenCode 当前未连接。';
+    }
+    final sessionID = telegramBot.snapshot.sessionID;
+    if (sessionID == null) return '本机 OpenCode 已连接；尚未绑定会话。打开一个对话，或在 Telegram 发送指令开始新会话。';
+    return busySessions.contains(sessionID)
+        ? '本机 Agent 正在执行任务。'
+        : '本机 OpenCode 已连接；Agent 当前空闲。';
   }
 
   /// Announces [profileDataChanges] for the deletion sweep in its part.

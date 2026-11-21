@@ -28376,6 +28376,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsV3VoiceTyping => '语音输入';
 
   @override
+  String get telegramBotSettingsTitle => 'Telegram 机器人';
+
+  @override
+  String get telegramBotSettingsKeywords =>
+      'Telegram 电报 机器人 Agent 远程 消息 进度 指令 用户 ID';
+
+  @override
   String get settingsV3Permissions => '权限与自动化';
 
   @override

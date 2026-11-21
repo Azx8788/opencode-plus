@@ -30118,6 +30118,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsV3VoiceTyping => 'Voice typing';
 
   @override
+  String get telegramBotSettingsTitle => 'Telegram bot';
+
+  @override
+  String get telegramBotSettingsKeywords =>
+      'Telegram bot remote agent messages progress command chat ID token';
+
+  @override
   String get settingsV3Permissions => 'Permissions and automation';
 
   @override

@@ -303,6 +303,23 @@ extension _IndexHubRows on _IndexBuild {
         gate: (scope) => scope.platform.supportsVoice,
         open: _openVoice,
       ),
+      SearchEntry(
+        id: 'settings-telegram-bot',
+        kind: SearchEntryKind.hubRow,
+        group: SettingsGroup.chat,
+        icon: AppIconography.chat,
+        title: l10n.telegramBotSettingsTitle,
+        keywords: l10n.telegramBotSettingsKeywords,
+        pages: const ['telegram-bot'],
+        gate: (scope) =>
+            scope.platform.supportsBackgroundService &&
+            !scope.controller.isIsolated &&
+            !scope.controller.isAgentBackend &&
+            !scope.controller.isSideBackend,
+        open: _screen(
+          (scope) => TelegramBotScreen(controller: scope.controller),
+        ),
+      ),
       // This app: what notifies, what keeps it running, how it looks, what
       // it keeps, what it has cost.
       SearchEntry(

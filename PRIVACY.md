@@ -58,6 +58,19 @@ encrypted separately from the Android app sandbox. Queue entries are bounded by
 age, count, and total size. Server passwords are stored with Android secure
 storage. Android backup is disabled for this app.
 
+### Optional Telegram bot
+
+When enabled for the phone's built-in OpenCode server, the app stores the bot
+token in Android secure storage and stores the allowed Telegram user ID and
+polling cursor in app preferences. The bot accepts private text messages only
+from that configured ID. Messages are sent to the currently linked OpenCode
+conversation as normal prompts. The conversation's agent replies and brief
+tool-progress notices are sent to that Telegram chat. Telegram and its
+infrastructure receive whatever prompt and reply text you choose to send;
+Telegram's retention and privacy practices apply. The bridge does not approve
+OpenCode permissions. Disabling the bridge stops polling, and deleting the
+server profile removes its Telegram token and local bot settings.
+
 On-device Termux setup writes a server password into the private Termux/Ubuntu
 environment so that the local server can restart. Protect access to both apps
 and remove that environment when you no longer use it.

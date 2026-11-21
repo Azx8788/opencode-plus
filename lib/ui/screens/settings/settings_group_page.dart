@@ -21,6 +21,7 @@ const settingsGroupRowIds = <SettingsGroup, List<String>>{
     'settings-phrase-chips',
     'default-shell-settings-entry',
     'settings-voice',
+    'settings-telegram-bot',
     'settings-automation',
   ],
   SettingsGroup.thisApp: [
@@ -308,6 +309,7 @@ class _SettingsGroupBodyState extends State<_SettingsGroupBody> {
                 builder: (_) => DefaultShellRow(controller: controller),
               ),
         row('settings-voice'),
+        row('settings-telegram-bot'),
         row('settings-automation'),
       ],
       SettingsGroup.thisApp => [

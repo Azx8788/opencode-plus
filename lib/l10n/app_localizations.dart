@@ -47581,6 +47581,12 @@ abstract class AppLocalizations {
   /// **'Voice typing'**
   String get settingsV3VoiceTyping;
 
+  /// Settings row for the opt-in Telegram bridge to the phone's local agent.
+  String get telegramBotSettingsTitle;
+
+  /// Search terms for the Telegram agent bridge settings.
+  String get telegramBotSettingsKeywords;
+
   /// Settings hub row: what runs by itself and the always allowed actions.
   ///
   /// In en, this message translates to:

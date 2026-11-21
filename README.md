@@ -22,6 +22,10 @@ of losing its servers and its Ubuntu.
 - **Approve from anywhere**: notification, home-screen widget or the chat.
 - **See the result**: built-in terminal, in-app preview, phone-sized diffs.
 - **Scheduled prompts**, widgets, voice input, and multi-agent teams are kept.
+- **Optional Telegram relay** for the on-phone OpenCode server: send text
+  instructions from one allowlisted private account and receive agent replies
+  plus brief progress notices. The bot token stays in Android secure storage.
+  See [docs/TELEGRAM_BOT.md](docs/TELEGRAM_BOT.md) for setup and limits.
 
 ## Platform
 
@@ -232,6 +236,12 @@ iOS 与桌面工程、多语言（仅中英）、Shorebird 热更新、文档站
 想详细了解仓库，读 [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md)：
 逐目录职责、Kotlin 169 个文件的分组、Rust 引擎模块与测试、依赖与测试清单、
 常见改动步骤和故障排查表。
+
+可选 Telegram 机器人在「设置 → 对话 → Telegram 机器人」配置：使用
+@BotFather 创建 bot，并填写自己的 Telegram 数字用户 ID。机器人只处理该 ID
+的私聊文字消息；Agent 回复和工具进度会回传 Telegram。Bot Token 使用 Android
+安全存储；在 Telegram 收发的内容会经过 Telegram 服务。要后台持续接收消息，
+需保持 App 可运行并启用后台运行功能。
 
 0.3.13 及以前叫 OpenCode Mini；现在应用名、桌面图标名与文档统一为
 OpenCode Plus，包名仍为 `com.azx8788.opencode.mini`，因此可以直接覆盖升级，

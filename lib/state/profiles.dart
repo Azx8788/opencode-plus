@@ -36,6 +36,7 @@ import 'setup_audit_store.dart';
 import 'session_link_bindings.dart';
 import 'agent_handoff_links.dart';
 import 'pending_command_journal.dart';
+import '../telegram/telegram_bot.dart' show TelegramBotBridge;
 
 export '../domain/server_probe.dart' show ServerFlavor;
 export '../domain/loopback_host.dart' show isLoopbackHost, isPrivateNetworkHost;
@@ -165,6 +166,7 @@ class ProfileStore {
         key.startsWith(teamEngineAuthKey) ||
         key.startsWith(quotaTokenKeyPrefix) ||
         key.startsWith(githubTokenKeyPrefix) ||
+        key.startsWith(TelegramBotBridge.tokenKeyPrefix) ||
         key.startsWith(phoneAgentHostSecretPrefix) ||
         key.startsWith(byoHostSecretsKeyPrefix);
     try {
@@ -759,6 +761,7 @@ class ProfileStore {
       }
       await secure.delete(key: '$quotaTokenKeyPrefix$id');
       await secure.delete(key: '$githubTokenKeyPrefix$id');
+      await secure.delete(key: '${TelegramBotBridge.tokenKeyPrefix}$id');
     } catch (error) {
       await _restoreProfiles(previousRaw);
       await AgentHandoffLinks.cancelDeletion(prefs, id);

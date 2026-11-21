@@ -488,6 +488,14 @@ class _ChatScreenState extends State<ChatScreen>
     _openedMicros = PerfTrace.nowMicros;
     _composer.text = widget.initialText;
     _conn = _readConn();
+    if (!_conn.isIsolated &&
+        !_conn.isAgentBackend &&
+        !_conn.isSideBackend &&
+        !_watching) {
+      unawaited(
+        _conn.telegramBot.bindSession(widget.sessionID).catchError((Object _) {}),
+      );
+    }
     _git.addListener(_gitChanged);
     _loadHandoffLinks();
     if (!_conn.isIsolated) {
@@ -631,7 +639,17 @@ class _ChatScreenState extends State<ChatScreen>
   @override
   void didUpdateWidget(covariant ChatScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.sessionID != widget.sessionID) _readAloudScopeChanged();
+    if (oldWidget.sessionID != widget.sessionID) {
+      _readAloudScopeChanged();
+      if (!_conn.isIsolated &&
+          !_conn.isAgentBackend &&
+          !_conn.isSideBackend &&
+          !_watching) {
+        unawaited(
+          _conn.telegramBot.bindSession(widget.sessionID).catchError((Object _) {}),
+        );
+      }
+    }
   }
 
   // Listeners and identity-sensitive callbacks (see the note above the part
