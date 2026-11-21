@@ -834,7 +834,13 @@ extension _ConnectionControllerPermissionsImpl on ConnectionController {
     try {
       final legacyIdentity = _legacyPermissionIdentities[requestID];
       final v2SessionID = _v2PermissionSessions[requestID];
-      if (v2SessionID != null) {
+      if (v2SessionID != null && currentApi is Api2Gateway) {
+        await currentApi.respondToPermissionRequest(
+          permission,
+          response,
+          message: message,
+        );
+      } else if (v2SessionID != null) {
         await currentApi.respondPermissionV2(
           v2SessionID,
           permission.id,

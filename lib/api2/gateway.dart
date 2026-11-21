@@ -661,6 +661,30 @@ class Api2Gateway
   Future<List<PermissionRequest>> pendingPermissionsV2() =>
       pendingPermissions();
 
+  /// Reply to the exact pending request already resolved by the app.
+  Future<void> respondToPermissionRequest(
+    PermissionRequest request,
+    String reply, {
+    String? message,
+  }) => _run(() {
+    final decision = mapPermissionReply(reply);
+    // Core ends the step on a bare reject. Feedback keeps the decision a
+    // rejection, but lets Core give the model a tool error for this call.
+    final feedback =
+        decision == Api2PermissionReply.reject &&
+            request.permission == 'shizuku' &&
+            (message == null || message.trim().isEmpty)
+        ? 'The user declined this Android shell request. Do not retry it '
+              'or perform the same action through another channel.'
+        : message;
+    return client.replyPermission(
+      request.sessionID,
+      request.id,
+      decision,
+      message: feedback,
+    );
+  });
+
   @override
   Future<void> respondPermission(
     String requestID,

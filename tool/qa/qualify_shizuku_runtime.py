@@ -26,7 +26,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--binary", default="opencode2")
     parser.add_argument("--temp-root", default="/tmp/opencode")
-    parser.add_argument("--mixed", action="store_true", help="Also test a same-step native confirmation wait alongside a direct read")
+    scenarios = parser.add_mutually_exclusive_group()
+    scenarios.add_argument("--mixed", action="store_true", help="Also test a same-step native confirmation wait alongside a direct read")
+    scenarios.add_argument("--reject-with-feedback", action="store_true", help="Check that Core delivers an explicit rejection to the model without submitting a native command")
     args = parser.parse_args()
     version = subprocess.check_output([args.binary, "--version"], text=True).strip()
     if version != "opencode v2.1.1":
@@ -212,8 +214,24 @@ def main():
             catalog = request("/api/rpc/qa-shizuku/tools" + location, {"input": {}})["output"]["ids"]
             if sorted(catalog) != ["shizuku_exec", "shizuku_result", "shizuku_status"]:
                 raise RuntimeError("The actual tool registration does not match the pinned contract")
-            session = request("/api/session" + location, {"title": "Local Android tool fixture"})["data"]["id"]
+            session_input = {"title": "Local Android tool fixture"}
+            if args.reject_with_feedback:
+                session_input["permissions"] = [{"action": "shizuku", "resource": "*", "effect": "ask"}]
+            session = request("/api/session" + location, session_input)["data"]["id"]
             request("/api/session/" + session + "/prompt", {"text": "Execute the local contract fixture.", "resume": True})
+            if args.reject_with_feedback:
+                permission_path = f"/api/session/{session}/permission"
+                deadline = time.monotonic() + 30
+                while True:
+                    pending = request(permission_path)["data"]
+                    permission = next((p for p in pending if p["action"] == "shizuku"), None)
+                    if permission is not None:
+                        break
+                    if time.monotonic() > deadline:
+                        raise RuntimeError("The fixture command never requested Shizuku approval")
+                    time.sleep(.1)
+                feedback = "The user declined this Android shell request. Do not retry it."
+                request(f"{permission_path}/{permission['id']}/reply", {"decision": "reject", "message": feedback})
             specification = request("/openapi.json")
             wait_path = next((p for p in specification["paths"] if p.endswith("/wait") and "session" in p), None)
             if wait_path:
@@ -224,12 +242,20 @@ def main():
                 deadline = time.monotonic() + 45
                 while not model_outputs and time.monotonic() < deadline:
                     time.sleep(.1)
+            submits = [r for r in native_requests if r["method"] == "submit"]
+            if args.reject_with_feedback:
+                if submits or records:
+                    raise RuntimeError("The rejected Shizuku command reached native submit")
+                if not any(m.get("tool_call_id") == "fixture-native-call-0" and
+                           feedback in json.dumps(m.get("content")) for m in model_outputs):
+                    raise RuntimeError("The model did not receive feedback for the rejected call")
+                print("Real OpenCode 2.1.1: explicit rejection reached the original tool call in the model input; zero native submits")
+                return
             if not model_outputs or not records:
                 raise RuntimeError("No model tool-output continuation arrived; inspect the private fixture log")
             returned = json.dumps(model_outputs)
             if "ANDROID_VERSION_FIXTURE" not in returned:
                 raise RuntimeError("The actual model continuation lost the native output")
-            submits = [r for r in native_requests if r["method"] == "submit"]
             if len(submits) != len(commands):
                 raise RuntimeError("The fixture command did not execute exactly once")
             scope = submits[0]["scope"]

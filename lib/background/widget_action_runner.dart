@@ -296,10 +296,14 @@ class WidgetActionRunner {
               throw const _Refused('staleRequest');
             }
             final pending = await read(gateway.pendingPermissions);
-            if (!pending.any(
-              (p) =>
-                  p.id == action.requestID && p.sessionID == action.sessionID,
-            )) {
+            final permission = pending
+                .where(
+                  (p) =>
+                      p.id == action.requestID &&
+                      p.sessionID == action.sessionID,
+                )
+                .firstOrNull;
+            if (permission == null) {
               throw const _Refused('staleRequest');
             }
             // Capture a server turn identity before acknowledging permission;
@@ -308,13 +312,16 @@ class WidgetActionRunner {
               await read(() => gateway.messages(action.sessionID)),
             );
             await guard();
+            final reply = action.action == 'allowOnce' ? 'once' : 'reject';
             await mutate(
-              () => gateway.respondPermission(
-                action.requestID,
-                action.action == 'allowOnce' ? 'once' : 'reject',
-                legacySessionID: action.sessionID,
-                legacyPermissionID: action.requestID,
-              ),
+              () => gateway is Api2Gateway
+                  ? gateway.respondToPermissionRequest(permission, reply)
+                  : gateway.respondPermission(
+                      action.requestID,
+                      reply,
+                      legacySessionID: action.sessionID,
+                      legacyPermissionID: action.requestID,
+                    ),
             );
           case 'stop':
             if (row['busy'] != true ||
