@@ -9,18 +9,25 @@ import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 
 /** Permanent bounded dedup metadata; only the separate recent output cache is pruned. */
-internal class ShizukuOperationJournal(private val directory: File, private val now: () -> Long,
+internal class ShizukuOperationJournal(directory: File, private val now: () -> Long,
                                        private val capacity: Int = 4096, private val cachedResults: Int = 16) {
+    private var directory = directory.absoluteFile
     private val rows = linkedMapOf<String, JSONObject>()
     private var healthy = true
     private val terminal = setOf("succeeded", "failed", "denied", "cancelled", "unknown")
 
     init {
         try {
-            if (!directory.exists()) check(directory.mkdirs())
-            check(directory.canonicalFile == directory.absoluteFile && !Files.isSymbolicLink(directory.toPath()))
-            privateMode(directory)
-            val entries = checkNotNull(directory.listFiles()).filter { it.name.endsWith(".json") }
+            // Android can expose its app-owned filesDir through /data/user/0
+            // or another alias. Canonicalize that parent, never the journal itself.
+            val path = this.directory
+            this.directory = File(checkNotNull(path.parentFile).canonicalFile, path.name)
+            val canonical = this.directory
+            check(!Files.isSymbolicLink(canonical.toPath()))
+            if (!canonical.exists()) check(canonical.mkdirs())
+            check(canonical.canonicalFile == canonical && canonical.isDirectory)
+            privateMode(canonical)
+            val entries = checkNotNull(canonical.listFiles()).filter { it.name.endsWith(".json") }
             check(entries.size <= capacity)
             for (file in entries) {
                 check(file.name.matches(Regex("[a-f0-9]{64}\\.json")))
@@ -43,6 +50,8 @@ internal class ShizukuOperationJournal(private val directory: File, private val 
     }
 
     @Synchronized fun available() = healthy
+
+    @Synchronized fun full() = healthy && rows.size >= capacity
 
     /** true only for a newly durably admitted operation. */
     @Synchronized fun admit(id: String, owner: ShizukuProtocol.Owner, digest: String): Boolean {

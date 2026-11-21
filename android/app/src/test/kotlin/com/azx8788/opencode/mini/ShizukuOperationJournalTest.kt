@@ -89,9 +89,23 @@ class ShizukuOperationJournalTest {
 
     @Test fun `history exhaustion does not silently delete a previous operation`() {
         val value = journal(temporary.newFolder(), capacity = 1)
+        assertFalse(value.full())
         value.admit("op", owner, fingerprint)
+        assertTrue(value.full())
         assertThrows(IllegalStateException::class.java) { value.admit("new", owner, fingerprint) }
         assertFalse(value.admit("op", owner, fingerprint))
+    }
+
+    @Test fun `an Android filesDir parent alias does not disable a safe journal`() {
+        val files = temporary.newFolder("real-files")
+        val alias = File(temporary.root, "files-alias")
+        Files.createSymbolicLink(alias.toPath(), files.toPath())
+        val value = journal(File(alias, "shizuku-operations"))
+        assertTrue(value.available())
+        assertTrue(value.admit("op", owner, fingerprint))
+        val restored = journal(File(files, "shizuku-operations"))
+        assertTrue(restored.available())
+        assertFalse(restored.admit("op", owner, fingerprint))
     }
 
     @Test fun `unreadable metadata and symlinked storage are not overwritten`() {

@@ -157,7 +157,7 @@ extension _IndexHubRows on _IndexBuild {
         group: SettingsGroup.ai,
         icon: AppIconography.tools,
         title: 'Shizuku',
-        keywords: 'Shizuku ADB root shell command phone tools',
+        keywords: 'Shizuku ADB root shell command phone tools 授权 权限 命令 调试',
         pages: const ['shizuku-settings'],
         open: (context, _) => _push(context, const ShizukuScreen()),
       ),

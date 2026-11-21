@@ -21,12 +21,15 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
   Map<String, Object?> _settings = const {};
   Map<String, Object?>? _result;
   Object? _error;
+  Object? _statusError;
   bool _busy = false;
   bool _saving = false;
   bool _settingsLoaded = false;
-  bool _cancelling = false;
-  bool _cancelRequested = false;
+  String? _cancellingOperationId;
+  String? _cancelRequestedOperationId;
   String? _activeOperationId;
+  int _lastStatusRevision = -1;
+  int _statusGeneration = 0;
 
   bool get _zh => Localizations.localeOf(context).languageCode == 'zh';
   String text(String en, String zh) => _zh ? zh : en;
@@ -37,24 +40,58 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
     super.initState();
     _subscription = ShizukuPlatform.changes.listen(
       _update,
-      onError: (Object error) {
-        if (mounted) setState(() => _error = error);
-      },
+      onError: _markStatusUnavailable,
     );
     _refresh();
     _loadSettings();
   }
 
   void _update(Map<String, Object?> value) {
-    if (mounted) setState(() => _state = value);
+    _applyStatus(value);
+  }
+
+  void _applyStatus(Map<String, Object?> value) {
+    if (!mounted) return;
+    final revision = value['statusRevision'] as int;
+    if (revision < _lastStatusRevision) return;
+    _lastStatusRevision = revision;
+    _statusGeneration++;
+    setState(() {
+      _state = value;
+      _statusError = null;
+    });
+  }
+
+  void _markStatusUnavailable(Object error) {
+    if (!mounted) return;
+    _statusGeneration++;
+    setState(() {
+      _statusError = error;
+      _state = {
+        ..._state,
+        'binderAlive': null,
+        'permission': 'unknown',
+        'permissionRequestState': 'unknown',
+        'permissionRequestReason': null,
+        'permissionResult': null,
+        'executionReady': false,
+        'binding': 'disconnected',
+        'bindingReason': 'status_unavailable',
+        'uid': null,
+        'serverUid': null,
+        'serverVersion': null,
+        'serviceInstance': null,
+        'backend': 'unknown',
+        'provider': 'unknown',
+        'availabilityReason': 'status_unavailable',
+      };
+    });
   }
 
   Future<void> _loadSettings() async {
+    if (!mounted) return;
     try {
       final value = await ShizukuPlatform.settings();
-      if (value.isEmpty) {
-        throw const FormatException('Shizuku settings unavailable');
-      }
       if (mounted) {
         setState(() {
           _settings = Map<String, Object?>.from(value);
@@ -115,7 +152,8 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
       );
       if (mounted) setState(() => _settings = value);
     } catch (error) {
-      if (mounted) setState(() => _error = error);
+      if (!mounted) return;
+      setState(() => _error = error);
       await _loadSettings();
     }
     if (mounted) setState(() => _saving = false);
@@ -155,20 +193,22 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
   }
 
   Future<void> _refresh() async {
+    if (!mounted) return;
+    final generation = _statusGeneration;
     try {
       final value = await ShizukuPlatform.status();
-      if (mounted) {
-        setState(() {
-          _state = value;
-        });
-      }
+      // An event (including a stream error) supersedes an in-flight read.
+      if (generation == _statusGeneration) _applyStatus(value);
     } catch (error) {
-      if (mounted) setState(() => _error = error);
+      if (generation == _statusGeneration) _markStatusUnavailable(error);
     }
   }
 
-  Future<void> _run(Future<void> Function() action) async {
-    if (_busy) return;
+  Future<void> _run(
+    Future<void> Function() action, {
+    bool refreshStatus = true,
+  }) async {
+    if (!mounted || _busy) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -178,8 +218,10 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
     } catch (error) {
       if (mounted) setState(() => _error = error);
     }
-    if (mounted) setState(() => _busy = false);
-    await _refresh();
+    if (!mounted) return;
+    if (refreshStatus) await _refresh();
+    if (!mounted) return;
+    setState(() => _busy = false);
   }
 
   Future<void> _execute(String command, {required String prefix}) async {
@@ -187,7 +229,7 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
     setState(() {
       _activeOperationId = id;
       _result = null;
-      _cancelRequested = false;
+      _cancelRequestedOperationId = null;
     });
     try {
       final value = await ShizukuPlatform.execute(
@@ -195,32 +237,45 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
         command: command,
         timeout: Duration(seconds: _getInt('command_timeout_seconds', 30)),
       );
-      if (mounted) setState(() => _result = value);
+      if (mounted && _activeOperationId == id) {
+        setState(() => _result = value);
+      }
     } finally {
-      if (mounted) setState(() => _activeOperationId = null);
+      if (mounted) {
+        setState(() {
+          if (_activeOperationId == id) _activeOperationId = null;
+          if (_cancelRequestedOperationId == id) {
+            _cancelRequestedOperationId = null;
+          }
+        });
+      }
     }
   }
 
   Future<void> _cancel() async {
     final id = _activeOperationId;
-    if (id == null || _cancelling) return;
-    setState(() => _cancelling = true);
+    if (id == null || _cancellingOperationId == id) return;
+    setState(() => _cancellingOperationId = id);
     try {
-      await ShizukuPlatform.cancel(id);
-      if (mounted) setState(() => _cancelRequested = true);
+      // The boolean is a termination snapshot, not an acknowledgement that
+      // the command and all its side effects have been undone.
+      final acknowledged = await ShizukuPlatform.cancel(id);
+      if (acknowledged && mounted && _activeOperationId == id) {
+        setState(() => _cancelRequestedOperationId = id);
+      }
     } catch (error) {
-      if (mounted) setState(() => _error = error);
+      if (mounted && _activeOperationId == id) {
+        setState(() => _error = error);
+      }
     } finally {
-      if (mounted) setState(() => _cancelling = false);
+      if (mounted && _cancellingOperationId == id) {
+        setState(() => _cancellingOperationId = null);
+      }
     }
   }
 
   /// What the request state actually means, without turning it into a grant.
   String _permissionRequestExplanation(String reason) => switch (reason) {
-    'sui_managed_authorization' => text(
-      'Sui owns authorization here, so there is no manager dialog to answer. Enable OpenCode Plus in Sui, then refresh.',
-      '此处由 Sui 管理授权，没有可回答的管理器弹窗。请在 Sui 中允许 OpenCode Plus，然后刷新。',
-    ),
     'permission_callback_missing' => text(
       'Shizuku returned no decision. Open the manager and check that OpenCode Plus is listed, then request again.',
       'Shizuku 没有返回你的选择。请打开管理器确认列表中有 OpenCode Plus，然后重新申请。',
@@ -283,9 +338,11 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
   @override
   Widget build(BuildContext context) {
     final uid = _state['uid'];
+    final applicationId = '${_state['applicationId'] ?? 'unknown'}';
+    final isSui = _state['provider'] == 'sui';
     final backend = switch (_state['backend']) {
-      'root' => 'ROOT (UID 0)',
-      'adb' => 'ADB (UID 2000)',
+      'root' => text('ROOT', 'ROOT'),
+      'adb' => 'ADB',
       'unsupported' => text('Unsupported identity', '不支持的身份'),
       _ => text('Unknown', '未知'),
     };
@@ -293,7 +350,7 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
       'granted' => text('Granted', '已授权'),
       'denied' => text('Denied', '已拒绝'),
       'not_registered' => text('App not registered', '应用未登记'),
-      'requestable' => text('Not requested', '未申请'),
+      'requestable' => text('Not authorized', '未授权'),
       _ => text('Unknown', '未知'),
     };
     final overlayTimeout = _getInt(
@@ -308,13 +365,28 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
     final overlayAllowed = _state['overlayAllowed'] == true;
     final readOnlyDirect = _settings['direct_read_only'] != false;
     final advanced = _settings['advanced_mode'] == true;
-    final ready =
+    final serviceReady =
         _settingsLoaded &&
         _state['enabled'] == true &&
         _state['executionReady'] == true &&
         _state['operationStorageReady'] != false &&
-        _state['binding'] == 'connected' &&
+        _state['binding'] == 'connected';
+    final diagnosticReady =
+        serviceReady &&
+        _state['operationHistoryFull'] != true &&
         (overlayAllowed || readOnlyDirect || advanced);
+    final cancellationTestReady =
+        serviceReady &&
+        _state['operationHistoryFull'] != true &&
+        (overlayAllowed || advanced);
+    final error = _statusError ?? _error;
+    final bindingLabel = switch (_state['binding']) {
+      'connected' => text('connected', '已连接'),
+      'connecting' => text('connecting', '连接中'),
+      'verifying' => text('verifying', '验证中'),
+      'failed' => text('failed', '失败'),
+      _ => text('disconnected', '未连接'),
+    };
     return Scaffold(
       appBar: AppBar(title: Text(text('Shizuku', 'Shizuku'))),
       body: ListView(
@@ -348,7 +420,10 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
             ),
           if (_state['shizukuProviderValid'] != null)
             _status(
-              text('Shizuku Binder provider configuration', 'Shizuku Binder Provider 配置'),
+              text(
+                'Shizuku Binder provider configuration',
+                'Shizuku Binder Provider 配置',
+              ),
               _state['shizukuProviderValid'],
             ),
           ListTile(
@@ -367,11 +442,23 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
                     ? null
                     : () => _run(ShizukuPlatform.requestPermission),
                 child: Text(
-                  text('Request Shizuku authorization', '申请 Shizuku 授权'),
+                  isSui
+                      ? text('Request Sui authorization', '申请 Sui 授权')
+                      : text('Request Shizuku authorization', '申请 Shizuku 授权'),
                 ),
               ),
             ),
           ),
+          if (isSui && _state['permission'] != 'granted')
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                text(
+                  'Sui displays its authorization prompt through SystemUI.',
+                  'Sui 会通过 SystemUI 显示授权确认。',
+                ),
+              ),
+            ),
           if (_state['permissionRequestState'] == 'requesting')
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -382,7 +469,8 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
                 ),
               ),
             ),
-          if (_state['permissionRequestReason'] != null)
+          if (_state['permissionRequestReason'] != null &&
+              _state['permissionRequestReason'] != _state['availabilityReason'])
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Text(
@@ -391,7 +479,7 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
                 ),
               ),
             ),
-          if (_state['availabilityReason'] == 'shizuku_app_not_listable')
+          if (_state['permission'] == 'not_registered')
             Padding(
               key: const ValueKey('shizuku-registration-reason'),
               padding: const EdgeInsets.all(12),
@@ -400,16 +488,21 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
                 children: [
                   Text(
                     _permissionRequestExplanation('shizuku_app_not_listable'),
-                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
                   ),
                   Text(
-                    text('Installed app ID: ', '当前安装包 ID：') +
-                        '${_state['applicationId'] ?? 'unknown'}',
+                    text(
+                      'Installed app ID: $applicationId',
+                      '当前安装包 ID：$applicationId',
+                    ),
                   ),
                 ],
               ),
             ),
-          if (_state['availabilityReason'] == 'shizuku_permission_unverified')
+          if (_state['binderAlive'] == true &&
+              _state['permission'] == 'unknown')
             Padding(
               key: const ValueKey('shizuku-permission-unverified'),
               padding: const EdgeInsets.all(12),
@@ -420,13 +513,13 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
             ),
           ListTile(
             title: Text(text('Execution identity', '执行身份')),
-            subtitle: Text('$backend${uid == null ? '' : ' · UID $uid'}'),
+            subtitle: Text(
+              uid == null ? text('Unknown', '未知') : '$backend · UID $uid',
+            ),
           ),
           ListTile(
             title: Text(text('UserService', '用户服务')),
-            subtitle: Text(
-              '${_state['binding'] ?? text('disconnected', '未连接')}',
-            ),
+            subtitle: Text(bindingLabel),
           ),
           ListTile(
             title: Text(text('Running server API', '运行中的服务 API')),
@@ -441,7 +534,9 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
             ),
             _state['aiBridgeReady'],
           ),
-          if (_state['bindingReason'] != null)
+          if (_state['bindingReason'] != null &&
+              _state['bindingReason'] != 'feature_disabled' &&
+              _state['enabled'] == true)
             Padding(
               key: const ValueKey('shizuku-binding-reason'),
               padding: const EdgeInsets.all(12),
@@ -460,6 +555,18 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
                 ),
               ),
             ),
+          if (_state['operationHistoryFull'] == true)
+            Padding(
+              key: const ValueKey('shizuku-operation-history-full'),
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                text(
+                  'The permanent operation history is full. New commands are disabled to prevent replay; existing records were preserved.',
+                  '永久操作记录已满。为防止重复执行，已停用新命令；现有记录会保留。',
+                ),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
           SwitchListTile(
             title: Text(text('Enable Shizuku commands', '启用 Shizuku 命令')),
             subtitle: Text(
@@ -473,7 +580,7 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
                 ? null
                 : (value) => _run(() async {
                     _update(await ShizukuPlatform.setEnabled(value));
-                  }),
+                  }, refreshStatus: false),
           ),
           const Divider(),
           Padding(
@@ -602,17 +709,13 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
                 child: Text(text('Allow safety overlay', '授权安全警告悬浮窗')),
               ),
               OutlinedButton(
-                onPressed: _busy
-                    ? null
-                    : () => _run(() async {
-                        await _refresh();
-                        await _loadSettings();
-                      }),
+                key: const ValueKey('shizuku-refresh'),
+                onPressed: _busy ? null : () => _run(_loadSettings),
                 child: Text(text('Refresh', '刷新')),
               ),
               FilledButton(
                 key: const ValueKey('shizuku-diagnostic'),
-                onPressed: _busy || !ready
+                onPressed: _busy || !diagnosticReady
                     ? null
                     : () => _run(
                         () => _execute(
@@ -623,7 +726,8 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
                 child: Text(text('Run read-only check', '运行只读诊断')),
               ),
               OutlinedButton(
-                onPressed: _busy || !ready
+                key: const ValueKey('shizuku-cancellation-test'),
+                onPressed: _busy || !cancellationTestReady
                     ? null
                     : () =>
                           _run(() => _execute('sleep 10', prefix: 'shz-wait')),
@@ -631,13 +735,18 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
               ),
               if (_activeOperationId != null)
                 OutlinedButton(
-                  onPressed: _cancelling ? null : _cancel,
+                  key: const ValueKey('shizuku-stop'),
+                  onPressed: _cancellingOperationId == _activeOperationId
+                      ? null
+                      : _cancel,
                   child: Text(text('Stop current command', '停止当前命令')),
                 ),
             ],
           ),
-          if (_cancelRequested && _activeOperationId != null)
+          if (_cancelRequestedOperationId != null &&
+              _cancelRequestedOperationId == _activeOperationId)
             Text(
+              key: const ValueKey('shizuku-cancel-requested'),
               text(
                 'Stop requested. Wait for the actual termination result; side effects are not undone.',
                 '已请求停止，请等待实际终止结果；已经产生的副作用不会回滚。',
@@ -660,11 +769,12 @@ class _ShizukuScreenState extends State<ShizukuScreen> {
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ),
-          if (_error != null)
+          if (error != null)
             Padding(
+              key: const ValueKey('shizuku-error'),
               padding: const EdgeInsets.only(top: 12),
               child: Text(
-                '$_error',
+                '$error',
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ),

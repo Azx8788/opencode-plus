@@ -3,6 +3,17 @@ import com.android.build.api.dsl.LibraryExtension
 allprojects {
     repositories {
         google()
+        // Maven Central intermittently rate-limits GitHub-hosted CI runners.
+        // Try two Central mirrors for Shizuku only; keep all other dependencies
+        // on the project's normal repository order.
+        maven {
+            url = uri("https://maven-central.storage-download.googleapis.com/maven2")
+            content { includeGroup("dev.rikka.shizuku") }
+        }
+        maven {
+            url = uri("https://repo1.maven.org/maven2")
+            content { includeGroup("dev.rikka.shizuku") }
+        }
         mavenCentral()
     }
 }

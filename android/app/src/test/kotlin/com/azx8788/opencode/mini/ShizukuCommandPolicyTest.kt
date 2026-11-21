@@ -24,7 +24,8 @@ class ShizukuCommandPolicyTest {
 
     @Test fun `sensitive reads are never direct or advanced-auto`() {
         for (command in listOf("cat /data/system/users/0/settings_ssaid.xml", "cat /sdcard/.env",
-                "cat /home/oc/.ssh/id_rsa", "getprop ro.serialno", "settings get secure android_id")) {
+                "cat /home/oc/.ssh/id_rsa", "cat /proc/self/environ", "cat /proc/123/cmdline",
+                "cat /proc/1/mem", "getprop ro.serialno", "settings get secure android_id")) {
             val decision = ShizukuCommandPolicy.inspect(command)
             assertFalse(command, decision.readOnly)
             assertEquals(command, ShizukuCommandPolicy.Risk.RED, decision.risk)

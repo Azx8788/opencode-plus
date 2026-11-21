@@ -6,7 +6,7 @@ import org.junit.Test
 class ShizukuBindingStateTest {
     @Test fun `a silent bind expires and a later request gets a fresh epoch`() {
         var clock = 0L
-        val state = ShizukuBindingState<String>({ clock })
+        val state = ShizukuBindingState<String>({ clock }, timeoutMs = 10_000)
         val old = state.begin()!!
         assertNull(state.begin())
         clock = 10_000
@@ -23,7 +23,7 @@ class ShizukuBindingStateTest {
 
     @Test fun `binder arrival alone is not readiness and a stuck handshake also expires`() {
         var clock = 0L
-        val state = ShizukuBindingState<String>({ clock })
+        val state = ShizukuBindingState<String>({ clock }, timeoutMs = 10_000)
         val epoch = state.begin()!!
         assertTrue(state.verifying(epoch))
         assertNull(state.snapshot().ready)
@@ -31,6 +31,33 @@ class ShizukuBindingStateTest {
         assertFalse(state.connected(epoch, "late", "instance", 0))
         assertEquals("handshake_timeout", state.snapshot().reason)
         assertNotNull(state.begin())
+    }
+
+    @Test fun `a slow UserService startup may finish after thirty seconds`() {
+        var clock = 0L
+        val state = ShizukuBindingState<String>({ clock })
+        val epoch = state.begin()!!
+
+        clock = 30_001
+        assertTrue(state.verifying(epoch))
+        clock = 39_999
+        assertFalse(state.expire(epoch))
+        assertEquals("verifying", state.snapshot().phase)
+        assertTrue(state.connected(epoch, "service", "instance", 2000))
+    }
+
+    @Test fun `a stalled handshake gets its own deadline after bind startup`() {
+        var clock = 0L
+        val state = ShizukuBindingState<String>({ clock })
+        val epoch = state.begin()!!
+        clock = 30_001
+        assertTrue(state.verifying(epoch))
+        clock = 35_000
+        assertFalse(state.expire(epoch))
+        assertEquals(5_001L, state.remainingMs(epoch))
+        clock = 40_001
+        assertTrue(state.expire(epoch))
+        assertEquals("handshake_timeout", state.snapshot().reason)
     }
 
     @Test fun `unknown UID is not guessed from authorization and reset invalidates every callback`() {

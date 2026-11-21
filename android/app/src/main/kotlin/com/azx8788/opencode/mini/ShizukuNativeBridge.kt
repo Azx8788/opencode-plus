@@ -34,9 +34,16 @@ internal object ShizukuNativeBridge {
     @Volatile private var liveInstance: String? = null
     fun isCurrent(runtimeId: String, instance: String) = available && runtimeId == liveRuntime && instance == liveInstance
 
-    @Synchronized fun start(context: Context, rootfs: File) {
-        if (endpoint != null) return
+    @Synchronized fun start(context: Context, rootfs: File, blockedReason: String? = null) {
         ShizukuController.initialize(context)
+        ShizukuController.runtimeStarted()
+        if (blockedReason != null) {
+            stop()
+            reason = blockedReason
+            ShizukuController.refresh()
+            return
+        }
+        if (endpoint != null) return
         try {
             val canonical = File(context.filesDir.canonicalFile, "linux/ubuntu")
             check(rootfs.canonicalFile == canonical)
@@ -48,14 +55,7 @@ internal object ShizukuNativeBridge {
                 runtimeFile.readText().trim().also { check(it.matches(Regex("[a-f0-9-]{36}"))) }
             } else UUID.randomUUID().toString().also { ShizukuOperationJournal.atomicFile(runtimeFile, "$it\n") }
             val socketDir = File(canonical, "tmp/.oc-shizuku")
-            val marker = File(socketDir, "opencode-plus-owned")
-            if (socketDir.exists()) {
-                check(socketDir.canonicalFile == socketDir.absoluteFile)
-                safeFile(marker, 80)
-                check(marker.readText() == "shizuku-bridge-v1\n")
-            }
-            privateDirectory(socketDir)
-            if (!marker.exists()) ShizukuOperationJournal.atomicFile(marker, "shizuku-bridge-v1\n")
+            ShizukuBridgeDirectory.prepare(socketDir, ::privateDirectory) { safeFile(it, 80) }
             val file = File(socketDir, "s")
             check(file.path.toByteArray(Charsets.UTF_8).size < 108)
             // The main app is the only socket owner. A cold start may leave its old filesystem inode.
@@ -69,6 +69,8 @@ internal object ShizukuNativeBridge {
             catch (error: Exception) { value.close(); throw error }
         } catch (_: Exception) {
             available = false
+            liveRuntime = null
+            liveInstance = null
             reason = "android_bridge_unavailable" // No paths, commands or credentials in diagnostics.
         }
         ShizukuController.refresh()
@@ -135,6 +137,7 @@ internal object ShizukuNativeBridge {
         private fun serve(client: LocalSocket) {
             val done = AtomicBoolean(false)
             val timeout = Runnable { done.set(true); release(client) }
+            // A prepare request may wait for the server's 30s UserService startup.
             main.postDelayed(timeout, 15_000)
             fun reply(value: JSONObject) {
                 if (!done.compareAndSet(false, true)) return
@@ -159,6 +162,11 @@ internal object ShizukuNativeBridge {
                     .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString()
                 val request = JSONObject(text)
                 if (!active || request.getString("bridgeInstance") != instance) { reply(ShizukuProtocol.error("bridge_instance_changed")); return }
+                if (request.optString("method") == "prepare") {
+                    // Allow server-side UserService startup to finish its 30s budget.
+                    main.removeCallbacks(timeout)
+                    main.postDelayed(timeout, 42_000)
+                }
                 ShizukuController.bridge(request, runtimeId, ::reply)
             } catch (_: Exception) {
                 reply(ShizukuProtocol.error("invalid_bridge_request"))

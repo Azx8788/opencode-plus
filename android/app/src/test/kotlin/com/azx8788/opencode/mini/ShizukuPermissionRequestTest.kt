@@ -88,12 +88,12 @@ class ShizukuPermissionRequestTest {
         assertNotNull(request.begin(7413))
     }
 
-    @Test fun `an unattempted request is never inferred from a cached value`() {
+    @Test fun `an unavailable request is never inferred as granted`() {
         val request = ShizukuPermissionRequest()
-        request.unavailable("sui_managed_authorization")
+        request.unavailable("shizuku_not_running")
         assertEquals("unavailable", request.snapshot().state)
         assertNull(request.snapshot().granted)
-        assertEquals("sui_managed_authorization", request.snapshot().reason)
+        assertEquals("shizuku_not_running", request.snapshot().reason)
     }
 
     @Test fun `a revocation in the manager list is reported and grants are not re-reported`() {

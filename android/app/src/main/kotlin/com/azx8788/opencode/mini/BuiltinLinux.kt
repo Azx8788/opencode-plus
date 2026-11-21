@@ -3700,7 +3700,7 @@ class BuiltinLinux(private val context: Context) {
         // Commit before launch: a guest can survive Android app process death.
         // A failed/uncertain launch keeps only this bounded admission marker.
         scheduledPhoneLease.begin(profile, token, budget, scheduledPhoneClock())
-        ShizukuNativeBridge.start(context, rootfs)
+        startShizukuBridge()
         val process = try { start(script, serviceLogFile(SERVER)) }
         catch (error: Throwable) { if (!serverRunning) ShizukuNativeBridge.stop(); throw error }
         process.outputStream.close()
@@ -3819,7 +3819,7 @@ class BuiltinLinux(private val context: Context) {
     }
 
     private fun launchServiceProcess(name: String, script: String, log: File, launch: ServiceLaunch): Process {
-        if (name == SERVER) ShizukuNativeBridge.start(context, rootfs)
+        if (name == SERVER) startShizukuBridge()
         try { return when {
             launch.idleGeneration != null -> launchIdleResume(script, log, launch, launch.idleGeneration)
             launch.nativeOwned -> launchNativeOwned(name, script, log, launch)
@@ -3830,6 +3830,17 @@ class BuiltinLinux(private val context: Context) {
             if (name == SERVER && !serverRunning) ShizukuNativeBridge.stop()
             throw error
         }
+    }
+
+    private fun startShizukuBridge() {
+        // The Landlock boundary denies AF_UNIX, so guest Node cannot reach this
+        // socket tier. Do not advertise a bridge that the selected sandbox blocks.
+        val blocked = prootIsConfined && protectionTier() == "landlock"
+        ShizukuNativeBridge.start(
+            context,
+            rootfs,
+            if (blocked) "android_bridge_unavailable" else null,
+        )
     }
 
     private fun launchIdleResume(script: String, log: File, launch: ServiceLaunch, generation: Long): Process {

@@ -39,6 +39,7 @@ class ShizukuRegistrationManifestTest {
         assertEquals("${context.packageName}.shizuku", provider!!.authority)
         assertTrue(provider.exported)
         assertFalse(provider.multiprocess)
-        assertEquals("android.permission.INTERACT_ACROSS_USERS_FULL", provider.permission)
+        assertEquals("android.permission.INTERACT_ACROSS_USERS_FULL", provider.readPermission)
+        assertEquals("android.permission.INTERACT_ACROSS_USERS_FULL", provider.writePermission)
     }
 }

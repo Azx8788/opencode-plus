@@ -30,7 +30,7 @@ export async function describe(path = descriptorPath) {
   finally { if (handle) await handle.close(); }
 }
 
-export function exchange(descriptor, request, { signal, timeoutMs = 15000, connect = net.createConnection } = {}) {
+export function exchange(descriptor, request, { signal, timeoutMs = request.method === 'prepare' ? 45000 : 15000, connect = net.createConnection } = {}) {
   if (signal?.aborted) return Promise.reject(abortError());
   const body = Buffer.from(JSON.stringify({ ...request, protocolVersion: 1, bridgeInstance: descriptor.bridgeInstance }));
   if (body.length > maxRequest) return Promise.reject(new BridgeError('bridge_request_too_large'));

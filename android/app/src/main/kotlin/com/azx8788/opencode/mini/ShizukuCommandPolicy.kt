@@ -13,6 +13,7 @@ internal object ShizukuCommandPolicy {
     private val packageLists = setOf("packages", "permissions", "libraries", "features", "users", "instrumentation")
     private val sensitivePath = Regex(
         "(?i)(^|/)(data|metadata|expand)(/|$)|" +
+            "(^|/)proc/(self|[0-9]+)/(environ|cmdline|mem|maps|fd)(/|$)|" +
             "(^|/)(\\.env|\\.ssh|id_rsa|id_ed25519|credentials?)(/|$)|" +
             "(^|[./_-])(secret|token|password|api[_-]?key)([./_-]|$)|" +
             "^ro\\.(serialno|boot\\.)|^persist\\.",

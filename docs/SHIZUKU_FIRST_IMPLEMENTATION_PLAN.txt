@@ -1,8 +1,9 @@
 OpenCode Plus：Shizuku 优先实施方案
 =================================
 
-日期：2026-11-17
+日期：2026-11-17（2026-11-21 更新）
 状态：P3 AI 工具和私有原生桥已编写，正在验证；尚未通过真机特权执行验收。下方最新策略优先于原始方案。
+交接文档：docs/SHIZUKU_HANDOFF_2026-11-21.md（改动清单、已验证/未验证边界、真机验收清单）
 工作区：/root/projects/opencode-plus
 文档位置：docs/SHIZUKU_FIRST_IMPLEMENTATION_PLAN.txt
 主项目基线：79a39803573207ae4dc594607a0b4c37a9ffecec，0.3.25+33。
@@ -19,14 +20,16 @@ OpenCode Plus：Shizuku 优先实施方案
     确认超时必须大于按钮等待；缺少所需悬浮窗权限、拒绝、超时都不执行。
   - 只读直执行不依赖悬浮窗权限；ADB UID 2000 与 ROOT/Sui UID 0 使用同一策略。
   - UserService stdout/stderr 按字节有界排空，首行进程组标识不计入用户输出。
-  - CI 139 已通过原生测试、APK 构建；Flutter 契约测试因将注释中的 PID API 当调用而失败。
-    本轮修复误判，并新增策略、输出边界、设置页行为测试；新验证结果单独记录。
-  - 聊天插件、持久化操作记录、重连对账尚未完成；本补充不声称这些功能可用。
+  - 最新完整 CI #144 在审查中失败：Dart analyzer 有字符串拼接告警，Kotlin 编译发现
+    ProviderInfo.permission 不存在；native 任务另受 Maven Central HTTP 429 影响。
+    这些问题已落实为本地修复/镜像回退，完整 CI 尚待重跑通过。
+  - 本机 Node 插件/帧测试使用隔离夹具，不等于 Android Binder、系统授权或真机验收。
 
 议题审计后的实现补充（2026-11-18，验证进行中）
 ------------------------------------------------
   - 对照 ExTV/rikkahub-agent #45、#107、#104 和 Shizuku #1198；议题关闭不等于 OEM 问题已解决。
-  - 绑定使用独立 epoch 和 10 秒截止时间；迟到连接/握手/死亡回调不得覆盖新连接。
+  - 绑定使用独立 epoch；UserService 启动最长等待 35 秒，握手另有 10 秒期限。
+    迟到连接/握手/死亡回调不得覆盖新连接或解绑更新的 SDK 连接。
   - Binder 到达后还需 UserService.status 握手，核对协议、实现版本、服务实例、实际 UID。
     授权/服务 UID 与执行端 UID 分开；没有握手时执行身份保持未知。
   - 已编写应用自有 mobile-shizuku V2 插件，锁定 @opencode/plugin 2.1.1；实际 API 声明已核验。
@@ -60,10 +63,14 @@ OpenCode Plus：Shizuku 优先实施方案
     Binder 替换/死亡、功能关闭会中断在途申请，不再让“requesting”长期挡住绑定；
     回调超时先回读服务端授权，读到才记 granted，读不到记 unconfirmed 并允许重新申请，不记成拒绝。
     管理器中撤销授权会被识别为 permission_revoked，不再继续显示已授权。
-    Sui 环境下不再发起申请（Sui 没有管理器弹窗，服务端只会返回拒绝，等于伪造用户的选择）。
-    申请本身改在主线程发出（确认界面属于另一个应用，SDK 也在主线程回调）。
+    Shizuku 与 Sui 都通过官方 requestPermission 流程申请；Sui 由 SystemUI 显示确认，
+    无回调只记为未确认，不臆测拒绝或授权。申请在主线程发出，按请求码隔离重试回调。
+    授权状态绕过 SDK 进程内缓存，直接查实时 Binder；查询失败显示未知，Binder 丢失时清除旧 UI 快照。
     管理器列表的可见条件（声明 API_V23 + V3_SUPPORT meta-data）加入契约测试，防止再次被删掉。
     本次改动仍需 CI 回归与真机授权验证；package_only 构建不计入验证。
+  - 后续代码审计补充：同 tag 的 bind/unbind 串行执行，旧 ServiceConnection 回调不会解绑新连接；
+    无 setsid 时拒绝启动，避免取消后遗留子进程。私有 socket 目录仅在空且非符号链接时恢复缺失标记；
+    Landlock 明确报告 Unix socket 桥不可用；持久化操作历史已满时禁止新命令并说明原因。
 
 一、结论和优先级调整
 ====================

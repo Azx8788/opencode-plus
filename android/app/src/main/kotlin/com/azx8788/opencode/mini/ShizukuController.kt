@@ -14,7 +14,6 @@ import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
-import moe.shizuku.server.IShizukuService
 import org.json.JSONObject
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuProvider
@@ -45,14 +44,20 @@ internal object ShizukuController {
         .apply { removeOnCancelPolicy = true }
     private val rpc = ThreadPoolExecutor(3, 3, 0, TimeUnit.MILLISECONDS, ArrayBlockingQueue(16),
         { task -> Thread(task, "shizuku-ipc").apply { isDaemon = true } })
+    /** Keep same-tag Shizuku bind/unbind IPC ordered; the SDK has a single shared connection per tag. */
+    private val bindingRpc = ThreadPoolExecutor(
+        1, 1, 0, TimeUnit.MILLISECONDS, ArrayBlockingQueue(16),
+        { task -> Thread(task, "shizuku-binding-ipc").apply { isDaemon = true } },
+    )
     private val binding = ShizukuBindingState<IShizukuCommandService>(SystemClock::elapsedRealtime)
+    private val connections = ShizukuConnectionRegistry<ServiceConnection>()
     private val initialized = AtomicBoolean(false)
     private val brokerInstance = UUID.randomUUID().toString()
     private var app: Context? = null
     private var sink: EventChannel.EventSink? = null
     private val permission = ShizukuPermissionRequest()
-    private var connection: Pair<Long, ServiceConnection>? = null
     private var status = emptyMap<String, Any?>()
+    private var statusRevision = 0L
     private val waiters = mutableListOf<(ShizukuBindingState.Ready<IShizukuCommandService>?, String?) -> Unit>()
     private val journal by lazy {
         ShizukuOperationJournal(File(requireNotNull(app).filesDir, "shizuku-operations"), System::currentTimeMillis)
@@ -63,6 +68,7 @@ internal object ShizukuController {
     }
     private val operations = mutableMapOf<String, Operation>()
     private val nativeResults = mutableMapOf<String, MutableList<(JSONObject) -> Unit>>()
+    private var stoppedByUser = false
 
     private val serviceArgs by lazy {
         Shizuku.UserServiceArgs(ComponentName(requireNotNull(app), ShizukuCommandService::class.java))
@@ -79,7 +85,7 @@ internal object ShizukuController {
     private val died = Shizuku.OnBinderDeadListener { control.execute {
         permission.interrupt("binder_died")
         invalidate("binder_died")
-        publish()
+        refreshNow(true)
     } }
     private val permissionListener = Shizuku.OnRequestPermissionResultListener { code, value ->
         control.execute {
@@ -107,6 +113,10 @@ internal object ShizukuController {
     }
     fun detach() { sink = null }
     fun refresh() { control.execute { refreshNow(true) } }
+    fun runtimeStarted() { control.execute {
+        stoppedByUser = false
+        refreshNow(true)
+    } }
 
     private fun refreshNow(retry: Boolean) {
         val context = app ?: return
@@ -124,6 +134,7 @@ internal object ShizukuController {
         val request = permission.snapshot()
         val unavailable = when {
             !enabled -> "feature_disabled"
+            stoppedByUser -> "user_stopped"
             !alive -> "shizuku_not_running"
             !sui && !shizukuRegistrationValid -> "shizuku_app_not_listable"
             request.state == "requesting" -> "permission_request_pending"
@@ -150,7 +161,10 @@ internal object ShizukuController {
             },
             "enabled" to enabled, "serverUid" to uid, "serverVersion" to version,
             "selinuxContext" to if (granted) runCatching { Shizuku.getSELinuxContext() }.getOrNull() else null,
-            "permissionResult" to request.granted?.let { if (it) PackageManager.PERMISSION_GRANTED else PackageManager.PERMISSION_DENIED },
+            "permissionResult" to permissionCheck?.let {
+                if (it) PackageManager.PERMISSION_GRANTED else PackageManager.PERMISSION_DENIED
+            },
+            "permissionCheckAvailable" to (permissionCheck != null),
             "availabilityReason" to unavailable,
             "permissionRequestState" to request.state, "permissionRequestReason" to request.reason,
         )
@@ -164,19 +178,28 @@ internal object ShizukuController {
         val bound = binding.snapshot()
         return status + mapOf("binding" to bound.phase, "bindingReason" to bound.reason,
             "serviceInstance" to bound.ready?.instance, "uid" to bound.ready?.uid,
-            "backend" to ShizukuProtocol.backend(bound.ready?.uid), "executionReady" to (bound.ready != null && enabled() && journal.available()),
-            "operationStorageReady" to journal.available(), "environment" to "android", "fallback" to false,
+            "backend" to ShizukuProtocol.backend(bound.ready?.uid), "executionReady" to (bound.ready != null && enabled() && !stoppedByUser && journal.available() && !journal.full()),
+            "operationStorageReady" to journal.available(), "operationHistoryFull" to journal.full(),
+            "environment" to "android", "fallback" to false,
             "aiBridgeReady" to ShizukuNativeBridge.available, "aiBridgeReason" to ShizukuNativeBridge.reason)
     }
-    private fun publish() { val value = snapshot(); main.post { sink?.success(value) } }
+    private fun publish() {
+        val request = permission.snapshot()
+        status = status + mapOf(
+            "statusRevision" to ++statusRevision,
+            "permissionRequestState" to request.state,
+            "permissionRequestReason" to request.reason,
+            "permissionResult" to if (status["permissionCheckAvailable"] != true) null else request.granted?.let {
+                if (it) PackageManager.PERMISSION_GRANTED else PackageManager.PERMISSION_DENIED
+            },
+        )
+        val value = snapshot()
+        main.post { sink?.success(value) }
+    }
     private fun enabled() = app?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)?.getBoolean(ENABLED, false) == true
 
     /** Bypass Shizuku.checkSelfPermission's process-local cache; query the live server every time. */
-    private fun serverPermissionGranted(): Boolean? = runCatching {
-        val binder = Shizuku.getBinder()
-        if (binder == null || !binder.pingBinder()) null
-        else IShizukuService.Stub.asInterface(binder).checkSelfPermission()
-    }.getOrNull()
+    private fun serverPermissionGranted(): Boolean? = ShizukuPermissionReader.read(Shizuku.getBinder())
 
     /** These are the exact manifest fields Shizuku's manager uses to enumerate an app. */
     private fun shizukuRegistrationValid(context: Context): Boolean = runCatching {
@@ -193,7 +216,8 @@ internal object ShizukuController {
         val provider = info.providers.orEmpty().firstOrNull {
             it.name == ShizukuProvider::class.java.name &&
                 it.authority == "${context.packageName}.shizuku" && it.exported && !it.multiprocess &&
-                it.permission == "android.permission.INTERACT_ACROSS_USERS_FULL"
+                it.readPermission == "android.permission.INTERACT_ACROSS_USERS_FULL" &&
+                it.writePermission == "android.permission.INTERACT_ACROSS_USERS_FULL"
         }
         provider != null
     }.getOrDefault(false)
@@ -206,14 +230,8 @@ internal object ShizukuController {
             publish()
             throw IllegalStateException("shizuku_not_running")
         }
-        // Sui has no manager to ask: the server answers a request with a denial that
-        // would be reported as the person's own choice. Sui's list is the only owner.
-        if (runCatching { Sui.isSui() }.getOrDefault(false)) {
-            permission.unavailable("sui_managed_authorization")
-            publish()
-            throw IllegalStateException("sui_managed_authorization")
-        }
-        if (!shizukuRegistrationValid(requireNotNull(app))) {
+        val sui = runCatching { Sui.isSui() }.getOrDefault(false)
+        if (!sui && !shizukuRegistrationValid(requireNotNull(app))) {
             permission.unavailable("shizuku_app_not_listable")
             publish()
             throw IllegalStateException("shizuku_app_not_listable")
@@ -235,7 +253,7 @@ internal object ShizukuController {
             try { Shizuku.requestPermission(requestCode) }
             catch (_: Exception) {
                 control.execute {
-                    if (permission.failed(epoch, requestCode, "permission_request_failed")) publish()
+                    if (permission.failed(epoch, requestCode, "permission_request_failed")) refreshNow(false)
                 }
             }
         }
@@ -254,7 +272,15 @@ internal object ShizukuController {
         val conn = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
                 control.execute {
-                    if (!binding.verifying(epoch)) { detachConnection(this, false); return@execute }
+                    if (!connections.isCurrent(epoch, this)) return@execute
+                    if (!binding.verifying(epoch)) {
+                        if (binding.snapshot().phase == "failed") {
+                            detachConnection(epoch, this, false)
+                            resolveWaiters(null, binding.snapshot().reason)
+                            publish()
+                        }
+                        return@execute
+                    }
                     if (service == null || !service.pingBinder()) { bindFailed(epoch, "binding_died"); return@execute }
                     ipc({
                         val api = IShizukuCommandService.Stub.asInterface(service)
@@ -270,7 +296,11 @@ internal object ShizukuController {
                             runCatching { service.linkToDeath({ control.execute { bindFailed(epoch, "service_died") } }, 0) }
                             resolveWaiters(ready, null)
                             publish()
-                        } else { detachConnection(this, false); publish() }
+                        } else if (connections.isCurrent(epoch, this) && binding.snapshot().phase != "connected") {
+                            detachConnection(epoch, this, false)
+                            resolveWaiters(null, binding.snapshot().reason ?: "instance_changed")
+                            publish()
+                        }
                     }
                 }
             }
@@ -278,33 +308,56 @@ internal object ShizukuController {
             override fun onBindingDied(name: ComponentName?) { control.execute { bindFailed(epoch, "binding_died") } }
             override fun onNullBinding(name: ComponentName?) { control.execute { bindFailed(epoch, "binding_null") } }
         }
-        connection = epoch to conn // Set before calling SDK: a fast callback must not race this assignment.
+        connections.install(epoch, conn) // Set before calling SDK: a fast callback must not race this assignment.
+        scheduleBindingExpiry(epoch, conn)
+        bindingIpc({
+            if (connections.isCurrent(epoch, conn)) Shizuku.bindUserService(serviceArgs, conn)
+        }) { error -> if (error != null) bindFailed(epoch, "bind_threw") }
+    }
+
+    private fun scheduleBindingExpiry(epoch: Long, conn: ServiceConnection) {
+        val remaining = binding.remainingMs(epoch) ?: return
         control.schedule({
             if (binding.expire(epoch)) {
-                connection?.takeIf { it.first == epoch }?.let { detachConnection(it.second, false); connection = null }
+                detachConnection(epoch, conn, false)
                 resolveWaiters(null, binding.snapshot().reason)
                 publish()
+            } else if (binding.snapshot().epoch == epoch) {
+                scheduleBindingExpiry(epoch, conn)
             }
-        }, 10_000, TimeUnit.MILLISECONDS)
-        ipc({ Shizuku.bindUserService(serviceArgs, conn) }) { _, error -> if (error != null) bindFailed(epoch, "bind_threw") }
+        }, remaining, TimeUnit.MILLISECONDS)
     }
 
     private fun bindFailed(epoch: Long, reason: String) {
         val old = binding.snapshot().ready
         if (!binding.fail(epoch, reason)) return
-        connection?.takeIf { it.first == epoch }?.let { detachConnection(it.second, false); connection = null }
+        connections.take(epoch)?.let { unbindConnection(it.connection, false) }
         interruptOperations(old, reason)
         resolveWaiters(null, reason)
         publish()
     }
-    private fun detachConnection(conn: ServiceConnection, remove: Boolean) {
-        ipc({ Shizuku.unbindUserService(serviceArgs, conn, remove) }) { _, _ -> }
+    private fun detachConnection(epoch: Long, conn: ServiceConnection, remove: Boolean) {
+        if (connections.take(epoch, conn) != null) unbindConnection(conn, remove)
+    }
+    private fun unbindConnection(conn: ServiceConnection, remove: Boolean) {
+        bindingIpc({ Shizuku.unbindUserService(serviceArgs, conn, remove) }) { }
+    }
+    private fun bindingIpc(work: () -> Unit, complete: (Throwable?) -> Unit) {
+        try {
+            bindingRpc.execute {
+                val error = runCatching(work).exceptionOrNull()
+                control.execute { complete(error) }
+            }
+        } catch (error: Exception) {
+            complete(error)
+        }
     }
     private fun invalidate(reason: String) {
         val old = binding.snapshot().ready
         binding.reset(reason)
-        connection?.let { detachConnection(it.second, reason in setOf("feature_disabled", "user_stopped")) }
-        connection = null
+        connections.takeCurrent()?.let {
+            unbindConnection(it.connection, reason in setOf("feature_disabled", "user_stopped"))
+        }
         interruptOperations(old, reason)
         resolveWaiters(null, reason)
     }
@@ -313,6 +366,7 @@ internal object ShizukuController {
         val why = status["availabilityReason"] as? String
         if (why != null) { complete(null, why); return }
         if (!journal.available()) { complete(null, "operation_storage_unavailable"); return }
+        if (journal.full()) { complete(null, "operation_history_full"); return }
         binding.snapshot().ready?.let { complete(it, null); return }
         if (waiters.size >= 4) { complete(null, "bridge_busy"); return }
         waiters.add(complete)
@@ -427,7 +481,7 @@ internal object ShizukuController {
     }
     private fun current(expected: ShizukuBindingState.Ready<IShizukuCommandService>): Boolean {
         val ready = binding.snapshot().ready
-        return enabled() && ready != null && ready.service === expected.service && ready.instance == expected.instance && ready.uid == expected.uid
+        return enabled() && !stoppedByUser && ready != null && ready.service === expected.service && ready.instance == expected.instance && ready.uid == expected.uid
     }
     private fun deny(op: Operation, why: String) {
         journal.failBeforeDispatch(op.id, why)
@@ -494,7 +548,12 @@ internal object ShizukuController {
     fun stopRuntime() { control.execute {
         for (op in operations.values.toList()) if (op.owner.source == "opencode_tool") runCatching { cancelOperation(op.id, op.owner) }
     } }
-    fun stopAll() { control.execute { permission.interrupt("user_stopped"); invalidate("user_stopped"); publish() } }
+    fun stopAll() { control.execute {
+        stoppedByUser = true
+        permission.interrupt("user_stopped")
+        invalidate("user_stopped")
+        refreshNow(false)
+    } }
 
     private fun reconcile(id: String, owner: ShizukuProtocol.Owner, complete: (JSONObject) -> Unit) {
         val row = journal.get(id, owner) ?: run { complete(ShizukuProtocol.error("operation_not_found")); return }
@@ -543,10 +602,12 @@ internal object ShizukuController {
                         "settings" -> main.post { result.success(readSettings()) }
                         "saveSettings" -> saveSettings(call, result)
                         "requestPermission" -> {
+                            stoppedByUser = false
                             requestPermissionFromUser()
                             main.post { result.success(true) }
                         }
                         "setEnabled" -> {
+                            stoppedByUser = false
                             val requested = call.argument<Boolean>("enabled") == true
                             check(app!!.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                                 .putBoolean(ENABLED, requested).commit())
@@ -554,9 +615,12 @@ internal object ShizukuController {
                             else permission.interrupt("feature_disabled")
                             refreshNow(true); respond(JSONObject(snapshot()))
                         }
-                        "startService" -> acquire { ready, why ->
+                        "startService" -> {
+                            stoppedByUser = false
+                            acquire { ready, why ->
                             if (ready == null) main.post { result.error(why ?: "shizuku_not_ready", "Shizuku UserService is not ready.", null) }
                             else main.post { result.success(true) }
+                            }
                         }
                         "execute", "diagnostic" -> {
                             val id = call.argument<String>("operationId") ?: UUID.randomUUID().toString()
@@ -617,7 +681,7 @@ internal object ShizukuController {
     }
     private fun errorCode(error: Exception): String = error.message?.takeIf { it in setOf("operation_conflict", "operation_history_full",
         "operation_storage_unavailable", "invalid_settings", "shizuku_not_running", "permission_request_failed",
-        "sui_managed_authorization", "unsupported_server_version", "shizuku_app_not_listable") } ?: "invalid_request"
+        "unsupported_server_version", "shizuku_app_not_listable") } ?: "invalid_request"
     private fun jsonMap(value: JSONObject): Map<String, Any?> = value.keys().asSequence().associateWith {
         if (value.isNull(it)) null else value.get(it)
     }

@@ -1,7 +1,11 @@
 package com.azx8788.opencode.mini
 
 /** Host-testable binding epochs. Receiving a Binder is not an execution handshake. */
-internal class ShizukuBindingState<T>(private val now: () -> Long, private val timeoutMs: Long = 10_000) {
+internal class ShizukuBindingState<T>(
+    private val now: () -> Long,
+    val timeoutMs: Long = 35_000,
+    private val handshakeTimeoutMs: Long = 10_000,
+) {
     data class Ready<T>(val service: T, val instance: String, val uid: Int)
     data class Snapshot<T>(val epoch: Long, val phase: String, val reason: String?, val ready: Ready<T>?)
 
@@ -24,8 +28,9 @@ internal class ShizukuBindingState<T>(private val now: () -> Long, private val t
     }
 
     @Synchronized fun verifying(expected: Long): Boolean {
-        if (!pending(expected)) return false
+        if (!pending(expected) || phase != "connecting") return false
         phase = "verifying"
+        deadline = now() + handshakeTimeoutMs
         return true
     }
 
@@ -52,6 +57,13 @@ internal class ShizukuBindingState<T>(private val now: () -> Long, private val t
     @Synchronized fun expire(expected: Long): Boolean {
         if (epoch != expected || phase !in setOf("connecting", "verifying") || now() < deadline) return false
         return fail(expected, if (phase == "verifying") "handshake_timeout" else "bind_timeout")
+    }
+
+    @Synchronized fun remainingMs(expected: Long): Long? {
+        if (epoch != expected || phase !in setOf("connecting", "verifying")) return null
+        expire(expected)
+        if (epoch != expected || phase !in setOf("connecting", "verifying")) return null
+        return (deadline - now()).coerceAtLeast(1)
     }
 
     @Synchronized fun reset(why: String? = null) {

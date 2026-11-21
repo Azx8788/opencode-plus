@@ -59,28 +59,120 @@ void main() {
       expect(advertised.single.getAttribute('android:value'), 'true');
     });
 
-    test('authorization does not treat Shizuku rationale metadata as a denial', () {
-      final controller = File(
-        'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuController.kt',
-      ).readAsStringSync();
-      expect(controller, isNot(contains('shouldShowRequestPermissionRationale')));
-      expect(controller, contains('permission.begin(requestCode)'));
-      expect(controller, contains('permission.deliver(code'));
-    });
+    test(
+      'authorization does not treat Shizuku rationale metadata as a denial',
+      () {
+        final controller = File(
+          'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuController.kt',
+        ).readAsStringSync();
+        expect(
+          controller,
+          isNot(contains('shouldShowRequestPermissionRationale')),
+        );
+        expect(controller, isNot(contains('sui_managed_authorization')));
+        expect(controller, contains('permission.begin(requestCode)'));
+        expect(controller, contains('permission.deliver(code'));
+      },
+    );
 
     test('permission status reads live server state and validates manager listing requirements', () {
       final controller = File(
         'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuController.kt',
       ).readAsStringSync();
-      expect(controller, contains('IShizukuService.Stub.asInterface(binder).checkSelfPermission()'));
+      final reader = File(
+        'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuPermissionReader.kt',
+      ).readAsStringSync();
+      expect(
+        reader,
+        contains(
+          'IShizukuService.Stub.asInterface(binder).checkSelfPermission()',
+        ),
+      );
+      expect(
+        controller,
+        contains('ShizukuPermissionReader.read(Shizuku.getBinder())'),
+      );
       expect(controller, isNot(contains('Shizuku.checkSelfPermission()')));
-      expect(controller, contains('private fun serverPermissionGranted(): Boolean?'));
-      expect(controller, contains('permissionCheck == null -> "shizuku_permission_unverified"'));
-      expect(controller, contains('info.requestedPermissions?.contains(ShizukuProvider.PERMISSION)'));
+      expect(
+        controller,
+        contains('private fun serverPermissionGranted(): Boolean?'),
+      );
+      expect(
+        controller,
+        contains('permissionCheck == null -> "shizuku_permission_unverified"'),
+      );
+      expect(
+        controller,
+        contains(
+          'info.requestedPermissions?.contains(ShizukuProvider.PERMISSION)',
+        ),
+      );
       expect(controller, contains('moe.shizuku.client.V3_SUPPORT'));
-      expect(controller, contains('private fun shizukuProviderValid(context: Context)'));
+      expect(
+        controller,
+        contains('private fun shizukuProviderValid(context: Context)'),
+      );
       expect(controller, contains(r'"${context.packageName}.shizuku"'));
       expect(controller, contains('"shizuku_app_not_listable"'));
+    });
+
+    test('UserService callbacks are epoch-scoped and bind/unbind calls are serialized', () {
+      final controller = File(
+        'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuController.kt',
+      ).readAsStringSync();
+      expect(
+        controller,
+        contains('ShizukuConnectionRegistry<ServiceConnection>()'),
+      );
+      expect(
+        controller,
+        contains('if (!connections.isCurrent(epoch, this)) return@execute'),
+      );
+      expect(controller, contains('connections.take(epoch, this)'));
+      expect(controller, contains('ThreadPoolExecutor(\n        1, 1'));
+      expect(
+        controller,
+        contains('Shizuku.bindUserService(serviceArgs, conn)'),
+      );
+      expect(
+        controller,
+        contains('Shizuku.unbindUserService(serviceArgs, conn, remove)'),
+      );
+    });
+
+    test('Shizuku Maven mirrors are limited to Shizuku coordinates', () {
+      final gradle = File('android/build.gradle.kts').readAsStringSync();
+      expect(
+        gradle,
+        contains('maven-central.storage-download.googleapis.com/maven2'),
+      );
+      expect(gradle, contains('repo1.maven.org/maven2'));
+      expect(gradle, contains('content { includeGroup("dev.rikka.shizuku") }'));
+    });
+
+    test('private socket bridge reports Landlock transport as unavailable', () {
+      final linux = File(
+        'android/app/src/main/kotlin/com/azx8788/opencode/mini/BuiltinLinux.kt',
+      ).readAsStringSync();
+      final boundary = File('engine/phone/src/boundary.rs').readAsStringSync();
+      expect(
+        linux,
+        contains('prootIsConfined && protectionTier() == "landlock"'),
+      );
+      expect(
+        linux,
+        contains('if (blocked) "android_bridge_unavailable" else null'),
+      );
+      expect(boundary, contains('AF_UNIX is denied'));
+    });
+
+    test('commands never fall back to an ungrouped shell', () {
+      final service = File(
+        'android/app/src/main/kotlin/com/azx8788/opencode/mini/ShizukuCommandService.kt',
+      ).readAsStringSync();
+      expect(service, contains('"/system/bin/setsid"'));
+      expect(service, contains('grouped = true'));
+      expect(service, isNot(contains('grouped = false')));
     });
 
     test(

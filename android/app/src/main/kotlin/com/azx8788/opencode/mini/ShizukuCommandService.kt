@@ -48,7 +48,6 @@ class ShizukuCommandService : IShizukuCommandService.Stub() {
             // Only this wrapper emits the first stderr line. The command is a
             // positional argument, never interpolated into the wrapper script.
             val wrapper = "printf 'OCRPID=%s\\n' \"\$\$\" >&2; exec /system/bin/sh -c \"\$1\""
-            var grouped = true
             fun launch(argv: List<String>): Process = ProcessBuilder(argv).apply {
                 directory(File("/")) // Android's filesystem, never an Ubuntu project directory.
                 environment()["PATH"] = "/system/bin:/system/xbin:/vendor/bin"
@@ -56,14 +55,10 @@ class ShizukuCommandService : IShizukuCommandService.Stub() {
             val process: Process
             synchronized(launchLock) {
                 if (gate.cancelled(operationId)) return noExecution(operationId, "cancelled_before_start")
-                process = try {
-                    launch(listOf("/system/bin/setsid", "/system/bin/sh", "-c", wrapper, "oc-shizuku", command))
-                } catch (_: IOException) {
-                    // This is the same Android backend; no user command was launched by the failed start.
-                    grouped = false
-                    launch(listOf("/system/bin/sh", "-c", wrapper, "oc-shizuku", command))
-                }
-                val owner = Running(process, SystemClock.elapsedRealtime(), grouped)
+                // Never fall back to a shell without a process group: timeout/cancel
+                // could kill only the shell while leaving command descendants running.
+                process = launch(listOf("/system/bin/setsid", "/system/bin/sh", "-c", wrapper, "oc-shizuku", command))
+                val owner = Running(process, SystemClock.elapsedRealtime(), grouped = true)
                 running = owner
                 active[operationId] = owner
             }

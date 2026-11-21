@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,22 +21,34 @@ void main() {
   var failSave = false;
   var failLoad = false;
   var failedBinding = false;
+  var operationHistoryFull = false;
+  var incompleteLoad = false;
   String? permissionReason;
   String? availabilityReason;
   String permissionState = 'granted';
+  String provider = 'shizuku';
   String? applicationId;
   Object? shizukuRegistrationValid;
   Object? shizukuProviderValid;
+  late List<Completer<Map<String, Object?>>> executionReplies;
+  Completer<bool>? cancellationReply;
+  var statusRevision = 0;
 
   setUp(() {
     failSave = failLoad = false;
+    incompleteLoad = false;
     failedBinding = false;
+    operationHistoryFull = false;
     permissionReason = null;
     availabilityReason = null;
     permissionState = 'granted';
+    provider = 'shizuku';
     applicationId = null;
     shizukuRegistrationValid = null;
     shizukuProviderValid = null;
+    executionReplies = [];
+    cancellationReply = null;
+    statusRevision = 0;
     stored = {
       'direct_read_only': true,
       'advanced_mode': false,
@@ -62,7 +76,10 @@ void main() {
             'serverUid': 0,
             'serverVersion': 13,
             'aiBridgeReady': false,
-            'provider': 'shizuku',
+            'provider': provider,
+            'statusRevision': ++statusRevision,
+            'operationStorageReady': true,
+            'operationHistoryFull': operationHistoryFull,
             'permissionRequestState': 'not_requested',
             'permissionRequestReason': permissionReason,
             'availabilityReason': availabilityReason,
@@ -72,13 +89,21 @@ void main() {
           };
         case 'settings':
           if (failLoad) throw PlatformException(code: 'load_failed');
+          if (incompleteLoad) return {'direct_read_only': false};
           return Map<String, Object?>.from(stored);
         case 'saveSettings':
           if (failSave) throw PlatformException(code: 'save_failed');
           stored = Map<String, Object?>.from(call.arguments as Map);
           return stored;
         case 'execute':
+          if (executionReplies.isNotEmpty) {
+            return executionReplies.removeAt(0).future;
+          }
           return {'state': 'succeeded', 'stdout': 'read-result', 'exitCode': 0};
+        case 'cancel':
+          return cancellationReply?.future ?? true;
+        case 'requestPermission':
+          return true;
         default:
           return null;
       }
@@ -168,26 +193,23 @@ void main() {
     },
   );
 
-  testWidgets(
-    'a Sui-owned authorization is explained instead of being retried blindly',
-    (tester) async {
-      permissionReason = 'sui_managed_authorization';
-      await mount(tester);
-      expect(
-        find.textContaining('Sui owns authorization here'),
-        findsOneWidget,
-      );
-      expect(
-        tester
-            .widget<FilledButton>(
-              find.byKey(const ValueKey('shizuku-request-permission')),
-            )
-            .onPressed,
-        isNotNull,
-      );
-      await tester.pumpWidget(const SizedBox.shrink());
-    },
-  );
+  testWidgets('Sui authorization uses its SystemUI confirmation flow', (
+    tester,
+  ) async {
+    provider = 'sui';
+    permissionState = 'requestable';
+    await mount(tester);
+    expect(
+      find.text('Sui displays its authorization prompt through SystemUI.'),
+      findsOneWidget,
+    );
+    final request = find.byKey(const ValueKey('shizuku-request-permission'));
+    expect(tester.widget<FilledButton>(request).onPressed, isNotNull);
+    await tester.tap(request);
+    await tester.pumpAndSettle();
+    expect(calls.any((call) => call.method == 'requestPermission'), isTrue);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   testWidgets('an unregistered Shizuku package is not shown as authorized', (
     tester,
@@ -196,18 +218,125 @@ void main() {
     permissionState = 'not_registered';
     await mount(tester);
     expect(find.text('App not registered'), findsOneWidget);
-    expect(find.byKey(const ValueKey('shizuku-registration-reason')), findsOneWidget);
-    expect(find.textContaining('cannot list this installed package'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('shizuku-registration-reason')),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('cannot list this installed package'),
+      findsOneWidget,
+    );
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets('a denied live permission check never renders as granted', (
     tester,
   ) async {
-    permissionState = 'requestable';
+    permissionState = 'denied';
+    permissionReason = 'permission_denied';
     await mount(tester);
-    expect(find.text('Not requested'), findsOneWidget);
+    expect(find.text('Denied'), findsOneWidget);
     expect(find.text('Granted'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('a full history disables new commands with an explanation', (
+    tester,
+  ) async {
+    operationHistoryFull = true;
+    await mount(tester);
+    await reveal(tester, 'shizuku-diagnostic');
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const ValueKey('shizuku-diagnostic')),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(
+      find.byKey(const ValueKey('shizuku-operation-history-full')),
+      findsOneWidget,
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+    'direct read-only check does not enable unsafe no-overlay controls',
+    (tester) async {
+      await mount(tester);
+      await reveal(tester, 'shizuku-diagnostic');
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const ValueKey('shizuku-diagnostic')),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      final cancelTest = find.byKey(
+        const ValueKey('shizuku-cancellation-test'),
+      );
+      expect(tester.widget<OutlinedButton>(cancelTest).onPressed, isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'late cancellation reply cannot mark a different command stopped',
+    (tester) async {
+      final firstExecution = Completer<Map<String, Object?>>();
+      final secondExecution = Completer<Map<String, Object?>>();
+      cancellationReply = Completer<bool>();
+      executionReplies.addAll([firstExecution, secondExecution]);
+      await mount(tester);
+      await reveal(tester, 'shizuku-diagnostic');
+      final diagnostic = find.byKey(const ValueKey('shizuku-diagnostic'));
+
+      await tester.tap(diagnostic);
+      await tester.pump();
+      await tester.tap(find.text('Stop current command'));
+      await tester.pump();
+
+      firstExecution.complete({
+        'state': 'cancelled',
+        'stdout': '',
+        'stderr': '',
+        'truncated': false,
+      });
+      await tester.pumpAndSettle();
+
+      await tester.tap(diagnostic);
+      await tester.pump();
+      cancellationReply!.complete(false);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Stop requested.'), findsNothing);
+
+      secondExecution.complete({
+        'state': 'succeeded',
+        'stdout': 'read-result',
+        'exitCode': 0,
+      });
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets('partial settings response never enables edits with defaults', (
+    tester,
+  ) async {
+    incompleteLoad = true;
+    await mount(tester);
+    await reveal(tester, 'shizuku-advanced');
+    expect(
+      tester
+          .widget<SwitchListTile>(
+            find.byKey(const ValueKey('shizuku-advanced')),
+          )
+          .onChanged,
+      isNull,
+    );
+    expect(find.textContaining('invalid_shizuku_settings'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
@@ -228,20 +357,23 @@ void main() {
       find.descendant(of: permissionStatus, matching: find.text('Granted')),
       findsNothing,
     );
-    expect(find.byKey(const ValueKey('shizuku-permission-unverified')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('shizuku-permission-unverified')),
+      findsOneWidget,
+    );
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets(
-    'a lost decision is not displayed as a grant',
-    (tester) async {
-      permissionReason = 'permission_callback_missing';
-      await mount(tester);
-      expect(find.textContaining('returned no decision'), findsOneWidget);
-      expect(find.textContaining('Authorization request status'), findsNothing);
-      await tester.pumpWidget(const SizedBox.shrink());
-    },
-  );
+  testWidgets('a lost decision is not displayed as a grant', (tester) async {
+    permissionState = 'requestable';
+    permissionReason = 'permission_callback_missing';
+    await mount(tester);
+    expect(find.textContaining('returned no decision'), findsOneWidget);
+    expect(find.text('Not authorized'), findsOneWidget);
+    expect(find.text('Granted'), findsNothing);
+    expect(find.textContaining('Authorization request status'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   testWidgets(
     'advanced mode is off by default and requires explicit confirmation',
