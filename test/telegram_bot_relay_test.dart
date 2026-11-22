@@ -54,7 +54,7 @@ class _FakeTelegram {
         'from': {
           'id': from,
           'is_bot': false,
-          if (username != null) 'username': username,
+          'username': ?username,
         },
       },
     });
@@ -145,7 +145,7 @@ class _Recorder {
 }
 
 class _BindingPreferences extends InMemorySharedPreferencesStore {
-  _BindingPreferences(Map<String, Object> data) : super.withData(data);
+  _BindingPreferences(super.data) : super.withData();
 
   final bindingStarted = Completer<void>();
   Completer<void>? bindingGate;
