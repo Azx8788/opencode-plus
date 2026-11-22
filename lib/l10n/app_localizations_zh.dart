@@ -28380,7 +28380,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get telegramBotSettingsKeywords =>
-      'Telegram 电报 机器人 Agent 远程 消息 进度 指令 用户 ID';
+      'Telegram 电报 机器人 Agent 远程 消息 进度 指令 用户名 用户 ID';
 
   @override
   String get settingsV3Permissions => '权限与自动化';

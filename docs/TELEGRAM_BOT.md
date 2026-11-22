@@ -7,17 +7,27 @@ Android app; it is not a public bot service or a separate VPS deployment.
 ## Setup
 
 1. Create a bot with [@BotFather](https://t.me/BotFather) and copy its token.
-2. Get your numeric Telegram user ID from [@userinfobot](https://t.me/userinfobot).
-3. Open the bot's private chat and send `/start`. Telegram does not let a bot
-   write first, so this is what makes the chat reachable.
-4. In OpenCode Plus, open **Settings → Conversations → Telegram bot**.
-5. Enter the bot token and your user ID, verify the token, then enable and save.
-   Verification reports the bot's `@username` and whether the private chat is
-   reachable yet.
-6. Connect the app to its built-in OpenCode server and open a project. Opening a
-   conversation binds that session for progress and replies. A Telegram text
-   sent before a session is bound starts a separate conversation in the
-   currently open project.
+2. Find **your own account's `@username`** in Telegram settings (recommended).
+   This is not your display name or the bot's username. A numeric user ID is
+   optional: leave it blank when using a username, or use an ID alone if your
+   account has no username (for example, get it from
+   [@userinfobot](https://t.me/userinfobot)).
+3. Connect OpenCode Plus to its built-in OpenCode server, open a project, then
+   open **Settings → Conversations → Telegram bot**.
+4. Enter the bot token and your username, verify the token, then enable and
+   save. A leading `@` is optional and usernames are matched case-insensitively.
+5. From that Telegram account, open the bot's private chat and send `/start`.
+   The first matching private message automatically binds the account's stable
+   numeric ID. Telegram does not let a bot write first, and the Bot API cannot
+   look up an ordinary private user by username, so verification without an ID
+   checks the token and asks you to complete this step. No agent progress is
+   sent to a username-only account until it is bound.
+6. Opening a conversation binds that OpenCode session for progress and replies.
+   A Telegram text sent before a session is bound starts a separate conversation
+   in the currently open project.
+
+If both username and optional ID are filled in, both must match the same account
+on first contact. Existing ID-only configurations continue to work unchanged.
 
 Enabling the relay claims the bot for long polling: it removes any webhook and
 publishes the command menu (`/status`, `/stop`, `/new`, `/help`) so the bot is
@@ -50,9 +60,15 @@ voice notes, inline keyboards and remote permission approval are not supported.
 
 ## Security and privacy
 
-The bot accepts private-chat messages only when both the sender and private
-chat IDs match the configured numeric user ID. Other senders are ignored. The
-bot token is stored in Android secure storage; profile deletion removes it.
+The bot accepts only human senders in private chats whose sender and chat IDs
+match. With a username, the first message must match the configured username
+and any optional ID; its numeric ID is saved before an instruction is forwarded.
+After binding, only that stable ID is authorized, even if the account changes
+or removes its username. Another account acquiring the old username is not
+authorized. Editing the configured username or optional ID clears the binding
+and requires a new match. ID-only setups check the configured ID directly.
+Other senders are ignored. The bot token is stored in Android secure storage;
+profile deletion removes it and the saved identity and binding.
 Telegram instructions are sent through the app's existing OpenCode connection
 and ordinary permission policy. Agent reply text and short progress notices are
 sent to Telegram, so Telegram receives that content. Do not relay information
@@ -66,4 +82,10 @@ local stand-in for the Bot API: it asserts the webhook is cleared and the menu
 published before the first poll, that a plain message reaches the agent and
 binds its session, that `/status`, `/stop` and `/new` answer correctly, that a
 foreign account is ignored, that a `409` is reported rather than hidden, and
-that agent progress and the finished reply come back to Telegram.
+that agent progress and the finished reply come back to Telegram. They also
+cover username-only setup, case-insensitive matching, automatic ID binding,
+restoring a binding after restart, username changes and takeover rejection,
+optional-ID constraints, identity edits, verification before binding, and
+removal of the stored identity and binding. Storage-refusal and in-flight-write
+tests verify instructions are not forwarded without a saved binding and an old
+binding cannot overwrite edited settings; server profiles keep bindings separate.

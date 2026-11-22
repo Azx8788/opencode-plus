@@ -238,8 +238,10 @@ iOS 与桌面工程、多语言（仅中英）、Shorebird 热更新、文档站
 常见改动步骤和故障排查表。
 
 可选 Telegram 机器人在「设置 → 对话 → Telegram 机器人」配置：使用
-@BotFather 创建 bot，并填写自己的 Telegram 数字用户 ID。机器人只处理该 ID
-的私聊文字消息；Agent 回复和工具进度会回传 Telegram。Bot Token 使用 Android
+@BotFather 创建 bot，推荐填写自己账号的 `@用户名`，数字用户 ID 为可选项；没有
+用户名时也可只填 ID。启用后私聊机器人发送 `/start`，首次匹配后自动绑定账号 ID，
+避免用户名改名或转让后误授权。机器人只处理该账号的私聊文字消息；Agent 回复和
+工具进度会回传 Telegram。Bot Token 使用 Android
 安全存储；在 Telegram 收发的内容会经过 Telegram 服务。要后台持续接收消息，
 需保持 App 可运行并启用后台运行功能。
 

@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:opencode_mobile/domain/models.dart';
 import 'package:opencode_mobile/telegram/telegram_bot.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
 /// End-to-end contract for the relay: a real [TelegramBotBridge] long-polls a
 /// local stand-in for the Bot API, dispatches the updates it receives, and
@@ -31,12 +32,18 @@ class _FakeTelegram {
   final _pending = <Map<String, dynamic>>[];
   final calls = <String>[];
   final sends = <String>[];
+  final sendChatIDs = <String>[];
   int _updateID = 100;
   int _conflicts = 0;
 
   String get origin => 'http://127.0.0.1:${_server.port}';
 
-  void enqueue(String text, {Object? from = _owner, Object? chat = _owner}) {
+  void enqueue(
+    String text, {
+    Object? from = _owner,
+    Object? chat = _owner,
+    String? username,
+  }) {
     _pending.add({
       'update_id': ++_updateID,
       'message': {
@@ -44,7 +51,11 @@ class _FakeTelegram {
         'date': 0,
         'text': text,
         'chat': {'id': chat, 'type': 'private'},
-        'from': {'id': from, 'is_bot': false},
+        'from': {
+          'id': from,
+          'is_bot': false,
+          if (username != null) 'username': username,
+        },
       },
     });
   }
@@ -92,6 +103,9 @@ class _FakeTelegram {
       case 'sendMessage':
         final decoded = jsonDecode(body);
         sends.add(decoded is Map ? decoded['text']?.toString() ?? '' : '');
+        sendChatIDs.add(
+          decoded is Map ? decoded['chat_id']?.toString() ?? '' : '',
+        );
         return (
           status: 200,
           payload: {
@@ -125,41 +139,79 @@ class _FakeTelegram {
 
 class _Recorder {
   final prompts = <String>[];
+  final hostListeners = <void Function()>[];
+  String profileID = _profile;
   var stops = 0;
 }
 
+class _BindingPreferences extends InMemorySharedPreferencesStore {
+  _BindingPreferences(Map<String, Object> data) : super.withData(data);
+
+  final bindingStarted = Completer<void>();
+  Completer<void>? bindingGate;
+  bool refuseBinding = false;
+  bool refuseRemoval = false;
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) async {
+    if (key == 'flutter.${TelegramBotBridge.boundUserIDKeyPrefix}$_profile') {
+      if (!bindingStarted.isCompleted) bindingStarted.complete();
+      final gate = bindingGate;
+      if (gate != null) await gate.future;
+      if (refuseBinding) return false;
+    }
+    return super.setValue(valueType, key, value);
+  }
+
+  @override
+  Future<bool> remove(String key) async {
+    if (refuseRemoval &&
+        key == 'flutter.${TelegramBotBridge.boundUserIDKeyPrefix}$_profile') {
+      return false;
+    }
+    return super.remove(key);
+  }
+}
+
 class _Harness {
-  _Harness(this.telegram, this.bridge, this.recorder);
+  _Harness(this.telegram, this.bridge, this.recorder, this.preferences);
 
   final _FakeTelegram telegram;
   final TelegramBotBridge bridge;
   final _Recorder recorder;
+  final SharedPreferences preferences;
 
   static Future<_Harness> start({
     bool enabled = true,
+    String username = '',
+    String chatID = _owner,
+    String boundUserID = '',
     Stream<EventEnvelope>? events,
     String? reply,
   }) async {
     final telegram = await _FakeTelegram.start();
     telegramApiOrigin = telegram.origin;
     SharedPreferences.setMockInitialValues({
-      '${TelegramBotBridge.chatIDKeyPrefix}$_profile': _owner,
+      '${TelegramBotBridge.chatIDKeyPrefix}$_profile': chatID,
+      '${TelegramBotBridge.usernameKeyPrefix}$_profile': username,
+      '${TelegramBotBridge.boundUserIDKeyPrefix}$_profile': boundUserID,
       '${TelegramBotBridge.enabledKeyPrefix}$_profile': enabled,
     });
     FlutterSecureStorage.setMockInitialValues({
       '${TelegramBotBridge.tokenKeyPrefix}$_profile': _token,
     });
     final recorder = _Recorder();
+    final preferences = await SharedPreferences.getInstance();
     final bridge = TelegramBotBridge(
-      preferences: await SharedPreferences.getInstance(),
+      preferences: preferences,
       secureStorage: const FlutterSecureStorage(),
       events: events ?? const Stream<EventEnvelope>.empty(),
-      profileID: () => _profile,
+      profileID: () => recorder.profileID,
       directory: () => _directory,
       workspace: () => '',
       supported: () => true,
-      addHostListener: (_) {},
-      removeHostListener: (_) {},
+      addHostListener: recorder.hostListeners.add,
+      removeHostListener: recorder.hostListeners.remove,
       sendPrompt: (text) async {
         recorder.prompts.add(text);
         return 'ses-1';
@@ -170,7 +222,14 @@ class _Harness {
       isSessionBusy: (_) => false,
     );
     await bridge.initialize();
-    return _Harness(telegram, bridge, recorder);
+    return _Harness(telegram, bridge, recorder, preferences);
+  }
+
+  void switchProfile(String profileID) {
+    recorder.profileID = profileID;
+    for (final listener in List.of(recorder.hostListeners)) {
+      listener();
+    }
   }
 
   Future<void> stop() async {
@@ -338,5 +397,394 @@ void main() {
     final notice = await harness.bridge.testConnection();
     expect(notice, contains('@demo_bot'));
     expect(notice, contains('可以与该用户私聊'));
+  });
+
+  test('a username alone can enable the relay and bind its reply ID', () async {
+    final harness = await _Harness.start(enabled: false, chatID: '');
+    addTearDown(harness.stop);
+    await harness.bridge.saveConfiguration(
+      username: ' @Owner_Name ',
+      enabled: true,
+    );
+    await _waitFor(() => harness.telegram.calls.contains('getUpdates'));
+    expect(harness.bridge.snapshot.username, 'owner_name');
+    expect(harness.bridge.snapshot.chatID, isEmpty);
+    expect(harness.bridge.snapshot.configured, isTrue);
+    expect(harness.bridge.snapshot.awaitingBinding, isTrue);
+
+    harness.telegram.enqueue(
+      'ignore this',
+      from: 999,
+      chat: 999,
+      username: 'other',
+    );
+    harness.telegram.enqueue('ignore missing username');
+    harness.telegram.enqueue('first instruction', username: 'OWNER_NAME');
+    await _waitFor(() => harness.telegram.sends.isNotEmpty);
+    expect(harness.recorder.prompts, ['first instruction']);
+    expect(harness.telegram.sendChatIDs, [_owner]);
+    expect(harness.bridge.snapshot.boundUserID, _owner);
+    expect(harness.bridge.snapshot.awaitingBinding, isFalse);
+    expect(
+      harness.preferences.getString(
+        '${TelegramBotBridge.boundUserIDKeyPrefix}$_profile',
+      ),
+      _owner,
+    );
+  });
+
+  test('a restored binding rejects username takeover after renames', () async {
+    final harness = await _Harness.start(
+      username: 'owner_name',
+      chatID: '',
+      boundUserID: _owner,
+    );
+    addTearDown(harness.stop);
+    await _waitFor(() => harness.telegram.calls.contains('getUpdates'));
+    harness.telegram.enqueue(
+      'intruder',
+      from: 999,
+      chat: 999,
+      username: 'owner_name',
+    );
+    harness.telegram.enqueue('renamed owner', username: 'new_owner_name');
+    harness.telegram.enqueue('owner without username');
+    await _waitFor(() => harness.telegram.sends.length == 2);
+    expect(harness.recorder.prompts, ['renamed owner', 'owner without username']);
+    expect(harness.telegram.sendChatIDs, [_owner, _owner]);
+    expect(harness.bridge.snapshot.boundUserID, _owner);
+  });
+
+  test('an optional ID adds a constraint on first username binding', () async {
+    final harness = await _Harness.start(username: 'owner_name');
+    addTearDown(harness.stop);
+    await _waitFor(() => harness.telegram.calls.contains('getUpdates'));
+    harness.telegram.enqueue(
+      'wrong ID',
+      from: 999,
+      chat: 999,
+      username: 'owner_name',
+    );
+    harness.telegram.enqueue('wrong username', username: 'other_name');
+    harness.telegram.enqueue('/start', username: 'owner_name');
+    await _waitFor(() => harness.telegram.sends.isNotEmpty);
+    expect(harness.recorder.prompts, isEmpty);
+    expect(harness.telegram.sends, hasLength(1));
+    expect(harness.telegram.sends.single, contains('已连接到 OpenCode Plus'));
+    expect(harness.bridge.snapshot.boundUserID, _owner);
+  });
+
+  test('editing identity clears the old binding and optional ID', () async {
+    final harness = await _Harness.start(
+      enabled: false,
+      username: 'owner_name',
+      boundUserID: _owner,
+    );
+    addTearDown(harness.stop);
+    await harness.bridge.saveConfiguration(username: 'new_owner', enabled: true);
+    expect(harness.bridge.snapshot.chatID, isEmpty);
+    expect(harness.bridge.snapshot.boundUserID, isEmpty);
+    expect(harness.bridge.snapshot.awaitingBinding, isTrue);
+    expect(
+      harness.preferences.getString(
+        '${TelegramBotBridge.chatIDKeyPrefix}$_profile',
+      ),
+      isEmpty,
+    );
+    expect(
+      harness.preferences.containsKey(
+        '${TelegramBotBridge.boundUserIDKeyPrefix}$_profile',
+      ),
+      isFalse,
+    );
+    await _waitFor(() => harness.telegram.calls.contains('getUpdates'));
+    harness.telegram.enqueue('old owner', username: 'owner_name');
+    harness.telegram.enqueue(
+      'new owner',
+      from: 999,
+      chat: 999,
+      username: 'new_owner',
+    );
+    await _waitFor(() => harness.telegram.sends.isNotEmpty);
+    expect(harness.recorder.prompts, ['new owner']);
+    expect(harness.telegram.sendChatIDs, ['999']);
+    expect(harness.bridge.snapshot.boundUserID, '999');
+  });
+
+  test('saving the same username preserves its stable binding', () async {
+    final harness = await _Harness.start(
+      enabled: false,
+      username: 'owner_name',
+      chatID: '',
+      boundUserID: _owner,
+    );
+    addTearDown(harness.stop);
+    await harness.bridge.saveConfiguration(
+      username: '@OwNeR_NaMe',
+      enabled: false,
+    );
+    expect(harness.bridge.snapshot.username, 'owner_name');
+    expect(harness.bridge.snapshot.boundUserID, _owner);
+    await harness.bridge.saveConfiguration(username: 'owner_name', enabled: true);
+    expect(harness.bridge.snapshot.boundUserID, _owner);
+  });
+
+  test('enabling requires a valid username or ID', () async {
+    final harness = await _Harness.start(enabled: false, chatID: '');
+    addTearDown(harness.stop);
+    await expectLater(
+      harness.bridge.saveConfiguration(enabled: true),
+      throwsFormatException,
+    );
+    await expectLater(
+      harness.bridge.saveConfiguration(username: 'Display Name', enabled: true),
+      throwsFormatException,
+    );
+    await expectLater(
+      harness.bridge.saveConfiguration(
+        username: 'owner_name',
+        chatID: '-123',
+        enabled: true,
+      ),
+      throwsFormatException,
+    );
+    expect(harness.telegram.calls, isEmpty);
+    expect(harness.bridge.snapshot.enabled, isFalse);
+  });
+
+  test('username-only token verification waits for a private message', () async {
+    final harness = await _Harness.start(
+      enabled: false,
+      username: 'owner_name',
+      chatID: '',
+    );
+    addTearDown(harness.stop);
+    final notice = await harness.bridge.testConnection();
+    expect(notice, contains('@demo_bot'));
+    expect(notice, contains('@owner_name'));
+    expect(notice, contains('/start'));
+    expect(harness.telegram.calls, ['getMe']);
+    expect(harness.bridge.snapshot.boundUserID, isEmpty);
+  });
+
+  test('agent notices wait for binding, then use the numeric ID', () async {
+    final events = StreamController<EventEnvelope>.broadcast();
+    final harness = await _Harness.start(
+      username: 'owner_name',
+      events: events.stream,
+    );
+    addTearDown(() async {
+      await events.close();
+      await harness.stop();
+    });
+    await _waitFor(() => harness.telegram.calls.contains('getUpdates'));
+    await harness.bridge.bindSession('ses-1');
+    events.add(
+      EventEnvelope(
+        type: 'session.status',
+        directory: _directory,
+        properties: {
+          'sessionID': 'ses-1',
+          'status': {'type': 'busy'},
+        },
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(harness.telegram.sends, isEmpty);
+
+    harness.telegram.enqueue('/start', username: 'owner_name');
+    await _waitFor(() => harness.telegram.sends.length == 1);
+    events.add(
+      EventEnvelope(
+        type: 'permission.asked',
+        directory: _directory,
+        properties: {'sessionID': 'ses-1'},
+      ),
+    );
+    await _waitFor(() => harness.telegram.sends.length == 2);
+    expect(harness.telegram.sends.last, contains('等待权限或问题确认'));
+    expect(harness.telegram.sendChatIDs, [_owner, _owner]);
+  });
+
+  test('verification does not reuse an edited-away ID or binding', () async {
+    final harness = await _Harness.start(
+      enabled: false,
+      username: 'owner_name',
+      boundUserID: _owner,
+    );
+    addTearDown(harness.stop);
+    final notice = await harness.bridge.testConnection(
+      username: 'new_owner',
+      chatID: '',
+    );
+    expect(notice, contains('@new_owner'));
+    expect(harness.telegram.calls, ['getMe']);
+    expect(harness.bridge.snapshot.boundUserID, _owner);
+  });
+
+  test('server profiles keep username bindings isolated', () async {
+    final harness = await _Harness.start(
+      username: 'owner_name',
+      chatID: '',
+      boundUserID: _owner,
+    );
+    addTearDown(harness.stop);
+    const secondProfile = 'profile-2';
+    await harness.preferences.setString(
+      '${TelegramBotBridge.usernameKeyPrefix}$secondProfile',
+      'second_owner',
+    );
+    await harness.preferences.setBool(
+      '${TelegramBotBridge.enabledKeyPrefix}$secondProfile',
+      true,
+    );
+    const secure = FlutterSecureStorage();
+    await secure.write(
+      key: '${TelegramBotBridge.tokenKeyPrefix}$secondProfile',
+      value: _token,
+    );
+    harness.switchProfile(secondProfile);
+    await _waitFor(
+      () =>
+          harness.bridge.snapshot.profileID == secondProfile &&
+          harness.bridge.snapshot.phase == TelegramBotPhase.polling,
+    );
+    expect(harness.bridge.snapshot.username, 'second_owner');
+    expect(harness.bridge.snapshot.boundUserID, isEmpty);
+    harness.telegram.enqueue('old account', username: 'owner_name');
+    harness.telegram.enqueue(
+      'second account',
+      from: 999,
+      chat: 999,
+      username: 'second_owner',
+    );
+    await _waitFor(() => harness.telegram.sends.isNotEmpty);
+    expect(harness.recorder.prompts, ['second account']);
+    expect(harness.telegram.sendChatIDs, ['999']);
+    expect(
+      harness.preferences.getString(
+        '${TelegramBotBridge.boundUserIDKeyPrefix}$_profile',
+      ),
+      _owner,
+    );
+    expect(
+      harness.preferences.getString(
+        '${TelegramBotBridge.boundUserIDKeyPrefix}$secondProfile',
+      ),
+      '999',
+    );
+  });
+
+  test('a refused binding write never forwards the instruction', () async {
+    final harness = await _Harness.start(username: 'owner_name', chatID: '');
+    addTearDown(harness.stop);
+    final preferences = _BindingPreferences(
+      await SharedPreferencesStorePlatform.instance.getAll(),
+    )..refuseBinding = true;
+    SharedPreferencesStorePlatform.instance = preferences;
+    await _waitFor(() => harness.telegram.calls.contains('getUpdates'));
+    harness.telegram.enqueue('must not execute', username: 'owner_name');
+    await _waitFor(
+      () => harness.bridge.snapshot.phase == TelegramBotPhase.error,
+    );
+    expect(harness.bridge.snapshot.lastError, contains('无法保存'));
+    expect(harness.bridge.snapshot.boundUserID, isEmpty);
+    expect(harness.recorder.prompts, isEmpty);
+    expect(harness.telegram.sends, isEmpty);
+    expect(
+      harness.preferences.getString(
+        '${TelegramBotBridge.boundUserIDKeyPrefix}$_profile',
+      ),
+      isEmpty,
+    );
+  });
+
+  test('identity edits drain an in-flight binding before clearing it', () async {
+    final harness = await _Harness.start(username: 'owner_name', chatID: '');
+    addTearDown(harness.stop);
+    final gate = Completer<void>();
+    // Release the fake disk write even if an assertion fails.
+    addTearDown(() {
+      if (!gate.isCompleted) gate.complete();
+    });
+    final preferences = _BindingPreferences(
+      await SharedPreferencesStorePlatform.instance.getAll(),
+    )..bindingGate = gate;
+    SharedPreferencesStorePlatform.instance = preferences;
+    await _waitFor(() => harness.telegram.calls.contains('getUpdates'));
+    harness.telegram.enqueue('old pending instruction', username: 'owner_name');
+    await preferences.bindingStarted.future.timeout(const Duration(seconds: 8));
+    final saving = harness.bridge.saveConfiguration(
+      username: 'new_owner',
+      enabled: false,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    gate.complete();
+    await saving;
+    expect(harness.bridge.snapshot.username, 'new_owner');
+    expect(harness.bridge.snapshot.boundUserID, isEmpty);
+    expect(harness.recorder.prompts, isEmpty);
+    expect(harness.telegram.sends, isEmpty);
+    await harness.preferences.reload();
+    expect(
+      harness.preferences.containsKey(
+        '${TelegramBotBridge.boundUserIDKeyPrefix}$_profile',
+      ),
+      isFalse,
+    );
+  });
+
+  test('refusing to clear a binding cannot enable a new identity', () async {
+    final harness = await _Harness.start(
+      username: 'owner_name',
+      chatID: '',
+      boundUserID: _owner,
+    );
+    addTearDown(harness.stop);
+    final preferences = _BindingPreferences(
+      await SharedPreferencesStorePlatform.instance.getAll(),
+    )..refuseRemoval = true;
+    SharedPreferencesStorePlatform.instance = preferences;
+    await expectLater(
+      harness.bridge.saveConfiguration(username: 'new_owner', enabled: true),
+      throwsFormatException,
+    );
+    expect(harness.bridge.snapshot.enabled, isFalse);
+    expect(harness.bridge.snapshot.phase, TelegramBotPhase.disabled);
+    await harness.preferences.reload();
+    expect(
+      harness.preferences.getString(
+        '${TelegramBotBridge.usernameKeyPrefix}$_profile',
+      ),
+      'owner_name',
+    );
+    expect(
+      harness.preferences.getString(
+        '${TelegramBotBridge.boundUserIDKeyPrefix}$_profile',
+      ),
+      _owner,
+    );
+    expect(harness.recorder.prompts, isEmpty);
+    expect(harness.telegram.sends, isEmpty);
+  });
+
+  test('removing configuration deletes username and account binding', () async {
+    final harness = await _Harness.start(
+      enabled: false,
+      username: 'owner_name',
+      chatID: '',
+      boundUserID: _owner,
+    );
+    addTearDown(harness.stop);
+    await harness.bridge.clearConfiguration();
+    expect(harness.bridge.snapshot.configured, isFalse);
+    expect(harness.bridge.snapshot.username, isEmpty);
+    expect(harness.bridge.snapshot.boundUserID, isEmpty);
+    for (final prefix in [
+      TelegramBotBridge.usernameKeyPrefix,
+      TelegramBotBridge.boundUserIDKeyPrefix,
+    ]) {
+      expect(harness.preferences.containsKey('$prefix$_profile'), isFalse);
+    }
   });
 }

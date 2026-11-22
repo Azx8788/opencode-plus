@@ -20,12 +20,13 @@ class TelegramBotScreen extends StatefulWidget {
 
 class _TelegramBotScreenState extends State<TelegramBotScreen> {
   late final TextEditingController _token = TextEditingController();
+  late final TextEditingController _username = TextEditingController();
   late final TextEditingController _chatID = TextEditingController();
   late final TelegramBotBridge _bridge = widget.controller.telegramBot;
   bool _enabled = false;
   bool _replacingToken = false;
   bool _busy = false;
-  bool _chatEdited = false;
+  bool _identityEdited = false;
   String? _loadedProfile;
   String? _notice;
   String? _error;
@@ -52,11 +53,16 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
     final snapshot = _bridge.snapshot;
     if (snapshot.profileID != _loadedProfile) {
       _loadedProfile = snapshot.profileID;
-      _chatEdited = false;
+      _identityEdited = false;
       _enabled = snapshot.enabled;
     }
-    if (!_chatEdited && _chatID.text != snapshot.chatID) {
-      _chatID.text = snapshot.chatID;
+    if (!_identityEdited) {
+      if (_username.text != snapshot.username) {
+        _username.text = snapshot.username;
+      }
+      if (_chatID.text != snapshot.chatID) {
+        _chatID.text = snapshot.chatID;
+      }
     }
   }
 
@@ -65,12 +71,17 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
     _bridge.removeListener(_changed);
     widget.controller.removeListener(_changed);
     _token.dispose();
+    _username.dispose();
     _chatID.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
     if (_busy) return;
+    final profileID = _bridge.snapshot.profileID;
+    final username = _username.text;
+    final chatID = _chatID.text;
+    final token = _token.text;
     setState(() {
       _busy = true;
       _error = null;
@@ -80,24 +91,38 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
       var notice = _text('Settings saved.', '设置已保存。');
       if (_enabled) {
         await _bridge.saveConfiguration(
-          token: _token.text,
-          chatID: _chatID.text,
+          token: token,
+          username: username,
+          chatID: chatID,
           enabled: false,
         );
+        if (_bridge.snapshot.profileID != profileID) return;
         _enabled = false;
-        notice = await _bridge.testConnection(chatID: _chatID.text);
-        await _bridge.saveConfiguration(chatID: _chatID.text, enabled: true);
+        notice = await _bridge.testConnection(
+          username: username,
+          chatID: chatID,
+        );
+        if (_bridge.snapshot.profileID != profileID) return;
+        await _bridge.saveConfiguration(
+          username: username,
+          chatID: chatID,
+          enabled: true,
+        );
+        if (_bridge.snapshot.profileID != profileID) return;
         _enabled = true;
       } else {
         await _bridge.saveConfiguration(
-          token: _token.text,
-          chatID: _chatID.text,
+          token: token,
+          username: username,
+          chatID: chatID,
           enabled: false,
         );
       }
+      if (_bridge.snapshot.profileID != profileID) return;
       _token.clear();
       _replacingToken = false;
-      _chatEdited = false;
+      _identityEdited = false;
+      _syncSnapshot();
       _notice = notice;
     } on FormatException catch (error) {
       _error = error.message;
@@ -118,14 +143,15 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
     try {
       _notice = await _bridge.testConnection(
         replacementToken: _token.text,
+        username: _username.text,
         chatID: _chatID.text,
       );
     } on FormatException catch (error) {
       _error = error.message;
     } on Object {
       _error = _text(
-        'Telegram test failed. Check the bot token, user ID, and network.',
-        'Telegram 测试失败，请检查 Bot Token、用户 ID 和网络。',
+        'Telegram test failed. Check the bot token, username or user ID, and network.',
+        'Telegram 测试失败，请检查 Bot Token、用户名或用户 ID 和网络。',
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -142,10 +168,11 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
     try {
       await _bridge.clearConfiguration();
       _token.clear();
+      _username.clear();
       _chatID.clear();
       _enabled = false;
       _replacingToken = false;
-      _chatEdited = false;
+      _identityEdited = false;
       _notice = _text(
         'Telegram bot configuration removed.',
         'Telegram 机器人配置已删除。',
@@ -224,6 +251,25 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
               tone: KitTextTone.attention,
             ),
           ],
+          if (snapshot.enabled && snapshot.awaitingBinding) ...[
+            SizedBox(height: tokens.space2),
+            KitGroupNote(
+              message: _text(
+                'Waiting for @${snapshot.username} to send /start in the bot’s private chat. The account ID will be bound automatically.',
+                '等待 @${snapshot.username} 私聊机器人并发送 /start，届时会自动绑定账号 ID。',
+              ),
+            ),
+          ] else if (snapshot.boundUserID.isNotEmpty) ...[
+            SizedBox(height: tokens.space2),
+            KitText(
+              _text(
+                'Account bound. Username changes will not authorize another account.',
+                '账号已绑定，用户名变更不会授权其他账号。',
+              ),
+              role: KitTextRole.caption,
+              tone: KitTextTone.secondary,
+            ),
+          ],
           if (!localServer) ...[
             SizedBox(height: tokens.space3),
             KitGroupNote(
@@ -249,18 +295,36 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
           ),
           SizedBox(height: tokens.space3),
           KitField(
+            key: const ValueKey('telegram-bot-username'),
+            label: _text(
+              'Your Telegram username (recommended)',
+              '你的 Telegram 用户名（推荐）',
+            ),
+            kind: KitFieldKind.mono,
+            controller: _username,
+            enabled: !_busy,
+            disabledReason: _busy ? _text('Saving settings', '正在保存设置') : null,
+            hint: _text('For example: @your_username', '例如：@your_username'),
+            helper: _text(
+              'Use your own account’s username, not the bot’s username or your display name. @ is optional and case does not matter. After saving and enabling, send /start to the bot; the first match binds your account ID.',
+              '填写你自己账号的用户名，而非机器人用户名或昵称。可省略 @，不区分大小写。保存并启用后，私聊机器人发送 /start；首次匹配后自动绑定账号 ID。',
+            ),
+            onChanged: (_) => _identityEdited = true,
+          ),
+          SizedBox(height: tokens.space3),
+          KitField(
             key: const ValueKey('telegram-bot-user-id'),
-            label: _text('Allowed Telegram user ID', '允许的 Telegram 用户 ID'),
+            label: _text('Telegram user ID (optional)', 'Telegram 用户 ID（可选）'),
             kind: KitFieldKind.number,
             controller: _chatID,
             enabled: !_busy,
             disabledReason: _busy ? _text('Saving settings', '正在保存设置') : null,
             hint: _text('For example: 123456789', '例如：123456789'),
             helper: _text(
-              'Find your numeric ID with @userinfobot. Only this private chat can send instructions or receive updates.',
-              '可通过 @userinfobot 查询数字 ID。只有该账号的私聊可以发送指令或接收进度。',
+              'Leave blank when using a username. Without a username, enter your numeric ID instead (for example, from @userinfobot). If both are filled, they must match the same account on first contact.',
+              '使用用户名时可留空。没有用户名时，可改填数字 ID（如通过 @userinfobot 查询）。两者都填时，首次绑定必须属于同一账号。',
             ),
-            onChanged: (_) => _chatEdited = true,
+            onChanged: (_) => _identityEdited = true,
           ),
           SizedBox(height: tokens.space3),
           KitSwitchRow(

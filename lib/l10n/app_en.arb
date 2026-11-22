@@ -36508,7 +36508,7 @@
   },
   "settingsV3VoiceTyping": "Voice typing",
   "telegramBotSettingsTitle": "Telegram bot",
-  "telegramBotSettingsKeywords": "Telegram bot remote agent messages progress command chat ID token",
+  "telegramBotSettingsKeywords": "Telegram bot remote agent messages progress command username chat ID token",
   "@settingsV3VoiceTyping": {
     "description": "Settings hub row: voice typing and its model."
   },

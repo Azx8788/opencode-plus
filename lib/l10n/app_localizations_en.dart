@@ -30122,7 +30122,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get telegramBotSettingsKeywords =>
-      'Telegram bot remote agent messages progress command chat ID token';
+      'Telegram bot remote agent messages progress command username chat ID token';
 
   @override
   String get settingsV3Permissions => 'Permissions and automation';
