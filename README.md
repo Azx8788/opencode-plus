@@ -61,6 +61,30 @@ local bump, because Releases is the channel people install from. A local
 build that needs a new code must run the bump itself — or use
 `tool/build_apk.sh`.
 
+### Cutting a release
+
+Every push and every tag builds and tests, but only a tag publishes. The tag
+must be `v` plus the **whole** `pubspec.yaml` version, build number included:
+
+```sh
+# version: 0.3.27+35
+git tag -a "v0.3.27+35" -m "OpenCode Plus 0.3.27+35"
+git push origin "v0.3.27+35"
+```
+
+`v0.3.27` is rejected by the `Check the tag matches pubspec` step, and that
+failure happens *before* packaging: the run goes red and carries no APK
+artifact, which reads like "the build produced no install package". The
+release job then attaches `opencode-plus-<version>-arm64-v8a.apk` and
+`SHA256SUMS` to a draft release; publish the draft (or pass `--draft=false`)
+to make it installable from Releases.
+
+Branch and `main` runs upload the same APK as a workflow artifact, zipped by
+`actions/upload-artifact` — that is a build for testing, not the install
+channel. Their `versionCode` is `100000 + run_number`, so a branch build made
+*after* a release carries a higher code and will refuse to be replaced by
+that release; uninstall it first, or install a build made later than it.
+
 ## Architecture and internals
 
 [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) is the long-form guide: every

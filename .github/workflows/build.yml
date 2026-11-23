@@ -209,6 +209,7 @@ jobs:
           EXPECTED="v${{ steps.app.outputs.version }}"
           if [ "${GITHUB_REF_NAME}" != "${EXPECTED}" ]; then
             echo "::error::tag ${GITHUB_REF_NAME} does not match ${EXPECTED} in pubspec.yaml"
+            echo "::error::A tag must be 'v' plus the whole pubspec version, build number included (git tag -a ${EXPECTED}). This step runs before packaging, so this run has no APK: delete the tag, push ${EXPECTED}, and let that run publish the release."
             exit 1
           fi
 
