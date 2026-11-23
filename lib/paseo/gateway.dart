@@ -874,6 +874,7 @@ class PaseoGateway extends _PaseoWorkspace
     List<PromptAttachment> attachments = const [],
     List<PromptAgentMention> agentMentions = const [],
     PromptDelivery? delivery,
+    PromptCancellation? cancel,
   }) => _promptAsync(
     sessionID,
     messageID: _paseoUuid(),
@@ -884,6 +885,7 @@ class PaseoGateway extends _PaseoWorkspace
     attachments: attachments,
     agentMentions: agentMentions,
     delivery: delivery,
+    cancel: cancel,
   );
 
   @override
@@ -898,11 +900,13 @@ class PaseoGateway extends _PaseoWorkspace
     List<PromptAgentMention> agentMentions = const [],
     PromptDelivery? delivery,
     void Function()? beforeSend,
+    PromptCancellation? cancel,
   }) => _promptAsync(
     sessionID,
     messageID: messageID,
     existingOnly: true,
     beforeSend: beforeSend,
+    cancel: cancel,
     text: text,
     model: model,
     agent: agent,
@@ -924,6 +928,7 @@ class PaseoGateway extends _PaseoWorkspace
     List<PromptAttachment> attachments = const [],
     List<PromptAgentMention> agentMentions = const [],
     PromptDelivery? delivery,
+    PromptCancellation? cancel,
   }) => _withPayloadUse(() async {
     // A card observed by another gateway carries the daemon ID; local state
     // stays keyed by the original app ID when this gateway created the chat.
@@ -937,6 +942,7 @@ class PaseoGateway extends _PaseoWorkspace
       throw PaseoFailure(PaseoFailureKind.invalidResponse);
     }
     PromptTrace.sent(sessionID);
+    cancel?.throwIfCancelled();
     if (_isSubagent(sessionID)) throw _PaseoSubagents._readOnly;
     if (agentMentions.isNotEmpty || delivery != null) {
       throw PaseoFailure(PaseoFailureKind.unavailable);
@@ -981,6 +987,9 @@ class PaseoGateway extends _PaseoWorkspace
         _checkLocation(scope, epoch);
         final reservation = await _beforeBrowserLaunch(sessionID);
         _checkLocation(scope, epoch);
+        // The last gate: a Stop during the preparation above leaves nothing
+        // on the wire.
+        cancel?.throwIfCancelled();
         await _applySelection(
           sessionID,
           model: model,

@@ -20,6 +20,13 @@ enum Api2Delivery {
 /// Receipt returned by `POST /api/session/{id}/prompt` and the entries of
 /// `GET /api/session/{id}/inbox`.
 class Api2InboxItem {
+  /// The `type` a prompt receipt carries. The pinned server (2.0.29/2.1.1)
+  /// names the item after the message it will become, and a prompt becomes a
+  /// user message: `user`. `prompt` is kept because older/custom builds used
+  /// it, and rejecting either one turned a perfectly good receipt into
+  /// "unknown" — the send was retried and admitted twice.
+  static const promptTypes = {'user', 'prompt'};
+
   final String id;
   final String? sessionID;
   final int? timeCreated;
@@ -35,13 +42,21 @@ class Api2InboxItem {
     this.delivery,
   });
 
+  /// Whether this receipt is a prompt (as opposed to a command or a shell
+  /// line), across the type names the server generations use.
+  bool get isPrompt => promptTypes.contains(type);
+
   static Api2InboxItem? fromJson(Map<String, dynamic> j) {
     final id = _asString(j['id']);
     if (id == null) return null;
+    // The native receipt nests the timestamp (`time: {created}`); the older
+    // REST shape put it at the top. Reading only the top level lost the
+    // order of steers taken back on reconnect, so accept both.
+    final time = _asMap(j['time']);
     return Api2InboxItem(
       id: id,
       sessionID: _asString(j['sessionID']),
-      timeCreated: _asInt(j['timeCreated']),
+      timeCreated: _asInt(j['timeCreated']) ?? _asInt(time?['created']),
       type: _asString(j['type']) ?? 'unknown',
       payload: _asMap(j['payload']) ?? const {},
       delivery: Api2Delivery.parse(j['delivery']),
@@ -49,6 +64,26 @@ class Api2InboxItem {
   }
 
   String? get promptText => _asString(payload['text']);
+}
+
+/// What a `DELETE /session/{id}/inbox/{itemID}` actually achieved.
+///
+/// The pinned server answers `204` for an item it could not cancel — a
+/// delivered item is a no-op, not an error (S4 in the protocol review). The
+/// client therefore has to look, not trust the status: merging text that is
+/// also still queued admitted the same words twice.
+enum Api2InboxCancel {
+  /// The item is gone from the inbox and no message carries its ID: it will
+  /// not be delivered.
+  cancelled,
+
+  /// The item is gone because it was delivered: a message with that ID
+  /// exists. Its text is already in the conversation.
+  delivered,
+
+  /// Neither can be established. The text must be kept and must not be
+  /// merged or resent automatically.
+  unknown,
 }
 
 // ---------------- Permissions ----------------

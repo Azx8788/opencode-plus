@@ -8,10 +8,12 @@ library;
 
 import 'dart:convert';
 
+import 'package:dio/dio.dart' show CancelToken;
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../domain/models.dart';
 import '../domain/long_term_memory.dart';
+import '../domain/command_receipts.dart' show createCommandReceiptID;
 import 'memory.dart';
 import '../domain/server_gateway.dart';
 import '../domain/parallel_requests.dart';
@@ -39,7 +41,8 @@ class Api2Gateway
         ServerGateway,
         SessionSelectionGateway,
         WebSearchGateway,
-        RemoteShellGateway {
+        RemoteShellGateway,
+        CorrelatedPromptGateway {
   final Api2Client client;
 
   /// Admission fence shared with the phone engine's chat path. A settled
@@ -78,8 +81,16 @@ class Api2Gateway
   /// keeps the server's own rules, so its tools never wait for this phone.
   bool Function(String sessionID)? serverRunsTools;
 
-  Future<void> _dispatch(String sessionID, Future<void> Function() send) async {
+  Future<void> _dispatch(
+    String sessionID,
+    Future<void> Function() send, {
+    PromptCancellation? cancel,
+  }) async {
+    // Before the fence: a send stopped while it waited for the connection
+    // must not touch the session's admission state at all.
+    cancel?.throwIfCancelled();
     await beforeSessionDispatch?.call(sessionID);
+    cancel?.throwIfCancelled();
     try {
       await send();
     } finally {
@@ -534,14 +545,17 @@ class Api2Gateway
     List<PromptAttachment> attachments = const [],
     List<PromptAgentMention> agentMentions = const [],
     PromptDelivery? delivery,
+    PromptCancellation? cancel,
   }) {
     return PromptTrace.track(sessionID, () async {
-      await _promptAsync(
+      await _prompt(
         sessionID,
+        messageID: null,
         text: text,
         attachments: attachments,
         agentMentions: agentMentions,
         delivery: delivery,
+        cancel: cancel,
       );
       // An API send is not a model request, and admission/memory failures
       // are not sends. Only record the server's successful acknowledgement.
@@ -549,22 +563,134 @@ class Api2Gateway
     });
   }
 
-  Future<void> _promptAsync(
+  /// A protocol-legal, stable message ID for one logical send. The same ID
+  /// is reused by every retry of that send, so the server's admission
+  /// deduplication covers a lost acknowledgement; an edited or new prompt
+  /// gets a new one.
+  @override
+  String createPromptMessageID() => createCommandReceiptID();
+
+  /// Sends a prompt under a caller-chosen message ID, through the same
+  /// preparation as [promptAsync] — permission mode, memory and task
+  /// metadata. Offline replay uses this instead of talking to the client
+  /// directly: the direct path skipped all of that, so a replayed prompt
+  /// could run under the server's own allow rules while the app expected
+  /// to be asked.
+  @override
+  Future<void> promptWithMessageID(
     String sessionID, {
+    required String messageID,
+    required String text,
+    ModelRef? model,
+    String? agent,
+    String? variant,
+    List<PromptAttachment> attachments = const [],
+    List<PromptAgentMention> agentMentions = const [],
+    PromptDelivery? delivery,
+    void Function()? beforeSend,
+    PromptCancellation? cancel,
+  }) {
+    return PromptTrace.track(sessionID, () async {
+      await _prompt(
+        sessionID,
+        messageID: messageID,
+        text: text,
+        attachments: attachments,
+        agentMentions: agentMentions,
+        delivery: delivery,
+        beforeSend: beforeSend,
+        cancel: cancel,
+      );
+      onPromptDispatched?.call(sessionID, model, agent, variant);
+    });
+  }
+
+  Future<void> _prompt(
+    String sessionID, {
+    required String? messageID,
     required String text,
     required List<PromptAttachment> attachments,
     required List<PromptAgentMention> agentMentions,
     required PromptDelivery? delivery,
+    void Function()? beforeSend,
+    PromptCancellation? cancel,
   }) => _dispatch(
     sessionID,
+    cancel: cancel,
     () => _run(() async {
-      await _prepareSessionDispatch(sessionID);
-      final memory = memoryContext;
-      if (memory != null) await Api2Memory(client).sync(sessionID, memory);
-      final metadata = await taskMetadata?.call(sessionID, text, delivery);
-      final receipt = await client.prompt(
+      // Everything in this block happens before the request exists. A failure
+      // here provably sent nothing, and saying so is what lets the caller
+      // restore the input instead of leaving it in review forever.
+      Map<String, dynamic>? metadata;
+      try {
+        // Timed per phase: the send path is a chain of network and storage
+        // steps whose individual cost was invisible, so "sending is slow"
+        // could not be attributed to permission, memory or metadata.
+        var phase = PerfTrace.nowMicros;
+        await _prepareSessionDispatch(sessionID);
+        PerfTrace.recordSince('prompt.prepare.permission', phase);
+        cancel?.throwIfCancelled();
+        final memory = memoryContext;
+        if (memory != null) {
+          phase = PerfTrace.nowMicros;
+          await Api2Memory(client).sync(sessionID, memory);
+          PerfTrace.recordSince('prompt.prepare.memory', phase);
+          cancel?.throwIfCancelled();
+        }
+        phase = PerfTrace.nowMicros;
+        metadata = await taskMetadata?.call(sessionID, text, delivery);
+        PerfTrace.recordSince('prompt.prepare.metadata', phase);
+        cancel?.throwIfCancelled();
+        beforeSend?.call();
+        cancel?.throwIfCancelled();
+      } on PromptCancelledException {
+        rethrow;
+      } on PromptNotSentException {
+        rethrow;
+      } on MemoryException {
+        // Already a precise "refused before sending" contract with its own
+        // recovery; wrapping it would hide the failure kind from the caller.
+        rethrow;
+      } on Object catch (error) {
+        throw PromptNotSentException(error);
+      }
+      // Past this point a request exists. Its outcome — including a receipt
+      // that does not describe what was asked for — is never reported as
+      // "not sent", because it may have been admitted.
+      await _sendPrompt(
         sessionID,
+        messageID: messageID,
         text: text,
+        attachments: attachments,
+        agentMentions: agentMentions,
+        delivery: delivery,
+        metadata: metadata,
+        cancel: cancel,
+      );
+    }),
+  );
+
+  Future<void> _sendPrompt(
+    String sessionID, {
+    required String? messageID,
+    required String text,
+    required List<PromptAttachment> attachments,
+    required List<PromptAgentMention> agentMentions,
+    required PromptDelivery? delivery,
+    required Map<String, dynamic>? metadata,
+    required PromptCancellation? cancel,
+  }) async {
+    final token = CancelToken();
+    final detach = cancel?.onCancel(() {
+      if (!token.isCancelled) token.cancel('send stopped');
+    });
+    Api2InboxItem receipt;
+    try {
+      receipt = await client.prompt(
+        sessionID,
+        id: messageID,
+        text: text,
+        cancelToken: cancel == null ? null : token,
         metadata: metadata,
         delivery: switch (delivery) {
           null => null,
@@ -599,11 +725,35 @@ class Api2Gateway
             ),
         ],
       );
-      if (metadata != null) {
-        onTaskPromptAccepted?.call(sessionID, receipt, metadata);
+    } on Api2Error {
+      // A cancelled request is not a server failure; the caller restores
+      // the input instead of reporting an error. The transport reports a
+      // cancelled exchange as a network error, so the cancellation itself
+      // is what decides.
+      if (cancel?.isCancelled ?? false) {
+        throw const PromptCancelledException();
       }
-    }),
-  );
+      rethrow;
+    } finally {
+      detach?.call();
+    }
+    if (cancel?.isCancelled ?? false) throw const PromptCancelledException();
+    if (messageID != null) {
+      // The receipt must describe the message that was asked for. A
+      // mismatched one is not evidence of admission, and treating it as
+      // success would let the queue drop an unsent prompt.
+      if (receipt.id != messageID ||
+          receipt.sessionID != sessionID ||
+          !receipt.isPrompt) {
+        throw const Api2RequestError(
+          'The server acknowledged a different message than the one sent.',
+        );
+      }
+    }
+    if (metadata != null) {
+      onTaskPromptAccepted?.call(sessionID, receipt, metadata);
+    }
+  }
 
   @override
   Future<void> shell(

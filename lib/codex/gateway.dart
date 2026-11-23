@@ -469,6 +469,7 @@ class CodexGateway
     List<PromptAttachment> attachments = const [],
     List<PromptAgentMention> agentMentions = const [],
     PromptDelivery? delivery,
+    PromptCancellation? cancel,
   }) async {
     PromptTrace.sent(sessionID);
     if (attachments.isNotEmpty ||

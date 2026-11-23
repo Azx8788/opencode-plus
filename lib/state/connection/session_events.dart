@@ -3,6 +3,36 @@ part of '../connection.dart';
 // Event handlers for sessions, their messages and their runs.
 
 extension _ConnectionControllerSessionEventsImpl on ConnectionController {
+  /// The body of [reconcileSessionStatuses].
+  Future<void> _reconcileSessionStatuses() async {
+    final currentApi = api;
+    final generation = _generation;
+    if (currentApi == null || !isConnected) return;
+    final location = locationRevision;
+    Map<String, String> statuses;
+    try {
+      statuses = await currentApi.sessionStatuses().timeout(
+        const Duration(seconds: 8),
+      );
+    } catch (_) {
+      // An unreachable server says nothing about which runs exist.
+      return;
+    }
+    if (_disposed ||
+        !_isCurrent(generation, currentApi) ||
+        location != locationRevision) {
+      return;
+    }
+    var changed = false;
+    for (final entry in statuses.entries) {
+      if (entry.value == 'idle') continue;
+      if (_deletedSessionIDs.contains(entry.key)) continue;
+      if (busySessions.add(entry.key)) changed = true;
+    }
+    if (!changed) return;
+    _notifyListeners();
+  }
+
   /// Session record events: create, update, metadata, revert, selection,
   /// deletion and usage.
   void _onSessionEvent(EventEnvelope env, Map<String, dynamic> props) {

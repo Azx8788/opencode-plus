@@ -3817,6 +3817,10 @@
   "@chatUiAlreadyDelivered": {
     "description": "Chat journey: Already delivered"
   },
+  "chatUiCouldNotConfirmCancel": "Could not confirm the cancel. The message may still be pending; nothing was merged.",
+  "@chatUiCouldNotConfirmCancel": {
+    "description": "Chat journey: the inbox cancel could not be confirmed, so the text was not taken back"
+  },
   "chatUiAlwaysAllow": "Always allow",
   "@chatUiAlwaysAllow": {
     "description": "Chat journey: Always allow"
@@ -30336,6 +30340,10 @@
   "chatsNewNeedProject": "Choose a project to start a conversation.",
   "@chatsNewNeedProject": {
     "description": "New chat: why sending is off"
+  },
+  "chatsNewFirstMessageUnconfirmed": "The conversation is open, but the first message was not confirmed. Send it again from here — it may already have arrived.",
+  "@chatsNewFirstMessageUnconfirmed": {
+    "description": "New chat: the session was created but the first prompt did not confirm; the person is taken into that conversation"
   },
   "chatsNewFailed": "The conversation didn't start. Your message is still here.",
   "@chatsNewFailed": {

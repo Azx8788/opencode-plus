@@ -83,7 +83,7 @@ extension _ChatStopAfterStep on _ChatScreenState {
   /// it, so the waiting-sends strip does not say it again).
   bool _isStopAfterStepNote(Api2InboxItem item) =>
       _stopAfterStepPending &&
-      item.type == 'user' &&
+      item.isPrompt &&
       (item.promptText ?? '').trim() ==
           _chatL10n(context).chatStopAfterStepPrompt.trim();
 

@@ -2,6 +2,9 @@ part of '../connection.dart';
 
 // Cached session inventory and transcript tails for a fast first paint.
 
+/// A shared newest-page read with the event version it started at.
+typedef SessionTailRead = ({ServerPage<MessageWithParts> page, int startedAt});
+
 /// [ConnectionController]'s session inventory and transcript caches.
 mixin _ConnectionControllerSessionCache on ChangeNotifier {
   ConnectionController get _self;
@@ -12,7 +15,7 @@ mixin _ConnectionControllerSessionCache on ChangeNotifier {
   SessionInventoryPreview? get cachedSessionInventory =>
       _self._cachedSessionInventory;
   final _sessionTailReads =
-      <(int, String, int, String?), Future<ServerPage<MessageWithParts>>>{};
+      <(int, String, int, String?), Future<SessionTailRead>>{};
 
   /// A read-only text excerpt for the opening frame. It has no pagination or
   /// message-state authority; replace it with the normal live hydration result.
@@ -37,8 +40,22 @@ mixin _ConnectionControllerSessionCache on ChangeNotifier {
   /// Authoritative newest page; prefetch and route hydration share an in-flight
   /// read. UI still applies its event-version merge and uses gateway.messagePage
   /// for older cursors. Failures retain existing product-error handling.
-  Future<ServerPage<MessageWithParts>> loadSessionTail(String sessionID) =>
-      _self._loadSessionTail(sessionID);
+  Future<ServerPage<MessageWithParts>> loadSessionTail(String sessionID) async =>
+      (await _self._loadSessionTail(sessionID, null)).page;
+
+  /// The same read, stamped with the event version of the caller that
+  /// started it.
+  ///
+  /// A shared read can be reused by a hydration that began later, after
+  /// events the read never saw. Merging its result against the *later*
+  /// caller's baseline made those events look older than the snapshot and
+  /// the snapshot won — the transcript stepped back to stale text and a new
+  /// message could disappear. The merge must use the version the data
+  /// actually reflects.
+  Future<SessionTailRead> loadSessionTailStamped(
+    String sessionID,
+    int version,
+  ) => _self._loadSessionTail(sessionID, version);
 
   /// Invoke only for the next intentional navigation, never every visible row.
   /// A failed speculative read cannot surface a toast or raw transport error.
@@ -134,8 +151,10 @@ extension _ConnectionControllerSessionCacheImpl on ConnectionController {
         !_deletedSessionIDs.contains(sessionID);
   }
 
-  /// The body of [loadSessionTail].
-  Future<ServerPage<MessageWithParts>> _loadSessionTail(String sessionID) {
+  /// The body of [loadSessionTail] and [loadSessionTailStamped]. [version] is
+  /// the caller's event version; null means the caller does not merge and
+  /// does not care where the read started.
+  Future<SessionTailRead> _loadSessionTail(String sessionID, int? version) {
     final owner = _connectedProfile ?? profile;
     final currentApi = api;
     final generation = _generation;
@@ -156,7 +175,7 @@ extension _ConnectionControllerSessionCacheImpl on ConnectionController {
         sessionHistoryRevision(sessionID) == historyRevision &&
         sessionsById[sessionID]?.stagedRevert?.messageID == boundary &&
         !_deletedSessionIDs.contains(sessionID);
-    late final Future<ServerPage<MessageWithParts>> read;
+    late final Future<SessionTailRead> read;
     read = () async {
       try {
         final page = await readHistoryAtStagedBoundary(
@@ -187,9 +206,13 @@ extension _ConnectionControllerSessionCacheImpl on ConnectionController {
                 }),
           );
         }
-        return page;
+        return (page: page, startedAt: version ?? 0);
       } finally {
-        _sessionTailReads.remove(key);
+        // Only this read's own entry: a newer read under a different key must
+        // not be removed by an older one finishing.
+        if (identical(_sessionTailReads[key], read)) {
+          _sessionTailReads.remove(key);
+        }
       }
     }();
     _sessionTailReads[key] = read;
