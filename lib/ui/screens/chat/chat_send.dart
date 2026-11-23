@@ -681,7 +681,8 @@ extension _ChatSend on _ChatScreenState {
       // A gateway that refuses during its own preparation provably sent
       // nothing; the wrapped failure is what the person is told about.
       final cause = e is PromptNotSentException ? e.cause : e;
-      final sentNothing = e is PromptNotSentException || cause is MemoryException;
+      final sentNothing =
+          e is PromptNotSentException || cause is MemoryException;
       if (!mounted || _sendStopped) {
         // The page is gone. Keeping the durable record is the only way the
         // words survive: nothing can be put back into a composer that no
