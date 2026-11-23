@@ -656,10 +656,7 @@ extension _ChatSend on _ChatScreenState {
       });
       _checkVoiceReply();
       if (!conversationSend && _composer.text.isEmpty) _restoreHistoryDraft();
-    } on PromptCancelledException {
-      // Stopped before the request left: nothing was sent, so the words go
-      // back to the composer and no error is reported.
-      _onlineSendDispatched = false;
+    } on PromptCancelledException catch (stop) {
       if (!mounted) return;
       _setChatState(() {
         _sending = false;
@@ -667,6 +664,18 @@ extension _ChatSend on _ChatScreenState {
         _pendingSends.remove(pending);
         _messages.removeWhere((message) => message.info.id == pending.localID);
       });
+      if (stop.afterDispatch) {
+        // Stopped while the request was on its way: the server may hold the
+        // prompt. Handing the words back would make a second copy one tap
+        // away, so the record stays for review instead.
+        _onlineSendDispatched = true;
+        _onlineSendError = KitRedact.text(stop.toString());
+        _showComposerNote(strings.queuedResendMessage);
+        return;
+      }
+      // Stopped before the request left: nothing was sent, so the words go
+      // back to the composer and no error is reported.
+      _onlineSendDispatched = false;
       await _restoreInput(text, attachments);
     } catch (e) {
       // A gateway that refuses during its own preparation provably sent
@@ -733,7 +742,14 @@ extension _ChatSend on _ChatScreenState {
     List<PromptAttachment> attachments,
   ) async {
     if (!mounted) return;
-    _setChatState(() => _attachments.insertAll(0, attachments));
+    // A rollback may already have put these back; the same instances are
+    // compared, so a repeated restore cannot double the files.
+    _setChatState(
+      () => _attachments.insertAll(0, [
+        for (final attachment in attachments)
+          if (!_attachments.contains(attachment)) attachment,
+      ]),
+    );
     final currentText = _composer.text;
     if (text.isNotEmpty && currentText.trim() != text) {
       _composer.text = currentText.isEmpty ? text : '$text\n$currentText';

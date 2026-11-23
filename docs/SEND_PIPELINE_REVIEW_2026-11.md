@@ -36,7 +36,7 @@
 
 | 编号 | 处置 | 落点 |
 | --- | --- | --- |
-| **B01** 进网关后无法取消 | 取消随发送进入网关：`PromptCancellation` 接口，每个 `await` 之后与 HTTP 之前检查，`CancelToken` 覆盖在途请求 | `domain/server_gateway/interfaces.dart`、`api2/gateway.dart`、`api2/client.dart`、`ui/screens/chat/chat_send.dart` |
+| **B01** 进网关后无法取消 | 取消随发送进入网关：`PromptCancellation` 接口，每个 `await` 之后与 HTTP 之前检查，`CancelToken` 覆盖在途请求。取消分两种：请求前（确定未发送，文字直接还回）与请求中（`afterDispatch`，服务端可能已接收，保留记录待核对） | `domain/server_gateway/interfaces.dart`、`api2/gateway.dart`、`api2/client.dart`、`ui/screens/chat/chat_send.dart` |
 | **B02** 停止补偿丢失 | 停止请求不再因「已有一个在飞」被丢弃：`_abortRun` / `_abortAgain`，当前一次结束后必然再补一次；补偿移到 `mounted` 检查之前 | `chat_session_actions.dart`、`chat_send.dart` |
 | **B03** 准备抛异常锁死 Stop | 整个准备与请求纳入 `try/finally`，任何路径都释放 `_aborting` | `chat_session_actions.dart` |
 | **B04** 旧回执标错新输入 | 停止前捕获目标 prompt ID，只按 ID 标记，且要求它仍是最后一条 | `chat_session_actions.dart` |

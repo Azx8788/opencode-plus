@@ -385,7 +385,33 @@ void main() {
       await arrived.future;
       hold.cancel();
       release.complete();
-      await expectLater(sending, throwsA(isA<PromptCancelledException>()));
+      // The request had left, so the server may hold it: the caller must not
+      // read this as "nothing was sent".
+      await expectLater(
+        sending,
+        throwsA(
+          isA<PromptCancelledException>().having(
+            (stop) => stop.afterDispatch,
+            'afterDispatch',
+            isTrue,
+          ),
+        ),
+      );
+    });
+
+    test('a stop before the request is reported as nothing sent', () async {
+      final hold = _Hold()..cancel();
+      await expectLater(
+        gateway.promptAsync('s', text: 'hi', cancel: hold),
+        throwsA(
+          isA<PromptCancelledException>().having(
+            (stop) => stop.afterDispatch,
+            'afterDispatch',
+            isFalse,
+          ),
+        ),
+      );
+      expect(server.countOf('POST /api/session/s/prompt'), 0);
     });
 
     test('a send with no cancellation still works', () async {

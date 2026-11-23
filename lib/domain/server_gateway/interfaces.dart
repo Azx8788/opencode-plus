@@ -84,13 +84,21 @@ abstract class PromptGateway {
   Future<void> abort(String sessionID);
 }
 
-/// Thrown when a send was called off before its request could leave. It is
-/// not a failure of the server: nothing was sent, and the caller restores
-/// what the person wrote instead of reporting an error.
+/// Thrown when a send was called off.
+///
+/// [afterDispatch] is what the caller must act on. Stopped before the request
+/// left, nothing was sent and the words can be handed straight back. Stopped
+/// while the request was in flight, the server may already have admitted it:
+/// reporting that as "not sent" would invite a second copy of the same
+/// prompt, so the caller keeps the record for review instead.
 class PromptCancelledException implements Exception {
-  const PromptCancelledException();
+  const PromptCancelledException({this.afterDispatch = false});
+  final bool afterDispatch;
+
   @override
-  String toString() => 'The send was stopped before it left.';
+  String toString() => afterDispatch
+      ? 'The send was stopped while its request was on the way.'
+      : 'The send was stopped before it left.';
 }
 
 /// A prompt that failed during preparation, before the request was made.

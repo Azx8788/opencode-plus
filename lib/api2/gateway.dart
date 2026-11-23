@@ -726,18 +726,22 @@ class Api2Gateway
         ],
       );
     } on Api2Error {
-      // A cancelled request is not a server failure; the caller restores
-      // the input instead of reporting an error. The transport reports a
-      // cancelled exchange as a network error, so the cancellation itself
-      // is what decides.
+      // A cancelled request is not a server failure. The transport reports a
+      // cancelled exchange as a network error, so the cancellation itself is
+      // what decides — and because the request had already left, the server
+      // may hold it: the caller must not read this as "nothing was sent".
       if (cancel?.isCancelled ?? false) {
-        throw const PromptCancelledException();
+        throw const PromptCancelledException(afterDispatch: true);
       }
       rethrow;
     } finally {
       detach?.call();
     }
-    if (cancel?.isCancelled ?? false) throw const PromptCancelledException();
+    if (cancel?.isCancelled ?? false) {
+      // The acknowledgement was in hand when the stop landed: the prompt is
+      // admitted, whatever the person meant to stop.
+      throw const PromptCancelledException(afterDispatch: true);
+    }
     if (messageID != null) {
       // The receipt must describe the message that was asked for. A
       // mismatched one is not evidence of admission, and treating it as
