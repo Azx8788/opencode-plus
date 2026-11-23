@@ -279,6 +279,33 @@ jobs:
           cp "$APK" "dist/${OUT}"
           (cd dist && sha256sum "${OUT}" > SHA256SUMS && cat SHA256SUMS)
 
+      # The run page is where someone looks for "the install package", and an
+      # artifact is a zip behind a login. Name the file, its size and its
+      # checksum in the summary so the run itself answers the question, and
+      # point at wherever the same APK can be downloaded without a login.
+      - name: Summarise the install package
+        run: |
+          set -euo pipefail
+          APK=$(cd dist && ls *.apk | head -1)
+          SIZE=$(du -h "dist/${APK}" | cut -f1)
+          SHA=$(cut -d' ' -f1 dist/SHA256SUMS)
+          REPO="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+          {
+            echo "## Install package"
+            echo
+            echo "| File | Size | SHA256 |"
+            echo "| --- | --- | --- |"
+            echo "| \`${APK}\` | ${SIZE} | \`${SHA}\` |"
+            echo
+            if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+              echo "Download: ${REPO}/releases/tag/${GITHUB_REF_NAME}"
+            else
+              echo "Artifact \`${{ steps.app.outputs.artifact }}\` on this run."
+              echo "Every build of main also refreshes ${REPO}/releases/tag/dev-latest,"
+              echo "which is where the newest installable APK lives without a login."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
@@ -288,8 +315,79 @@ jobs:
   # A published build is still gated on every check: the three jobs above run
   # in parallel for speed, and this one only runs for a tag, after all of them
   # passed. A red test therefore never reaches the Releases page.
+  #
+  # The release is published rather than left as a draft: the gate above is the
+  # review, and a draft is invisible on the public Releases page, so a finished
+  # tag build looked exactly like a build that produced no install package.
   release:
     if: startsWith(github.ref, 'refs/tags/v')
+    needs: [native, verify, package]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source for the change log
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download the packaged APK
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.package.outputs.artifact }}
+          path: dist/
+
+      - name: Write the release notes
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.package.outputs.version }}"
+          APK=$(cd dist && ls *.apk | head -1)
+          SIZE=$(du -h "dist/${APK}" | cut -f1)
+          # --match: the rolling dev-latest tag also points at main, and it is not
+          # a version anyone can diff against.
+          PREVIOUS=$(git describe --tags --abbrev=0 --match 'v*' "${GITHUB_SHA}^" 2>/dev/null || true)
+          {
+            echo "## OpenCode Plus ${VERSION}"
+            echo
+            echo "Built from \`${GITHUB_SHA}\`."
+            echo
+            if [ -n "${PREVIOUS}" ]; then
+              echo "### Changes since ${PREVIOUS}"
+              echo
+              git log --no-merges --pretty='- %s' "${PREVIOUS}..${GITHUB_SHA}"
+              echo
+            fi
+            echo "### Install"
+            echo
+            echo "\`${APK}\` (${SIZE}, arm64-v8a, minSdk from \`android/app/build.gradle\`)."
+            echo "Android refuses a lower versionCode, so install over an older build without uninstalling."
+            echo
+            echo "### Verify"
+            echo
+            echo '```'
+            cat dist/SHA256SUMS
+            echo '```'
+          } > release-notes.md
+          cat release-notes.md
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: OpenCode Plus ${{ needs.package.outputs.version }}
+          body_path: release-notes.md
+          files: |
+            dist/*.apk
+            dist/SHA256SUMS
+          draft: false
+          prerelease: false
+          make_latest: true
+
+  # A push to main is not a release, but it is still a build somebody may want
+  # to install, and until now it only left an artifact: a zip behind a login,
+  # which on the Releases page reads as "the build produced no install package".
+  # One rolling prerelease holds the newest main APK under a fixed file name,
+  # so it is replaced instead of piling up, and it stays out of "Latest".
+  dev-release:
+    if: ${{ github.ref == 'refs/heads/main' && inputs.package_only != true }}
     needs: [native, verify, package]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -300,14 +398,30 @@ jobs:
           name: ${{ needs.package.outputs.artifact }}
           path: dist/
 
-      - name: Attach the APK to a release
+      - name: Give the rolling APK a stable name
+        run: |
+          set -euo pipefail
+          cd dist
+          SOURCE=$(ls *.apk | head -1)
+          cp "${SOURCE}" opencode-plus-dev-arm64-v8a.apk
+          rm -f "${SOURCE}"
+          sha256sum opencode-plus-dev-arm64-v8a.apk > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Refresh the development build
         uses: softprops/action-gh-release@v2
         with:
-          name: OpenCode Plus ${{ needs.package.outputs.version }}
+          tag_name: dev-latest
+          name: Development build (main)
           body: |
-            Built from ${{ github.sha }}.
+            The newest build of `main`, replaced on every push. Not a release:
+            no version promise, and it may change at any time.
+
+            Built from ${{ github.sha }} (run ${{ github.run_number }}).
             Verify the download against `SHA256SUMS`.
           files: |
             dist/*.apk
             dist/SHA256SUMS
-          draft: true
+          draft: false
+          prerelease: true
+          make_latest: false

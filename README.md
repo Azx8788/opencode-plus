@@ -74,16 +74,27 @@ git push origin "v0.3.27+35"
 
 `v0.3.27` is rejected by the `Check the tag matches pubspec` step, and that
 failure happens *before* packaging: the run goes red and carries no APK
-artifact, which reads like "the build produced no install package". The
-release job then attaches `opencode-plus-<version>-arm64-v8a.apk` and
-`SHA256SUMS` to a draft release; publish the draft (or pass `--draft=false`)
-to make it installable from Releases.
+artifact, which reads like "the build produced no install package". A correct
+tag publishes on its own — the release job writes the notes, attaches
+`opencode-plus-<version>-arm64-v8a.apk` and `SHA256SUMS`, and marks it Latest,
+so there is no draft to remember to publish.
 
-Branch and `main` runs upload the same APK as a workflow artifact, zipped by
-`actions/upload-artifact` — that is a build for testing, not the install
-channel. Their `versionCode` is `100000 + run_number`, so a branch build made
-*after* a release carries a higher code and will refuse to be replaced by
-that release; uninstall it first, or install a build made later than it.
+Every other build still produces an installable APK, because "which build do I
+install" should not depend on knowing which button creates a release:
+
+| Build | Where the APK is |
+| --- | --- |
+| tag `v<version>` | the release for that tag |
+| push to `main` | [Releases → Development build](https://github.com/Azx8788/opencode-plus/releases/tag/dev-latest), one rolling prerelease, file name fixed so it is replaced rather than piled up |
+| any other branch | artifact on the run, zipped by `actions/upload-artifact` |
+
+The run summary of the `package` job also prints the file name, size and
+SHA256 of what it built, so a run answers "is there an APK" without opening
+the Releases page.
+
+Their `versionCode` is `100000 + run_number`, so a build made *after* a release
+carries a higher code and will refuse to be replaced by that release; uninstall
+it first, or install a build made later than it.
 
 ## Architecture and internals
 
