@@ -304,7 +304,11 @@ jobs:
               echo "Every build of main also refreshes ${REPO}/releases/tag/dev-latest,"
               echo "which is where the newest installable APK lives without a login."
             fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          } > install-package.md
+          # Printed as well as attached: the log is readable without expanding
+          # the summary panel, and a failed upload still leaves the answer.
+          cat install-package.md >> "$GITHUB_STEP_SUMMARY"
+          cat install-package.md
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
