@@ -26,6 +26,10 @@ of losing its servers and its Ubuntu.
   instructions from one allowlisted private account and receive agent replies
   plus brief progress notices. The bot token stays in Android secure storage.
   See [docs/TELEGRAM_BOT.md](docs/TELEGRAM_BOT.md) for setup and limits.
+- **Backup and export**: one zip with the settings, the credentials and the
+  conversations of the last 7, 30 or 90 days — or all of them — because
+  "Clear storage" and a reinstall take all three at once. See
+  [docs/BACKUP.md](docs/BACKUP.md).
 
 ## Platform
 

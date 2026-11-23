@@ -2,6 +2,34 @@
 
 This project is in public alpha. Only the newest preview is supported.
 
+## 0.3.28+36 — 2026-11-23
+
+  * **Backup and export: one zip with everything a lost phone would take.**
+    Settings → This app → Backup and export writes the settings, the
+    credentials (Telegram bot token, provider keys, saved server passwords) and
+    the conversations you choose, into a single file saved through the system
+    picker. "Clear storage" and a reinstall delete all three at once; this is
+    the copy taken before that happens.
+  * **You decide how much history.** 7, 30, 90 days or everything. A
+    conversation counts when it had activity inside the window, even if it
+    started long before, and whole conversations are kept so a long chat stays
+    readable. Text only drops tool calls, their output and attachments —
+    roughly an order of magnitude smaller on agent-heavy sessions.
+  * **The archive explains itself.** `manifest.json` records the format, the
+    app version, the window and the counts; `README.txt` says what is inside,
+    that the credentials are plain text, and what can be restored today. The
+    file name carries the date and the window, and `-private` marks one that
+    holds credentials.
+  * **Read from the app's own data plane.** Conversations are read through the
+    same gateway the chat screen uses and stored as the server's JSON, so the
+    archive does not depend on OpenCode's on-disk schema and works against a
+    remote server too. An unsupported connection says so instead of writing an
+    empty chat folder.
+  * **Covered by tests.** The window rules, the text-only trim, the file
+    names, the archive's contents and a whole backup against a fake
+    destination run in `test/backup_export_test.dart`; the page itself is
+    rendered in both languages in `test/backup_page_widget_test.dart`.
+
 ## 0.3.27+35 — 2026-11-21
 
   * **Telegram relay: run the phone's agent from your private chat.**

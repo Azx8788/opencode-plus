@@ -30,6 +30,7 @@ const settingsGroupRowIds = <SettingsGroup, List<String>>{
     'settings-category-appearance',
     'settings-category-language',
     'settings-category-privacy',
+    'settings-backup',
   ],
   SettingsGroup.help: [
     'settings-setup-guide',
@@ -332,6 +333,8 @@ class _SettingsGroupBodyState extends State<_SettingsGroupBody> {
           builder: (_) => LanguageSettingsRow(controller: controller),
         ),
         row('settings-category-privacy'),
+        // What survives a lost phone: settings, credentials, conversations.
+        row('settings-backup'),
       ],
       SettingsGroup.help => [
         row('settings-setup-guide'),
