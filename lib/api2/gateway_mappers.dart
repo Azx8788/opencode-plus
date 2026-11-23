@@ -57,6 +57,12 @@ const ServerCapabilities api2ServerCapabilities = ServerCapabilities(
   // page runs git with the server's own sign-in. Not yet proven live.
   remoteShell: true,
   promptSteering: true,
+  // `POST /session/{id}/prompt {id}` takes the caller's message ID and the
+  // server deduplicates admission on it (session-message schema requires the
+  // `msg_` prefix). Every send now carries one, so a retry after a lost
+  // acknowledgement reuses the original identity instead of admitting the
+  // prompt twice.
+  clientPromptMessageID: true,
   // Stable 2.0.29/2.1.1 permission contract (unchanged between the two); the
   // native engine independently probes the running version, operations and
   // effective policy before execution.

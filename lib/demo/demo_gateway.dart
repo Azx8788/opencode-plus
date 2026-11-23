@@ -181,6 +181,7 @@ class DemoGateway implements ServerGateway, ServerOperationsGateway {
     List<PromptAttachment> attachments = const [],
     List<PromptAgentMention> agentMentions = const [],
     PromptDelivery? delivery,
+    PromptCancellation? cancel,
   }) async {
     _check(id);
     if (_busy ||

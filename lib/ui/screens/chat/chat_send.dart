@@ -22,6 +22,17 @@ class _PendingSend {
   });
 }
 
+/// Whether a message could plausibly be the echo of [pending], judged only by
+/// time. A message written before the send cannot be its echo; a server clock
+/// a little ahead of the phone is tolerated, a clock days off is not grounds
+/// for claiming a prompt.
+bool _plausibleEchoTime(int? created, _PendingSend pending) {
+  if (created == null) return false;
+  return created >= pending.createdAt - _echoClockSlack;
+}
+
+const _echoClockSlack = 120000;
+
 bool _mentionBoundaryBefore(String value) =>
     RegExp(r'''[\s\(\[\{"']''').hasMatch(value);
 
@@ -85,11 +96,22 @@ List<PromptAgentMention> _promptAgentMentions(
 
 mixin _ChatSendFields {
   final List<_PendingSend> _pendingSends = [];
+
+  /// The text of each prompt this page actually sent as a command. Kept so a
+  /// command's silence is not reported as "no reply" while a plain message
+  /// that merely starts with "/" still is.
+  final Set<String> _sentCommandTexts = {};
   bool _sending = false;
   bool _sendInFlight = false;
   String? _onlineSendID;
   bool _onlineSendDispatched = false;
   bool _onlineSendAccepted = false;
+
+  /// Whether the words of this send are back in the composer *and saved*.
+  /// The durable record may only be deleted when the server took the prompt
+  /// or when this is true: otherwise deleting it would be the one way the
+  /// person's text could be lost for good.
+  bool _onlineSendRestored = false;
   String? _onlineSendError;
 
   /// When the newest turn started running as far as this phone knows: set
@@ -180,24 +202,30 @@ extension _ChatSend on _ChatScreenState {
   }
 
   /// Takes a bubble shown before the transport was ready back out and gives
-  /// the person their text and attachments again.
-  void _rollbackOptimisticBubble(_PendingSend pending) {
-    _setChatState(() {
-      _localTurnSince = null;
-      _pendingSends.remove(pending);
-      _messages.removeWhere((message) => message.info.id == pending.localID);
-      _attachments.insertAll(0, pending.attachments);
-    });
-    final currentText = _composer.text;
-    if (pending.text.isNotEmpty && currentText.trim() != pending.text) {
-      _composer.text = currentText.isEmpty
-          ? pending.text
-          : '${pending.text}\n$currentText';
-      _composer.selection = TextSelection.collapsed(
-        offset: _composer.text.length,
-      );
+  /// the person their text and attachments again. Returns whether the draft
+  /// that now holds them was saved: an unsaved rollback is not a recovery.
+  Future<bool> _rollbackOptimisticBubble(_PendingSend pending) async {
+    if (mounted) {
+      _setChatState(() {
+        _localTurnSince = null;
+        _pendingSends.remove(pending);
+        _messages.removeWhere((message) => message.info.id == pending.localID);
+        _attachments.insertAll(0, pending.attachments);
+      });
+      final currentText = _composer.text;
+      if (pending.text.isNotEmpty && currentText.trim() != pending.text) {
+        _composer.text = currentText.isEmpty
+            ? pending.text
+            : '${pending.text}\n$currentText';
+        _composer.selection = TextSelection.collapsed(
+          offset: _composer.text.length,
+        );
+      }
+      return _persistDraft();
     }
-    _persistDraft();
+    // The page is gone. The record stays in the queue, where the next visit
+    // offers it for review instead of deleting it unseen.
+    return false;
   }
 
   /// A send made while a turn runs steers it wherever steering is possible
@@ -220,6 +248,7 @@ extension _ChatSend on _ChatScreenState {
             id,
             dispatched: _onlineSendDispatched,
             accepted: _onlineSendAccepted,
+            restored: _onlineSendRestored,
             error: _onlineSendError,
           );
         }
@@ -227,6 +256,7 @@ extension _ChatSend on _ChatScreenState {
         _onlineSendID = null;
         _onlineSendDispatched = false;
         _onlineSendAccepted = false;
+        _onlineSendRestored = false;
         _onlineSendError = null;
         _sendCancel = null;
         _sendingBubble = null;
@@ -296,8 +326,15 @@ extension _ChatSend on _ChatScreenState {
       // along. They stay staged for the next prompt rather than being
       // rewritten into arguments the command never asked for — and the user
       // is told, so nothing looks lost.
-      if (hasStagedReferences) _noteReferencesKeptForNextPrompt();
-      await _submitTypedCommand(typedCommand);
+      //
+      // The note is published *after* the command clears the box. Published
+      // before, a slow shell or command cleared the box a frame later and
+      // the note's "the box has not changed since" rule dismissed it again,
+      // so the reassurance vanished exactly when it was needed.
+      await _submitTypedCommand(
+        typedCommand,
+        referencesKept: hasStagedReferences,
+      );
       return;
     }
     if (!_conn.isIsolated && _attachments.isEmpty) {
@@ -305,8 +342,10 @@ extension _ChatSend on _ChatScreenState {
       // "!command" runs in this conversation's shell; its output joins the
       // transcript as the shell step's card (P10.1).
       if (_shellLine.firstMatch(typed) case final shell?) {
-        if (hasStagedReferences) _noteReferencesKeptForNextPrompt();
-        await _submitShellLine(shell.group(1)!.trim());
+        await _submitShellLine(
+          shell.group(1)!.trim(),
+          referencesKept: hasStagedReferences,
+        );
         return;
       }
       // An agent that does not share its commands never gets "/compact" as
@@ -338,7 +377,7 @@ extension _ChatSend on _ChatScreenState {
       return;
     }
     _setChatState(() => _sending = true);
-    _sendCancel = Completer<void>();
+    _sendCancel = _SendCancellation();
     // Sent in the first seconds after the phone wakes, the connection is on
     // its way back and the transport wait covers that: only a connection
     // still away after it makes this an offline send.
@@ -510,10 +549,12 @@ extension _ChatSend on _ChatScreenState {
     final pending =
         early ??
         _PendingSend(
+          // Every send carries its own message ID when the gateway takes
+          // one. The server deduplicates admission on it, the transcript
+          // recognises the echo by it (never by matching words), and the
+          // queue record for this send holds the same value.
           dispatchedMessageID:
-              conversationSend &&
-                  _voiceSpeakReplies &&
-                  actionApi.capabilities.clientPromptMessageID &&
+              actionApi.capabilities.clientPromptMessageID &&
                   actionApi is CorrelatedPromptGateway
               ? (actionApi as CorrelatedPromptGateway).createPromptMessageID()
               : null,
@@ -559,6 +600,10 @@ extension _ChatSend on _ChatScreenState {
       }
       _conn.noteLocalTurn(widget.sessionID);
       final exactMessageID = pending.dispatchedMessageID;
+      // The cancellation rides along: a Stop during the gateway's own
+      // preparation (permission mode, memory, task metadata) stops the
+      // request instead of merely ending this call's wait.
+      final cancel = _sendCancel;
       if (exactMessageID != null && actionApi is CorrelatedPromptGateway) {
         await (actionApi as CorrelatedPromptGateway).promptWithMessageID(
           widget.sessionID,
@@ -570,6 +615,7 @@ extension _ChatSend on _ChatScreenState {
           attachments: attachments,
           agentMentions: agentMentions,
           delivery: delivery,
+          cancel: cancel,
         );
       } else {
         await actionApi.promptAsync(
@@ -581,14 +627,26 @@ extension _ChatSend on _ChatScreenState {
           attachments: attachments,
           agentMentions: agentMentions,
           delivery: delivery,
+          cancel: cancel,
         );
       }
       _onlineSendAccepted = true;
+      // The replacement prompt that carried any taken-back steering text is
+      // admitted, so its escrow has done its job.
+      unawaited(_conn.releaseWithdrawnSteers(widget.sessionID));
       if (!conversationSend) {
         unawaited(_rememberSentPrompt(selectionProfileID ?? '', text));
         _learnPhrase(text, attachments, phraseMoment);
       }
       PerfTrace.recordSince('chat.send_to_ack', tapMicros);
+      // Stopped while the request was on its way: the server may have
+      // started the turn after that stop reached it. This runs before the
+      // `mounted` check and does not need the page: leaving the screen must
+      // not cancel a stop the person asked for.
+      if (_stopAfterDispatch) {
+        _stopAfterDispatch = false;
+        unawaited(_abort());
+      }
       if (!mounted) return;
       _setChatState(() {
         _sending = false;
@@ -596,16 +654,32 @@ extension _ChatSend on _ChatScreenState {
         pending.requestComplete = true;
         if (pending.canonicalID != null) _pendingSends.remove(pending);
       });
-      // Stopped while the request was on its way: the server may have
-      // started the turn after that stop reached it.
-      if (_stopAfterDispatch) {
-        _stopAfterDispatch = false;
-        unawaited(_abort());
-      }
       _checkVoiceReply();
       if (!conversationSend && _composer.text.isEmpty) _restoreHistoryDraft();
+    } on PromptCancelledException {
+      // Stopped before the request left: nothing was sent, so the words go
+      // back to the composer and no error is reported.
+      _onlineSendDispatched = false;
+      if (!mounted) return;
+      _setChatState(() {
+        _sending = false;
+        _localTurnSince = null;
+        _pendingSends.remove(pending);
+        _messages.removeWhere((message) => message.info.id == pending.localID);
+      });
+      await _restoreInput(text, attachments);
     } catch (e) {
-      if (!mounted || _sendStopped) return;
+      // A gateway that refuses during its own preparation provably sent
+      // nothing; the wrapped failure is what the person is told about.
+      final cause = e is PromptNotSentException ? e.cause : e;
+      final sentNothing = e is PromptNotSentException || cause is MemoryException;
+      if (!mounted || _sendStopped) {
+        // The page is gone. Keeping the durable record is the only way the
+        // words survive: nothing can be put back into a composer that no
+        // longer exists.
+        if (!sentNothing) _onlineSendError = KitRedact.text(cause.toString());
+        return;
+      }
       _setChatState(() {
         _sending = false;
         _localTurnSince = null;
@@ -624,36 +698,54 @@ extension _ChatSend on _ChatScreenState {
       // A response error cannot establish whether the server already
       // admitted work. Keep the durable marker for explicit review instead
       // of returning a draft that appears safe to send a second time.
-      if (_onlineSendID != null && promptStarted && e is! MemoryException) {
-        _onlineSendError = KitRedact.text(e.toString());
+      if (_onlineSendID != null && promptStarted && !sentNothing) {
+        _onlineSendError = KitRedact.text(cause.toString());
         if (mounted) _showComposerNote(strings.queuedResendMessage);
         return;
       }
       if (!voiceSendCurrent()) return;
       if (!mounted) return;
-      if (e is ApiException && e.errorTag == 'SessionRevertPending') {
+      if (cause is ApiException && cause.errorTag == 'SessionRevertPending') {
         unawaited(_conn.ensureSession(widget.sessionID));
       }
-      if (e is MemoryException) {
-        // The memory synchronizer refuses before client.prompt is called.
+      if (sentNothing) {
+        // The gateway refused before the request: report it as not sent.
         _onlineSendDispatched = false;
       }
-      _setChatState(() => _attachments.insertAll(0, attachments));
-      final currentText = _composer.text;
-      if (text.isNotEmpty && currentText.trim() != text) {
-        _composer.text = currentText.isEmpty ? text : '$text\n$currentText';
-        _composer.selection = TextSelection.collapsed(
-          offset: _composer.text.length,
-        );
-      }
+      await _restoreInput(text, attachments);
       // Said on the status line, where it stays until dismissed or sent
       // again, not in a snackbar that leaves while the person reads it.
       _setChatState(() {
-        _sendError = e;
-        if (agentRunFailureOf(e) != null || conversationNeedsNewChat(e)) {
-          _sendWall = e;
+        _sendError = cause;
+        if (agentRunFailureOf(cause) != null ||
+            conversationNeedsNewChat(cause)) {
+          _sendWall = cause;
         }
       });
+    }
+  }
+
+  /// Puts a failed send's words and files back into the composer, ahead of
+  /// anything typed since, and records whether the draft that now holds them
+  /// was saved. Only a saved draft may replace the durable send record.
+  Future<void> _restoreInput(
+    String text,
+    List<PromptAttachment> attachments,
+  ) async {
+    if (!mounted) return;
+    _setChatState(() => _attachments.insertAll(0, attachments));
+    final currentText = _composer.text;
+    if (text.isNotEmpty && currentText.trim() != text) {
+      _composer.text = currentText.isEmpty ? text : '$text\n$currentText';
+      _composer.selection = TextSelection.collapsed(
+        offset: _composer.text.length,
+      );
+    }
+    _onlineSendRestored = await _persistDraft();
+    if (_onlineSendRestored) {
+      // The words are in a saved draft: the escrow is no longer their only
+      // home, and keeping it would offer them twice on the next visit.
+      await _conn.releaseWithdrawnSteers(widget.sessionID);
     }
   }
 
@@ -681,7 +773,10 @@ extension _ChatSend on _ChatScreenState {
   /// A composer line that starts with "!": the rest runs as a shell
   /// command in this conversation, the same call as Run shell command. A
   /// server with no shell for the conversation says so and sends nothing.
-  Future<void> _submitShellLine(String command) async {
+  Future<void> _submitShellLine(
+    String command, {
+    bool referencesKept = false,
+  }) async {
     final strings = _chatL10n(context);
     if (!_conn.capabilities.conversationShellOn) {
       _showComposerNote(
@@ -695,6 +790,7 @@ extension _ChatSend on _ChatScreenState {
       await _runShellCommand(command);
       if (!mounted) return;
       _composer.clear();
+      if (referencesKept) _noteReferencesKeptForNextPrompt();
       _focus.requestFocus();
     } catch (error) {
       if (!mounted) return;
@@ -707,8 +803,9 @@ extension _ChatSend on _ChatScreenState {
   }
 
   Future<void> _submitTypedCommand(
-    ({_ChatCommand command, String arguments}) typed,
-  ) async {
+    ({_ChatCommand command, String arguments}) typed, {
+    bool referencesKept = false,
+  }) async {
     final command = typed.command;
     if (!command.enabled) {
       _showActionError(
@@ -718,6 +815,7 @@ extension _ChatSend on _ChatScreenState {
     }
     if (command.serverCommand == null) {
       _composer.clear();
+      if (referencesKept) _noteReferencesKeptForNextPrompt();
       await _runMobileCommand(command.action! as _ChatCommandAction);
       return;
     }
@@ -752,8 +850,10 @@ extension _ChatSend on _ChatScreenState {
             ? null
             : _conn.variantForSession(widget.sessionID),
       );
+      _sentCommandTexts.add(original.trim());
       if (!mounted) return;
       _composer.clear();
+      if (referencesKept) _noteReferencesKeptForNextPrompt();
       _focus.requestFocus();
       _setChatState(() => _sending = false);
     } catch (error) {

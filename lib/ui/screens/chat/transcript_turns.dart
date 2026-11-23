@@ -68,6 +68,7 @@ bool _endsTurn(List<MessageWithParts> messages, int index) {
   required bool refused,
   required bool running,
   String? stoppedPromptID,
+  Set<String> commandTexts = const {},
 }) {
   if (running) return null;
   final prompt = messages.lastIndexWhere(_isPrompt);
@@ -87,9 +88,14 @@ bool _endsTurn(List<MessageWithParts> messages, int index) {
     stepped = stepped || message.parts.any((part) => part.type == 'tool');
   }
   final stopped = messages[prompt].info.id == stoppedPromptID;
-  // A command (`/compact`) may do its work without a word back.
+  // A command (`/compact`) may do its work without a word back. Which
+  // prompts were actually sent as commands is recorded when they are sent:
+  // deciding it from a leading "/" made every plain message that starts with
+  // a slash — an absolute path, an unknown command the server treats as
+  // text — look like a command, and its silence was never reported.
   final command = messages[prompt].parts.any(
-    (part) => part.type == 'text' && part.text.trimLeft().startsWith('/'),
+    (part) =>
+        part.type == 'text' && commandTexts.contains(part.text.trim()),
   );
   if (last == null) {
     if (refused) return (prompt, null, false);

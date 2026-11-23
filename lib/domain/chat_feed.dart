@@ -17,6 +17,27 @@ import 'dart:convert';
 
 import 'workspace_paths.dart';
 
+/// A new conversation that exists on the server but whose first message did
+/// not come back confirmed.
+///
+/// The distinction is the whole point: the conversation was created, so
+/// "try again" must not create a second one and run the first instruction
+/// twice. The person is taken to the conversation that already exists, with
+/// their words still in the composer, and can decide from there.
+class ChatStartFailure implements Exception {
+  const ChatStartFailure(this.sessionID, this.cause);
+
+  /// The conversation the server created before the first message failed.
+  final String sessionID;
+
+  /// The original failure, kept so its type and wording still reach the
+  /// person and the problem report.
+  final Object cause;
+
+  @override
+  String toString() => cause.toString();
+}
+
 /// What a conversation needs from the person right now.
 enum ChatStatus {
   /// Stopped on a pending permission, question or form.

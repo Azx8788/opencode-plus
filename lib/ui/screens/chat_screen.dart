@@ -142,7 +142,8 @@ import '../../domain/genui/gen_ui.dart';
 import '../widgets/agent_card_photos.dart';
 import '../widgets/agent_card_view.dart';
 import '../../state/connector_card_host.dart';
-import '../../api2/models.dart' show Api2Delivery, Api2FormInfo, Api2InboxItem;
+import '../../api2/models.dart'
+    show Api2Delivery, Api2FormInfo, Api2InboxCancel, Api2InboxItem;
 import '../../feedback/bug_report.dart' show openBugReport;
 import '../kit/kit.dart';
 import '../../domain/orchestration_gateway.dart';

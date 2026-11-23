@@ -75,24 +75,24 @@ extension _ChatQueue on _ChatScreenState {
       .queuedPromptsFor(widget.sessionID)
       .any((e) => e.dispatched && e.text.trim() == text.trim());
 
-  /// Whether the transcript already shows [entry]: a prompt with the same
-  /// words, written since the entry was queued. A send that was waiting
-  /// "not confirmed" and then turns up in the conversation (or an explicit
-  /// resend that landed) is one prompt, so the waiting card must not show
-  /// it a second time.
+  /// Whether the transcript already shows [entry], by the message ID the send
+  /// was admitted under.
+  ///
+  /// This used to compare text, which is not an identity: a prompt recorded
+  /// as "not confirmed" and a *different* prompt that happened to say the
+  /// same words (with different files, or written later) matched, and the
+  /// recorded one was deleted from storage — the person's only copy of it.
+  /// A row is only claimed when the server echoes the exact ID this entry
+  /// sent; entries from before IDs existed stay for review instead of being
+  /// guessed away.
   bool _queuedAlreadyInTranscript(QueuedPrompt entry) {
     if (!entry.dispatched || _conn.queuedPromptSending(entry.id)) return false;
-    final words = entry.text.trim();
-    if (words.isEmpty) return false;
+    final id = entry.messageID;
+    if (id == null) return false;
     for (final message in _messages) {
+      if (message.info.id != id) continue;
       if (!_isPrompt(message)) continue;
-      if ((message.info.time?.created ?? 0) < entry.createdAt) continue;
-      final text = message.parts
-          .where((part) => part.type == 'text' && !part.synthetic)
-          .map((part) => part.text)
-          .join('\n')
-          .trim();
-      if (text == words) return true;
+      return true;
     }
     return false;
   }
@@ -267,9 +267,9 @@ extension _ChatQueue on _ChatScreenState {
       );
       if (!confirmed || !mounted) return;
     }
-    String? text;
+    InboxCancelResult result;
     try {
-      text = await _conn.cancelInboxItem(widget.sessionID, item.id);
+      result = await _conn.cancelInboxItem(widget.sessionID, item.id);
     } on ApiException catch (error) {
       if (!mounted) return;
       if (error.statusCode == 409) {
@@ -282,7 +282,20 @@ extension _ChatQueue on _ChatScreenState {
       if (mounted) _showActionError(error);
       return;
     }
-    if (!mounted || text == null || text.isEmpty) return;
+    if (!mounted) return;
+    // A 204 is not proof of a cancel: only a confirmed one may hand the
+    // words back, because a delivered item's text is already in the
+    // conversation and returning it would invite a second send.
+    if (result.outcome == Api2InboxCancel.delivered) {
+      _showComposerNote(_chatL10n(context).chatUiAlreadyDelivered);
+      return;
+    }
+    if (result.outcome != Api2InboxCancel.cancelled) {
+      _showComposerNote(_chatL10n(context).chatUiCouldNotConfirmCancel);
+      return;
+    }
+    final text = result.text;
+    if (text == null || text.isEmpty) return;
     final withdrawn = text;
     returnWithdrawnToDraft(
       _undoHost,
@@ -328,21 +341,49 @@ extension _ChatQueue on _ChatScreenState {
             .inboxItemsFor(widget.sessionID)
             .where(
               (item) =>
-                  item.type == 'user' &&
+                  item.isPrompt &&
                   item.delivery == Api2Delivery.steer &&
                   (item.promptText ?? '').trim().isNotEmpty &&
                   (item.payload['files'] is! List ||
-                      (item.payload['files'] as List).isEmpty),
+                      (item.payload['files'] as List).isEmpty) &&
+                  // The "stop after this step" note is a control message,
+                  // not part of what the person is saying. Merged into an
+                  // ordinary prompt it stopped matching the note this screen
+                  // tracks, and Undo lost its target.
+                  !_isStopAfterStepNote(item),
             )
             .toList()
           ..sort((a, b) => (a.timeCreated ?? 0).compareTo(b.timeCreated ?? 0));
     final texts = <String>[];
     for (final item in waiting) {
+      final text = item.promptText?.trim() ?? '';
+      if (text.isEmpty) continue;
+      // The words are held *before* the cancel. Between the DELETE and the
+      // prompt that carries them there is otherwise no durable copy: a Stop,
+      // a page exit or a crash right here lost them for good.
+      if (!await _conn.holdWithdrawnSteer(widget.sessionID, item.id, text)) {
+        // No safe place to keep them: leave the item on the server instead of
+        // cancelling text into nowhere.
+        continue;
+      }
       try {
-        final text = await _conn.cancelInboxItem(widget.sessionID, item.id);
-        if (text != null && text.trim().isNotEmpty) texts.add(text.trim());
+        final result = await _conn.cancelInboxItem(widget.sessionID, item.id);
+        switch (result.outcome) {
+          case Api2InboxCancel.cancelled:
+            texts.add(text);
+          case Api2InboxCancel.delivered:
+            // It is in the conversation already: nothing to carry, and the
+            // hold would offer the same words a second time.
+            await _conn.releaseWithdrawnSteer(item.id);
+          case Api2InboxCancel.unknown:
+            // Neither cancelled nor delivered as far as the client can tell.
+            // The hold stays so the words remain recoverable; they are not
+            // merged, because they may still be queued on the server.
+            break;
+        }
       } catch (_) {
-        // Delivered already, or the server said no: it goes out on its own.
+        // The request failed outright: the hold keeps the words recoverable
+        // and the item may still be pending, so nothing is merged.
       }
     }
     return texts;

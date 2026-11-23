@@ -24,6 +24,18 @@ mixin _ConnectionControllerEvents on ChangeNotifier {
   /// the stream has carried every change since it started.
   int _streamConnects = 0;
 
+  /// Reconciles which conversations are running from the server's own
+  /// status read.
+  ///
+  /// A run started by another client between the initial status read and the
+  /// stream going live is never announced: the message refetch on connect
+  /// brings the messages but not the busy state, so Stop, the live line and
+  /// the merge all worked from "idle". This read closes that window; it only
+  /// ever *adds* runs, because dropping one that is still going hides a live
+  /// turn, which is the worse mistake.
+  Future<void> reconcileSessionStatuses() =>
+      _self._reconcileSessionStatuses();
+
   @visibleForTesting
   void handleEventForTesting(EventEnvelope event) => _self._onEvent(event);
 }
@@ -107,6 +119,9 @@ extension _ConnectionControllerEventsImpl on ConnectionController {
           // came up, before this stream was live: events in between were
           // never heard, so it reloads again now that they will be.
           _markDataRefreshReady(generation, currentApi);
+          // Messages are not the only thing that moved in that window: a run
+          // started elsewhere was never announced either.
+          unawaited(reconcileSessionStatuses());
         }
         // The stream lost the server and found it again by itself: an
         // automatic act, filed for While you were away (P6.2). A first

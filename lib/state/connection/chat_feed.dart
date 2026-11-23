@@ -733,17 +733,40 @@ mixin _ConnectionControllerChatFeed on ChangeNotifier {
     await _ocRemember(where);
     final text = firstPrompt?.trim();
     if (text != null && text.isNotEmpty) {
-      final transport = await _self._requireActionTransport();
-      final agent = _self.selectedAgent;
-      final variant = _self.selectedVariant;
-      await _self.ensureInteractiveSendAllowed(expectedApi: transport);
-      await transport.promptAsync(
-        session.id,
-        text: text,
-        model: _self.selectedModel,
-        agent: agent.isEmpty ? null : agent,
-        variant: variant.isEmpty ? null : variant,
-      );
+      try {
+        final transport = await _self._requireActionTransport();
+        final agent = _self.selectedAgent;
+        final variant = _self.selectedVariant;
+        await _self.ensureInteractiveSendAllowed(expectedApi: transport);
+        // An exact ID, so the server's admission deduplication covers a
+        // retry of this same instruction instead of admitting it twice.
+        final messageID = transport is CorrelatedPromptGateway
+            ? (transport as CorrelatedPromptGateway).createPromptMessageID()
+            : null;
+        if (messageID != null) {
+          await (transport as CorrelatedPromptGateway).promptWithMessageID(
+            session.id,
+            messageID: messageID,
+            text: text,
+            model: _self.selectedModel,
+            agent: agent.isEmpty ? null : agent,
+            variant: variant.isEmpty ? null : variant,
+          );
+        } else {
+          await transport.promptAsync(
+            session.id,
+            text: text,
+            model: _self.selectedModel,
+            agent: agent.isEmpty ? null : agent,
+            variant: variant.isEmpty ? null : variant,
+          );
+        }
+      } catch (error) {
+        // The conversation exists. Saying so is what keeps "Retry" from
+        // creating a second one and running the same instruction twice.
+        _feedScheduleRefresh();
+        throw ChatStartFailure(session.id, error);
+      }
     }
     _feedScheduleRefresh();
     return session.id;

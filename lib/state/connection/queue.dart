@@ -33,6 +33,34 @@ mixin _ConnectionControllerQueue on ChangeNotifier {
   // while their caller is awaiting admission. Multiple chats may send at once.
   final Set<String> _onlinePromptsInFlight = {};
 
+  /// Text taken back from the inbox but not yet re-admitted (see
+  /// [SteerEscrowStore]). Written before the cancel, released only once a
+  /// replacement is admitted or the words are back with the person.
+  SteerEscrowStore? _steerEscrowStore;
+
+  /// Holds [text], taken back from inbox item [inboxID], until a replacement
+  /// prompt is admitted. False when storage refused — the caller must then
+  /// treat the cancel as unsafe to perform.
+  Future<bool> holdWithdrawnSteer(
+    String sessionID,
+    String inboxID,
+    String text,
+  ) => _self._holdWithdrawnSteer(sessionID, inboxID, text);
+
+  /// Releases the hold on one item: its words are admitted again, or they are
+  /// back in a saved draft.
+  Future<bool> releaseWithdrawnSteer(String inboxID) =>
+      _self._releaseWithdrawnSteer(inboxID);
+
+  /// Releases every hold for [sessionID], after the replacement prompt that
+  /// carried them was admitted.
+  Future<bool> releaseWithdrawnSteers(String sessionID) =>
+      _self._releaseWithdrawnSteers(sessionID);
+
+  /// Held text for [sessionID], oldest first. Never sent automatically.
+  List<SteerEscrowEntry> withdrawnSteersFor(String sessionID) =>
+      _self._withdrawnSteersFor(sessionID);
+
   /// Persist (or refresh) an online send before its composer can be cleared.
   /// The marker never auto-flushes, including after process death.
   Future<bool> holdOnlinePrompt(QueuedPrompt prompt) =>
@@ -51,15 +79,22 @@ mixin _ConnectionControllerQueue on ChangeNotifier {
 
   /// Finish an online send. Unknown outcomes remain for explicit review;
   /// confirmed acceptance and preflight refusals remove the marker.
+  ///
+  /// [restored] says the words are back in the composer *and saved*. It is
+  /// what makes deleting the record safe when nothing was dispatched: without
+  /// it, removing the entry would be the one way the person's text could be
+  /// lost for good.
   Future<void> finishOnlinePrompt(
     String id, {
     required bool dispatched,
     required bool accepted,
+    required bool restored,
     String? error,
   }) => _self._finishOnlinePrompt(
     id,
     dispatched: dispatched,
     accepted: accepted,
+    restored: restored,
     error: error,
   );
 
@@ -337,6 +372,48 @@ extension _ConnectionControllerQueueImpl on ConnectionController {
   OfflineQueueStore get _queueStore =>
       _offlineQueueStore ??= OfflineQueueStore(prefs: store.prefs);
 
+  SteerEscrowStore get _steerEscrow =>
+      _steerEscrowStore ??= SteerEscrowStore(prefs: store.prefs);
+
+  Future<bool> _holdWithdrawnSteer(
+    String sessionID,
+    String inboxID,
+    String text,
+  ) async {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return true;
+    final held = await _steerEscrow.add(
+      SteerEscrowEntry(
+        id: inboxID,
+        sessionID: sessionID,
+        text: trimmed,
+        at: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
+    if (held && !_disposed) _notifyListeners();
+    return held;
+  }
+
+  Future<bool> _releaseWithdrawnSteer(String inboxID) async {
+    final released = await _steerEscrow.remove(inboxID);
+    if (released && !_disposed) _notifyListeners();
+    return released;
+  }
+
+  Future<bool> _releaseWithdrawnSteers(String sessionID) async {
+    final released = await _steerEscrow.removeSession(sessionID);
+    if (released && !_disposed) _notifyListeners();
+    return released;
+  }
+
+  List<SteerEscrowEntry> _withdrawnSteersFor(String sessionID) {
+    final entries = [
+      for (final entry in _steerEscrow.read())
+        if (entry.sessionID == sessionID) entry,
+    ]..sort((a, b) => a.at.compareTo(b.at));
+    return entries;
+  }
+
   /// Queued prompts a removed server left behind as drafts (P7.2). App-owned,
   /// so the removed server's deletion sweep does not take them.
   QueuedPromptRemoval get _keptQueued => _keptQueuedStore ??=
@@ -538,7 +615,16 @@ extension _ConnectionControllerQueueImpl on ConnectionController {
         return undo.restored;
       });
 
+  /// A held entry always carries the message ID its send is admitted under,
+  /// so a retry reuses the identity instead of admitting a second prompt.
   Future<bool> _holdOnlinePrompt(QueuedPrompt prompt) =>
+      _holdOnlinePromptEntry(
+        prompt.messageID == null
+            ? prompt.withMessageID(createCommandReceiptID())
+            : prompt,
+      );
+
+  Future<bool> _holdOnlinePromptEntry(QueuedPrompt prompt) =>
       _serializeQueueChange(() async {
         if (_disposed ||
             !prompt.dispatched ||
@@ -576,21 +662,32 @@ extension _ConnectionControllerQueueImpl on ConnectionController {
     String id, {
     required bool dispatched,
     required bool accepted,
+    required bool restored,
     String? error,
   }) => _serializeQueueChange(() async {
     try {
       if (!_onlinePromptsInFlight.contains(id)) return;
-      if (accepted || !dispatched) {
+      if (accepted || (!dispatched && restored)) {
         final next = _queue.where((entry) => entry.id != id).toList();
         if (await _queueStore.save(next)) {
           _offlineQueue = next;
         } else if (accepted) {
           _queuedPromptsAcceptedUnrecorded.add(id);
         }
-      } else if (error != null) {
+      } else {
+        // Nothing was accepted and nothing is safely back in the composer:
+        // the entry stays, worded as the review it is. Deleting it here was
+        // how a send interrupted before its request could lose its text.
+        final note =
+            error ??
+            (dispatched
+                ? null
+                : 'This message was not sent. Its text is kept here until you '
+                      'send it again or discard it.');
+        if (note == null) return;
         final next = [
           for (final entry in _queue)
-            if (entry.id == id) entry.withError(error) else entry,
+            if (entry.id == id) entry.withError(note) else entry,
         ];
         if (await _queueStore.save(next)) _offlineQueue = next;
       }
@@ -602,6 +699,13 @@ extension _ConnectionControllerQueueImpl on ConnectionController {
 
   /// The body of [queuePrompt].
   Future<bool> _queuePrompt(QueuedPrompt prompt) =>
+      _queuePromptEntry(
+        prompt.messageID == null
+            ? prompt.withMessageID(createCommandReceiptID())
+            : prompt,
+      );
+
+  Future<bool> _queuePromptEntry(QueuedPrompt prompt) =>
       _serializeQueueChange(() async {
         final target = store.profiles.where((p) => p.id == prompt.profileID);
         if (_closedQueueProfiles.contains(prompt.profileID) ||
@@ -843,7 +947,10 @@ extension _ConnectionControllerQueueImpl on ConnectionController {
               final receipt = await CommandReceiptController(journal).send(
                 CommandReceipt(
                   commandID: 'queue:${entry.id}',
-                  receiptID: createCommandReceiptID(),
+                  // The entry's own ID, not a fresh one: a retry after a lost
+                  // acknowledgement must land on the same server-side message
+                  // rather than admitting the prompt a second time.
+                  receiptID: entry.resolvedMessageID,
                   sessionID: entry.sessionID,
                   tabID: entry.sessionID,
                   scope: _commandReceiptScope,
@@ -872,6 +979,24 @@ extension _ConnectionControllerQueueImpl on ConnectionController {
               if (receipt.state != CommandReceiptState.confirmed) {
                 throw const CommandReceiptException();
               }
+            } else if (currentApi is CorrelatedPromptGateway) {
+              // Still an exact-ID send: the transcript recognises this entry
+              // by the ID the server echoes, and a retry is deduplicated.
+              await (currentApi as CorrelatedPromptGateway)
+                  .promptWithMessageID(
+                    entry.sessionID,
+                    messageID: entry.resolvedMessageID,
+                    text: entry.text,
+                    model: entry.model,
+                    agent: entry.agent?.isNotEmpty == true
+                        ? entry.agent
+                        : null,
+                    variant: entry.variant?.isNotEmpty == true
+                        ? entry.variant
+                        : null,
+                    attachments: entry.attachments,
+                    agentMentions: entry.mentions,
+                  );
             } else {
               await currentApi.promptAsync(
                 entry.sessionID,
@@ -893,6 +1018,12 @@ extension _ConnectionControllerQueueImpl on ConnectionController {
           }
 
           if (currentApi is SessionSelectionGateway) {
+            // Admission first, before anything with a side effect. Restoring
+            // a queued prompt's model/agent mutates shared session state, so
+            // an entry that is already refused (policy, schedule lease,
+            // connection) must not get that far.
+            await ensureInteractiveSendAllowed(expectedApi: currentApi);
+            if (!allowed()) return;
             await _mutateSessionSelection(entry.sessionID, (gateway) async {
               await _queueChanges;
               if (!allowed() ||

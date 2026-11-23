@@ -361,25 +361,19 @@ extension _ChatStream on _ChatScreenState {
     }
     if (pending == null) {
       final parts = canonicalParts ?? _messageByID(info.id)?.parts ?? const [];
+      // Only a bubble with no authored ID can be guessed at, and only when
+      // exactly one candidate matches: picking the "closest" of several was
+      // how a second prompt with the same words stole the first one's echo.
       final matches = _pendingSends
           .where(
             (candidate) =>
                 candidate.canonicalID == null &&
                 candidate.dispatchedMessageID == null &&
-                _matchesPendingPrompt(parts, candidate),
+                _matchesPendingPrompt(parts, candidate) &&
+                _plausibleEchoTime(info.time?.created, candidate),
           )
           .toList();
-      if (matches.isNotEmpty) {
-        final created = info.time?.created;
-        if (created != null) {
-          matches.sort(
-            (a, b) => (a.createdAt - created).abs().compareTo(
-              (b.createdAt - created).abs(),
-            ),
-          );
-        }
-        pending = matches.first;
-      }
+      if (matches.length == 1) pending = matches.single;
     }
     if (pending == null) return false;
     if (pending.dispatchedMessageID != null &&
