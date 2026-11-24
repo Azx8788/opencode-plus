@@ -311,6 +311,25 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
           _failure = problem;
         });
       }
+    } on ChatStartFailure catch (failure) {
+      // The conversation was created before the first message failed. Opening
+      // it is the only honest continuation: Retry here would create a second
+      // conversation and could run the same instruction twice. The words stay
+      // in this screen's draft, so the person can send them again from the
+      // conversation that exists.
+      if (!mounted) return;
+      final details = productErrorDetails(failure.cause);
+      debugPrint('oc.chat-start first message: $details');
+      final problem = await host.showStartedChat(
+        context,
+        sessionID: failure.sessionID,
+      );
+      if (!mounted) return;
+      setState(() {
+        _sending = false;
+        _failure = problem ?? l10n.chatsNewFirstMessageUnconfirmed;
+        _failureDetails = details;
+      });
     } catch (error) {
       if (!mounted) return;
       // Plain words; the draft stays in the field. The redacted technical

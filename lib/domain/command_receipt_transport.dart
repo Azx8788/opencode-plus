@@ -58,40 +58,15 @@ class CommandReceiptTransport {
     }
 
     if (!supported) throw const CommandReceiptException();
-    if (current is Api2Gateway) {
-      // Same preflight as the normal v2 gateway; never implicitly commit revert.
-      if ((await current.client.session(prompt.sessionID)).reverted) {
-        throw const CommandReceiptException();
-      }
-      checkAdmission();
-      final receipt = await current.client.prompt(
-        prompt.sessionID,
-        id: receiptID,
-        text: prompt.text,
-        files: [
-          for (final attachment in prompt.attachments)
-            Api2PromptFile(uri: attachment.url, name: attachment.filename),
-        ],
-        agents: [
-          for (final mention in prompt.mentions)
-            Api2PromptAgentMention(
-              name: mention.name,
-              mention: Api2Mention(
-                start: mention.start,
-                end: mention.end,
-                text: mention.value,
-              ),
-            ),
-        ],
-      );
-      if (receipt.id != receiptID ||
-          receipt.sessionID != prompt.sessionID ||
-          receipt.type != 'prompt') {
-        throw const CommandReceiptException();
-      }
-      return;
+    // One path for every exact-ID send. Talking to the client directly used
+    // to skip the gateway's permission mode, memory and task metadata, so a
+    // replayed offline prompt could execute under the server's own allow
+    // rules while this phone believed it would be asked first.
+    final exact = current;
+    if (exact is! CorrelatedPromptGateway) {
+      throw const CommandReceiptException();
     }
-    await (current as CorrelatedPromptGateway).promptWithMessageID(
+    await (exact as CorrelatedPromptGateway).promptWithMessageID(
       prompt.sessionID,
       messageID: receiptID,
       text: prompt.text,
@@ -114,7 +89,7 @@ class CommandReceiptTransport {
         (item) =>
             item.id == receipt.receiptID &&
             item.sessionID == receipt.sessionID &&
-            item.type == 'prompt',
+            item.isPrompt,
       )) {
         return true;
       }

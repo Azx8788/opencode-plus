@@ -277,9 +277,11 @@ class Api2Client {
     Map<String, dynamic>? metadata,
     Api2Delivery? delivery,
     bool? resume,
+    CancelToken? cancelToken,
   }) async {
     final json = await transport.postJson(
       '/session/$sessionID/prompt',
+      cancelToken: cancelToken,
       body: {
         'id': ?id,
         'text': text,
@@ -311,6 +313,27 @@ class Api2Client {
   /// Cancels an undelivered inbox item (409 when already delivered).
   Future<void> cancelInboxItem(String sessionID, String inboxID) =>
       transport.deleteJson('/session/$sessionID/inbox/$inboxID');
+
+  /// The pending item, or null when the inbox no longer lists it — either
+  /// because it was delivered or because it was cancelled. Only the message
+  /// read tells those two apart.
+  Future<Api2InboxItem?> inboxItem(String sessionID, String inboxID) async {
+    for (final item in await inbox(sessionID)) {
+      if (item.id == inboxID) return item;
+    }
+    return null;
+  }
+
+  /// The projected message, or null when the server has none under that ID
+  /// yet (still in the inbox, or the request never arrived).
+  Future<Api2Message?> tryMessage(String sessionID, String messageID) async {
+    try {
+      return await message(sessionID, messageID);
+    } on Api2Error catch (error) {
+      if (error.statusCode == 404) return null;
+      rethrow;
+    }
+  }
 
   /// Flips a pending item's delivery to steer (send at next step boundary).
   Future<void> steerInboxItem(String sessionID, String inboxID) =>

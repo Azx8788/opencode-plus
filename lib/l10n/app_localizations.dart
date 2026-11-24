@@ -98,6 +98,234 @@ abstract class AppLocalizations {
     Locale('zh'),
   ];
 
+  /// No description provided for @insightsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'AI tasks and usage'**
+  String get insightsTitle;
+
+  /// No description provided for @insightsTask.
+  ///
+  /// In en, this message translates to:
+  /// **'User tasks'**
+  String get insightsTask;
+
+  /// No description provided for @insightsSubagent.
+  ///
+  /// In en, this message translates to:
+  /// **'Subagents'**
+  String get insightsSubagent;
+
+  /// No description provided for @insightsCalls.
+  ///
+  /// In en, this message translates to:
+  /// **'Model steps'**
+  String get insightsCalls;
+
+  /// No description provided for @insightsMessages.
+  ///
+  /// In en, this message translates to:
+  /// **'Message turns'**
+  String get insightsMessages;
+
+  /// No description provided for @insightsPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Association pending'**
+  String get insightsPending;
+
+  /// No description provided for @insightsPendingExplanation.
+  ///
+  /// In en, this message translates to:
+  /// **'The executing task could not be identified. This item is retained without being counted as a user task.'**
+  String get insightsPendingExplanation;
+
+  /// No description provided for @insightsExplanation.
+  ///
+  /// In en, this message translates to:
+  /// **'Tasks, message turns and model requests are counted separately. Subagent outcomes do not determine the parent outcome. History contains recorded events only.'**
+  String get insightsExplanation;
+
+  /// No description provided for @insightsQueue.
+  ///
+  /// In en, this message translates to:
+  /// **'Queued'**
+  String get insightsQueue;
+
+  /// No description provided for @insightsLive.
+  ///
+  /// In en, this message translates to:
+  /// **'Running'**
+  String get insightsLive;
+
+  /// No description provided for @insightsSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Succeeded'**
+  String get insightsSuccess;
+
+  /// No description provided for @insightsFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed'**
+  String get insightsFailed;
+
+  /// No description provided for @insightsCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancelled / interrupted'**
+  String get insightsCancelled;
+
+  /// No description provided for @insightsState.
+  ///
+  /// In en, this message translates to:
+  /// **'Execution state'**
+  String get insightsState;
+
+  /// No description provided for @insightsDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'Task details'**
+  String get insightsDetails;
+
+  /// No description provided for @insightsModels.
+  ///
+  /// In en, this message translates to:
+  /// **'Model usage'**
+  String get insightsModels;
+
+  /// No description provided for @insightsSuccessRate.
+  ///
+  /// In en, this message translates to:
+  /// **'Success rate (settled steps)'**
+  String get insightsSuccessRate;
+
+  /// No description provided for @insightsMissingUsage.
+  ///
+  /// In en, this message translates to:
+  /// **'Steps with unknown token usage'**
+  String get insightsMissingUsage;
+
+  /// No description provided for @insightsError.
+  ///
+  /// In en, this message translates to:
+  /// **'Reported error'**
+  String get insightsError;
+
+  /// No description provided for @insightsRetries.
+  ///
+  /// In en, this message translates to:
+  /// **'Scheduled retries'**
+  String get insightsRetries;
+
+  /// No description provided for @insightsRateLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Provider refusal · HTTP 429'**
+  String get insightsRateLimit;
+
+  /// No description provided for @insightsPartial.
+  ///
+  /// In en, this message translates to:
+  /// **'This is partial history. Missing events are not reconstructed as success or zero usage.'**
+  String get insightsPartial;
+
+  /// No description provided for @insightsPrevious.
+  ///
+  /// In en, this message translates to:
+  /// **'Earlier'**
+  String get insightsPrevious;
+
+  /// No description provided for @insightsNext.
+  ///
+  /// In en, this message translates to:
+  /// **'Later'**
+  String get insightsNext;
+
+  /// No description provided for @insightsNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Now'**
+  String get insightsNow;
+
+  /// No description provided for @insightsAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get insightsAll;
+
+  /// No description provided for @insightsWaitingToken.
+  ///
+  /// In en, this message translates to:
+  /// **'Speed not yet reported'**
+  String get insightsWaitingToken;
+
+  /// No description provided for @insightsUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'The recording plugin is unavailable or disconnected. Existing records are retained; restart the managed server after its current task ends to load the plugin.'**
+  String get insightsUnavailable;
+
+  /// No description provided for @insightsInstall.
+  ///
+  /// In en, this message translates to:
+  /// **'Install search and task recording'**
+  String get insightsInstall;
+
+  /// No description provided for @insightsReload.
+  ///
+  /// In en, this message translates to:
+  /// **'Installed, not yet active. Restart the in-app server after the current task ends.'**
+  String get insightsReload;
+
+  /// No description provided for @insightsSearchTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Search provider'**
+  String get insightsSearchTitle;
+
+  /// No description provided for @insightsSearchDisclosure.
+  ///
+  /// In en, this message translates to:
+  /// **'Configure the connected OpenCode server, not only this conversation. Credentials use the server\'s secure integration store. A listed provider is not proof of authorization. A fixed selection never switches providers silently.'**
+  String get insightsSearchDisclosure;
+
+  /// No description provided for @insightsAuthorized.
+  ///
+  /// In en, this message translates to:
+  /// **'Credential connected'**
+  String get insightsAuthorized;
+
+  /// No description provided for @insightsNotAuthorized.
+  ///
+  /// In en, this message translates to:
+  /// **'Not authorized · tap to connect'**
+  String get insightsNotAuthorized;
+
+  /// No description provided for @insightsSelected.
+  ///
+  /// In en, this message translates to:
+  /// **'Selected'**
+  String get insightsSelected;
+
+  /// No description provided for @insightsSearchOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Disable AI web search'**
+  String get insightsSearchOff;
+
+  /// No description provided for @insightsSearchTest.
+  ///
+  /// In en, this message translates to:
+  /// **'Test the selected search provider'**
+  String get insightsSearchTest;
+
+  /// No description provided for @insightsSearchTestOK.
+  ///
+  /// In en, this message translates to:
+  /// **'The selected provider returned real web sources.'**
+  String get insightsSearchTestOK;
+
   /// No description provided for @servicesTitle.
   ///
   /// In en, this message translates to:
@@ -1139,7 +1367,7 @@ abstract class AppLocalizations {
   /// No description provided for @usageTitle.
   ///
   /// In en, this message translates to:
-  /// **'Usage and cost'**
+  /// **'Local usage'**
   String get usageTitle;
 
   /// No description provided for @usageDescription.
@@ -7855,6 +8083,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Already delivered'**
   String get chatUiAlreadyDelivered;
+
+  /// Chat journey: the inbox cancel could not be confirmed, so the text was not taken back
+  ///
+  /// In en, this message translates to:
+  /// **'Could not confirm the cancel. The message may still be pending; nothing was merged.'**
+  String get chatUiCouldNotConfirmCancel;
 
   /// Chat journey: Always allow
   ///
@@ -30784,15 +31018,34 @@ abstract class AppLocalizations {
   /// **'The server doesn\'t have this model.'**
   String get chatErrorModelNotFound;
 
-  /// The saved reasoning level disappeared after the server's model catalog changed.
+  /// No description provided for @chatErrorVariantUnavailable.
   ///
   /// In en, this message translates to:
   /// **'This reasoning level is missing from the current catalog. Open the model picker to restore it or choose another level.'**
   String get chatErrorVariantUnavailable;
 
+  /// No description provided for @modelEffortCustomHint.
+  ///
+  /// In en, this message translates to:
+  /// **'This extra level will be saved to the server. Your provider may not support it.'**
   String get modelEffortCustomHint;
+
+  /// No description provided for @modelEffortUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'{level} · unavailable'**
   String modelEffortUnavailable(String level);
+
+  /// No description provided for @modelEffortSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save the reasoning level. Your selection has not changed.'**
   String get modelEffortSaveFailed;
+
+  /// No description provided for @modelEffortSavedNotLoaded.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved, but the server has not loaded this reasoning level. Refresh models or restart the built-in server after its current work finishes.'**
   String get modelEffortSavedNotLoaded;
 
   /// Chat: an agent error of the context-overflow kind; the server's text is under Details
@@ -40411,6 +40664,12 @@ abstract class AppLocalizations {
   /// **'Choose a project to start a conversation.'**
   String get chatsNewNeedProject;
 
+  /// New chat: the session was created but the first prompt did not confirm; the person is taken into that conversation
+  ///
+  /// In en, this message translates to:
+  /// **'The conversation is open, but the first message was not confirmed. Send it again from here — it may already have arrived.'**
+  String get chatsNewFirstMessageUnconfirmed;
+
   /// New chat: starting failed and the draft is kept
   ///
   /// In en, this message translates to:
@@ -40912,7 +41171,7 @@ abstract class AppLocalizations {
   /// Sign-in terminal: what to do while Claude's own sign-in runs
   ///
   /// In en, this message translates to:
-  /// **'{agent} opens its sign-in page. Sign in there with your Claude account, then come back. If {agent} asks for a code, copy it on the page and choose Paste.'**
+  /// **'{agent} opens its sign-in page. Sign in there with your Claude account and come back: {agent} finishes on its own. Only if the page shows a code, copy it and choose Paste.'**
   String agentsSignInTerminalIntro(String agent);
 
   /// Sign-in step body for an agent other than Claude Code
@@ -47581,10 +47840,16 @@ abstract class AppLocalizations {
   /// **'Voice typing'**
   String get settingsV3VoiceTyping;
 
-  /// Settings row for the opt-in Telegram bridge to the phone's local agent.
+  /// No description provided for @telegramBotSettingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Telegram bot'**
   String get telegramBotSettingsTitle;
 
-  /// Search terms for the Telegram agent bridge settings.
+  /// No description provided for @telegramBotSettingsKeywords.
+  ///
+  /// In en, this message translates to:
+  /// **'Telegram bot remote agent messages progress command chat ID token'**
   String get telegramBotSettingsKeywords;
 
   /// Settings hub row: what runs by itself and the always allowed actions.
@@ -48052,7 +48317,7 @@ abstract class AppLocalizations {
   /// Usage tab: what the connected server says it used
   ///
   /// In en, this message translates to:
-  /// **'Spending'**
+  /// **'Local usage'**
   String get usageTabSpending;
 
   /// Usage top bar action: read every connection again
@@ -56767,205 +57032,832 @@ abstract class AppLocalizations {
   /// **'Written into the server\'s configuration, which only the server\'s own account can read.'**
   String get providerAddApiKeyHelper;
 
+  /// No description provided for @providerKeysTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Named API keys'**
   String get providerKeysTitle;
+
+  /// No description provided for @providerKeysHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Use the last selected key by default. A newly added key is selected automatically; keys are never rotated.'**
   String get providerKeysHint;
-  String get statsHeatmap;
-  String get statsHeatmapHint;
-  String get statsLess;
-  String get statsMore;
-  String get statsConversations;
-  String get statsModelRequests;
-  String get statsAllRecorded;
-  String get statsStepsNotMessages;
-  String get statsLaunches;
-  String get statsNotRecorded;
-  String statsSince(String date);
-  String get statsTokenUsage;
-  String get statsSevenDays;
-  String get statsNinetyDays;
-  String get statsInputTokens;
-  String get statsOutputTokens;
-  String get statsCachedTokens;
-  String get statsCacheRate;
-  String get statsDailyUsage;
-  String get statsMonthlyUsage;
-  String statsGroupedDays(int count);
-  String statsGroupedMonths(int count);
-  String get statsPeriodTotal;
-  String get statsByModel;
-  String get statsBySource;
-  String get statsSourcesUnavailable;
-  String get statsTokenExplanation;
-  String get statsDetails;
-  String get statsOther;
-  String get statsShare;
-  String get statsSummaryFailed;
-  String statsRequests(int count);
-  String get statsActivityDetails;
-  String statsLoadingBuckets(int done, int total);
-  String get statsTrendUnavailable;
-  String get statsPartialTrend;
-  String get statsTrendDetails;
-  String statsExactTokens(String count);
-  String get statsChartHint;
-  String chatStatsCacheRate(String rate);
-  String get chatStatsCacheRateLabel;
-  String get sessionElapsedTitle;
-  String get insightsTitle;
-  String get insightsTask;
-  String get insightsSubagent;
-  String get insightsCalls;
-  String get insightsMessages;
-  String get insightsPending;
-  String get insightsPendingExplanation;
-  String get insightsExplanation;
-  String get insightsQueue;
-  String get insightsLive;
-  String get insightsSuccess;
-  String get insightsFailed;
-  String get insightsCancelled;
-  String get insightsState;
-  String get insightsDetails;
-  String get insightsModels;
-  String get insightsSuccessRate;
-  String get insightsMissingUsage;
-  String get insightsError;
-  String get insightsRetries;
-  String get insightsRateLimit;
-  String get insightsPartial;
-  String get insightsPrevious;
-  String get insightsNext;
-  String get insightsNow;
-  String get insightsAll;
-  String get insightsWaitingToken;
-  String get insightsUnavailable;
-  String get insightsInstall;
-  String get insightsReload;
-  String get insightsSearchTitle;
-  String get insightsSearchDisclosure;
-  String get insightsAuthorized;
-  String get insightsNotAuthorized;
-  String get insightsSelected;
-  String get insightsSearchOff;
-  String get insightsSearchTest;
-  String get insightsSearchTestOK;
-  String get sessionElapsedEmpty;
-  String get sessionElapsedExplanation;
-  String get sessionElapsedTimeline;
-  String sessionElapsedTurn(int index);
-  String sessionElapsedRecorded(String seconds);
-  String get sessionElapsedWait;
-  String get sessionElapsedThinking;
-  String get sessionElapsedOutput;
-  String get sessionElapsedUnknown;
-  String get sessionElapsedTool;
-  String sessionElapsedSteps(int steps, String duration);
-  String get requestTimeline;
-  String get requestTimelineIntro;
-  String get requestTimelineEmpty;
-  String requestTimelineNote(int count);
-  String get requestTimelineUnknownModel;
-  String get requestTimelineWindow;
-  String get requestTimeline15m;
-  String get requestTimeline1h;
-  String get requestTimeline6h;
-  String requestTimelineCount(int count);
+
+  /// No description provided for @chatStatsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Reply statistics'**
   String get chatStatsTitle;
+
+  /// No description provided for @memoryTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Memory'**
   String get memoryTitle;
+
+  /// No description provided for @memoryIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep preferences and project conventions across conversations. Saved in encrypted storage on this device; applicable entries are sent to the current OpenCode server and model when you send a message. No background extraction or automatic saving.'**
   String get memoryIntro;
+
+  /// No description provided for @memoryHistoryNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Turning off or deleting memory stops future use from this app. It cannot erase content already sent to old conversations. Other clients, scheduled work and external agents do not synchronize this local vault.'**
   String get memoryHistoryNotice;
+
+  /// No description provided for @memoryUse.
+  ///
+  /// In en, this message translates to:
+  /// **'Use saved memory'**
   String get memoryUse;
+
+  /// No description provided for @memoryEntryUse.
+  ///
+  /// In en, this message translates to:
+  /// **'Use this memory'**
   String get memoryEntryUse;
+
+  /// No description provided for @memoryAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add memory'**
   String get memoryAdd;
+
+  /// No description provided for @memoryEdit.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit memory'**
   String get memoryEdit;
+
+  /// No description provided for @memorySaveMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Save to memory'**
   String get memorySaveMessage;
+
+  /// No description provided for @memoryText.
+  ///
+  /// In en, this message translates to:
+  /// **'What should be remembered?'**
   String get memoryText;
+
+  /// No description provided for @memoryHint.
+  ///
+  /// In en, this message translates to:
+  /// **'For example: Prefer concise replies in Chinese.'**
   String get memoryHint;
+
+  /// No description provided for @memoryGlobal.
+  ///
+  /// In en, this message translates to:
+  /// **'Global'**
   String get memoryGlobal;
+
+  /// No description provided for @memoryProject.
+  ///
+  /// In en, this message translates to:
+  /// **'This project'**
   String get memoryProject;
+
+  /// No description provided for @memoryAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
   String get memoryAll;
+
+  /// No description provided for @memoryScope.
+  ///
+  /// In en, this message translates to:
+  /// **'Use in'**
   String get memoryScope;
+
+  /// No description provided for @memoryProjectUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'The current project could not be verified. Global memories still work; reopen this page after connecting to select a project.'**
   String get memoryProjectUnknown;
+
+  /// No description provided for @memoryEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No saved memories'**
   String get memoryEmpty;
+
+  /// No description provided for @memoryEmptyDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a memory yourself, or ask AI in your conversation to summarize memories, then review and save.'**
   String get memoryEmptyDetail;
+
+  /// No description provided for @memorySearch.
+  ///
+  /// In en, this message translates to:
+  /// **'Search memory'**
   String get memorySearch;
+
+  /// No description provided for @memoryManual.
+  ///
+  /// In en, this message translates to:
+  /// **'Added manually'**
   String get memoryManual;
+
+  /// No description provided for @memoryExtracted.
+  ///
+  /// In en, this message translates to:
+  /// **'AI summary, confirmed'**
   String get memoryExtracted;
+
+  /// No description provided for @memoryCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} saved · {active} applicable'**
   String memoryCount(int count, int active);
+
+  /// No description provided for @memorySummarize.
+  ///
+  /// In en, this message translates to:
+  /// **'Summarize this chat into memory'**
   String get memorySummarize;
+
+  /// No description provided for @memorySummaryIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Send a summary request in this conversation using its existing context and current model. This may cost tokens; no separate transcript export or model switch occurs. The agent needs the oc-ui memory_write tool. AI only proposes entries; they are written after you review, select and save.'**
   String get memorySummaryIntro;
+
+  /// No description provided for @memorySummaryPrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Summarize durable memories from this conversation\'s existing context: only stable facts, preferences and project conventions I explicitly stated or confirmed. Exclude speculation, your suggestions, temporary tasks, passwords and keys. Use my language, at most 8 entries of at most 1024 UTF-8 bytes each. Call the oc-ui memory_write tool to propose them, with scope global for general preferences or project for this project\'s conventions; use separate calls for different scopes. The tool only proposes, not saves. End your turn after submitting and let me review, select and save in the app. If nothing qualifies or the tool is unavailable, say so honestly. Never claim it was saved or write AGENTS.md or other files as a substitute.'**
   String get memorySummaryPrompt;
+
+  /// No description provided for @memoryToolHint.
+  ///
+  /// In en, this message translates to:
+  /// **'You can also ask in chat: summarize this conversation into memory. AI proposes entries through memory_write; you confirm before they appear here. No automatic extraction or writing.'**
   String get memoryToolHint;
+
+  /// No description provided for @memoryPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Memories awaiting review'**
   String get memoryPending;
+
+  /// No description provided for @memoryReview.
+  ///
+  /// In en, this message translates to:
+  /// **'Review and confirm memories'**
   String get memoryReview;
+
+  /// No description provided for @memoryReviewIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Check AI\'s proposals, edit them and choose their scope. Only selected entries are written when you tap Save. Reviewing and saving do not make another model request.'**
   String get memoryReviewIntro;
+
+  /// No description provided for @memorySaveSelected.
+  ///
+  /// In en, this message translates to:
+  /// **'Save selected memories'**
   String get memorySaveSelected;
+
+  /// No description provided for @memorySaving.
+  ///
+  /// In en, this message translates to:
+  /// **'Saving memories…'**
   String get memorySaving;
+
+  /// No description provided for @memoryCandidate.
+  ///
+  /// In en, this message translates to:
+  /// **'Candidate {index}'**
   String memoryCandidate(int index);
+
+  /// No description provided for @memorySaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Memory saved'**
   String get memorySaved;
+
+  /// No description provided for @memoryDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete memory'**
   String get memoryDelete;
+
+  /// No description provided for @memoryClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete all memories'**
   String get memoryClear;
+
+  /// No description provided for @memoryDeleteBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove this saved memory from this device? Content already sent to a server or model stays in its conversation history.'**
   String get memoryDeleteBody;
+
+  /// No description provided for @memoryClearBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete every global and project memory on this device? This cannot be undone and does not erase old server conversations.'**
   String get memoryClearBody;
+
+  /// No description provided for @memoryStorageFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Memory storage could not be read or written. Your change was not saved. Retry; existing data has not been replaced.'**
   String get memoryStorageFailed;
+
+  /// No description provided for @memoryInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Memory data is unreadable or the suggestion format is invalid. Nothing was saved. Retry or add a memory manually.'**
   String get memoryInvalid;
+
+  /// No description provided for @memoryLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Memory is too long or the context is full (1 KB per entry, 100 entries, about 7 KB per applicable set including formatting). Shorten or delete entries; none will be silently dropped.'**
   String get memoryLimit;
+
+  /// No description provided for @memoryDuplicate.
+  ///
+  /// In en, this message translates to:
+  /// **'This memory already exists in that scope. Edit the existing entry instead.'**
   String get memoryDuplicate;
+
+  /// No description provided for @memoryChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'The memory, conversation or server changed. Reopen this page before continuing.'**
   String get memoryChanged;
+
+  /// No description provided for @memorySyncUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'This server cannot synchronize memory. The message was not sent; no prompt text fallback was used. Update the server or manage memory before trying again.'**
   String get memorySyncUnsupported;
+
+  /// No description provided for @memoryDiscard.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard unsaved memory changes?'**
   String get memoryDiscard;
+
+  /// No description provided for @statsHeatmap.
+  ///
+  /// In en, this message translates to:
+  /// **'Activity heatmap'**
+  String get statsHeatmap;
+
+  /// No description provided for @statsHeatmapHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Model requests per day · swipe to see earlier weeks. Unrecorded dates are dimmed.'**
+  String get statsHeatmapHint;
+
+  /// No description provided for @statsLess.
+  ///
+  /// In en, this message translates to:
+  /// **'Less'**
+  String get statsLess;
+
+  /// No description provided for @statsMore.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get statsMore;
+
+  /// No description provided for @statsConversations.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversations'**
+  String get statsConversations;
+
+  /// No description provided for @statsModelRequests.
+  ///
+  /// In en, this message translates to:
+  /// **'Model requests'**
+  String get statsModelRequests;
+
+  /// No description provided for @statsAllRecorded.
+  ///
+  /// In en, this message translates to:
+  /// **'All recorded in this server/project scope'**
+  String get statsAllRecorded;
+
+  /// No description provided for @statsStepsNotMessages.
+  ///
+  /// In en, this message translates to:
+  /// **'Model steps, not a total message count'**
+  String get statsStepsNotMessages;
+
+  /// No description provided for @statsLaunches.
+  ///
+  /// In en, this message translates to:
+  /// **'App launches on this phone'**
+  String get statsLaunches;
+
+  /// No description provided for @statsNotRecorded.
+  ///
+  /// In en, this message translates to:
+  /// **'Not recorded'**
+  String get statsNotRecorded;
+
+  /// No description provided for @statsSince.
+  ///
+  /// In en, this message translates to:
+  /// **'Counted since {date}'**
+  String statsSince(String date);
+
+  /// No description provided for @statsTokenUsage.
+  ///
+  /// In en, this message translates to:
+  /// **'Token usage'**
+  String get statsTokenUsage;
+
+  /// No description provided for @statsSevenDays.
+  ///
+  /// In en, this message translates to:
+  /// **'7 days'**
+  String get statsSevenDays;
+
+  /// No description provided for @statsNinetyDays.
+  ///
+  /// In en, this message translates to:
+  /// **'90 days'**
+  String get statsNinetyDays;
+
+  /// No description provided for @statsInputTokens.
+  ///
+  /// In en, this message translates to:
+  /// **'Input tokens'**
+  String get statsInputTokens;
+
+  /// No description provided for @statsOutputTokens.
+  ///
+  /// In en, this message translates to:
+  /// **'Output tokens'**
+  String get statsOutputTokens;
+
+  /// No description provided for @statsCachedTokens.
+  ///
+  /// In en, this message translates to:
+  /// **'Cache-hit tokens'**
+  String get statsCachedTokens;
+
+  /// No description provided for @statsCacheRate.
+  ///
+  /// In en, this message translates to:
+  /// **'Cache hit rate'**
+  String get statsCacheRate;
+
+  /// No description provided for @statsDailyUsage.
+  ///
+  /// In en, this message translates to:
+  /// **'Daily usage'**
+  String get statsDailyUsage;
+
+  /// No description provided for @statsMonthlyUsage.
+  ///
+  /// In en, this message translates to:
+  /// **'Monthly usage'**
+  String get statsMonthlyUsage;
+
+  /// No description provided for @statsGroupedDays.
+  ///
+  /// In en, this message translates to:
+  /// **'Grouped by {count} calendar days to keep reads bounded'**
+  String statsGroupedDays(int count);
+
+  /// No description provided for @statsGroupedMonths.
+  ///
+  /// In en, this message translates to:
+  /// **'Grouped by {count} calendar months'**
+  String statsGroupedMonths(int count);
+
+  /// No description provided for @statsPeriodTotal.
+  ///
+  /// In en, this message translates to:
+  /// **'Period total'**
+  String get statsPeriodTotal;
+
+  /// No description provided for @statsByModel.
+  ///
+  /// In en, this message translates to:
+  /// **'By model'**
+  String get statsByModel;
+
+  /// No description provided for @statsBySource.
+  ///
+  /// In en, this message translates to:
+  /// **'By source'**
+  String get statsBySource;
+
+  /// No description provided for @statsSourcesUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'This server does not report separate chat, compaction, title or other request sources. No source shares can be calculated from these totals.'**
+  String get statsSourcesUnavailable;
+
+  /// No description provided for @statsTokenExplanation.
+  ///
+  /// In en, this message translates to:
+  /// **'Input includes cache reads and writes once. Output includes reasoning. Cache hits are a subset of input, not extra usage; hit rate = cache reads ÷ input. These are this server’s recorded tokens, not a provider invoice.'**
+  String get statsTokenExplanation;
+
+  /// No description provided for @statsDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'Exact usage, costs and budgets'**
+  String get statsDetails;
+
+  /// No description provided for @statsOther.
+  ///
+  /// In en, this message translates to:
+  /// **'Other'**
+  String get statsOther;
+
+  /// No description provided for @statsShare.
+  ///
+  /// In en, this message translates to:
+  /// **'Share of reported tokens'**
+  String get statsShare;
+
+  /// No description provided for @statsSummaryFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read the activity overview. Pull down to retry.'**
+  String get statsSummaryFailed;
+
+  /// No description provided for @statsRequests.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} model requests'**
+  String statsRequests(int count);
+
+  /// No description provided for @statsActivityDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'View daily activity'**
+  String get statsActivityDetails;
+
+  /// No description provided for @statsLoadingBuckets.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading usage · {done}/{total}'**
+  String statsLoadingBuckets(int done, int total);
+
+  /// No description provided for @statsTrendUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Daily token measurements are unavailable. The period total above is still the reported total.'**
+  String get statsTrendUnavailable;
+
+  /// No description provided for @statsPartialTrend.
+  ///
+  /// In en, this message translates to:
+  /// **'Some dates could not be read. Gaps are unknown, not zero usage.'**
+  String get statsPartialTrend;
+
+  /// No description provided for @statsTrendDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'Select a date and view exact tokens'**
+  String get statsTrendDetails;
+
+  /// No description provided for @statsExactTokens.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} tokens'**
+  String statsExactTokens(String count);
+
+  /// No description provided for @statsChartHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap a bar for its period. Use the date list for exact values; unrecorded periods are marked with a dash.'**
+  String get statsChartHint;
+
+  /// No description provided for @chatStatsSeconds.
+  ///
+  /// In en, this message translates to:
+  /// **'{seconds} s'**
   String chatStatsSeconds(String seconds);
+
+  /// No description provided for @chatStatsDuration.
+  ///
+  /// In en, this message translates to:
+  /// **'Elapsed {duration}'**
   String chatStatsDuration(String duration);
+
+  /// No description provided for @chatStatsSteps.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 step} other{{count} steps}}'**
   String chatStatsSteps(int count);
+
+  /// No description provided for @chatStatsSpeed.
+  ///
+  /// In en, this message translates to:
+  /// **'{speed} tok/s'**
   String chatStatsSpeed(String speed);
+
+  /// No description provided for @chatStatsContext.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} context'**
   String chatStatsContext(String count);
+
+  /// No description provided for @chatStatsCached.
+  ///
+  /// In en, this message translates to:
+  /// **'(cached {count})'**
   String chatStatsCached(String count);
+
+  /// No description provided for @chatStatsDurationLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Reply elapsed time'**
   String get chatStatsDurationLabel;
+
+  /// No description provided for @chatStatsStepsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Model steps'**
   String get chatStatsStepsLabel;
+
+  /// No description provided for @chatStatsToolsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Executed tool calls'**
   String get chatStatsToolsLabel;
+
+  /// No description provided for @chatStatsSpeedLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Generation speed'**
   String get chatStatsSpeedLabel;
+
+  /// No description provided for @chatStatsContextLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Final request context tokens'**
   String get chatStatsContextLabel;
+
+  /// No description provided for @chatStatsCachedLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Final request cache hits'**
   String get chatStatsCachedLabel;
+
+  /// No description provided for @chatStatsInputLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Reported input tokens, all steps'**
   String get chatStatsInputLabel;
+
+  /// No description provided for @chatStatsOutputLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Reported output tokens, all steps'**
   String get chatStatsOutputLabel;
+
+  /// No description provided for @chatStatsReasoningLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Reported reasoning tokens, all steps'**
   String get chatStatsReasoningLabel;
+
+  /// No description provided for @chatStatsCostLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Reported cost'**
   String get chatStatsCostLabel;
+
+  /// No description provided for @chatStatsNotReported.
+  ///
+  /// In en, this message translates to:
+  /// **'Not reported by the server'**
   String get chatStatsNotReported;
+
+  /// No description provided for @chatStatsExplanation.
+  ///
+  /// In en, this message translates to:
+  /// **'Elapsed time includes tool work. Speed uses output and reasoning tokens over recorded streaming time, excluding tools and pauses between steps. Context is the final model request; totals include the usage reported across all steps. Missing measurements are not estimated.'**
   String get chatStatsExplanation;
+
+  /// No description provided for @chatProcessThinkingFor.
+  ///
+  /// In en, this message translates to:
+  /// **'Thinking · {duration}'**
   String chatProcessThinkingFor(String duration);
+
+  /// No description provided for @chatProcessThoughtFor.
+  ///
+  /// In en, this message translates to:
+  /// **'Thought for {duration}'**
   String chatProcessThoughtFor(String duration);
+
+  /// No description provided for @providerKeySwitch.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch API key'**
   String get providerKeySwitch;
+
+  /// No description provided for @providerKeyLoading.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading saved keys…'**
   String get providerKeyLoading;
+
+  /// No description provided for @providerKeySwitching.
+  ///
+  /// In en, this message translates to:
+  /// **'Switching the provider key…'**
   String get providerKeySwitching;
+
+  /// No description provided for @providerKeyConfigureFirst.
+  ///
+  /// In en, this message translates to:
+  /// **'Add named keys in this provider’s configuration first.'**
   String get providerKeyConfigureFirst;
+
+  /// No description provided for @providerKeyProviderScope.
+  ///
+  /// In en, this message translates to:
+  /// **'{provider} · applies to all its models'**
   String providerKeyProviderScope(String provider);
+
+  /// No description provided for @providerKeySwitched.
+  ///
+  /// In en, this message translates to:
+  /// **'Now using key “{name}” for this provider’s models'**
   String providerKeySwitched(String name);
+
+  /// No description provided for @providerKeyMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'The selected key file is missing or empty. The current key was not changed.'**
   String get providerKeyMissing;
+
+  /// No description provided for @providerKeySelectionChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'The provider’s keys changed while the menu was open. Open the menu again to select a key.'**
   String get providerKeySelectionChanged;
+
+  /// No description provided for @providerKeySwitchFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not switch the key. Open the menu again to check the saved selection; no fallback key was chosen.'**
   String get providerKeySwitchFailed;
+
+  /// No description provided for @providerKeyAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add key'**
   String get providerKeyAdd;
+
+  /// No description provided for @providerKeyRename.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename key'**
   String get providerKeyRename;
+
+  /// No description provided for @providerKeyUse.
+  ///
+  /// In en, this message translates to:
+  /// **'Use this key'**
   String get providerKeyUse;
+
+  /// No description provided for @providerKeyName.
+  ///
+  /// In en, this message translates to:
+  /// **'Key name'**
   String get providerKeyName;
+
+  /// No description provided for @providerKeyNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Personal, work, backup…'**
   String get providerKeyNameHint;
+
+  /// No description provided for @providerKeyDefaultName.
+  ///
+  /// In en, this message translates to:
+  /// **'Default'**
   String get providerKeyDefaultName;
+
+  /// No description provided for @providerKeyNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Give this key a name.'**
   String get providerKeyNameRequired;
+
+  /// No description provided for @providerKeyNameExists.
+  ///
+  /// In en, this message translates to:
+  /// **'Use a different name for each key.'**
   String get providerKeyNameExists;
+
+  /// No description provided for @providerKeySecret.
+  ///
+  /// In en, this message translates to:
+  /// **'API key'**
   String get providerKeySecret;
+
+  /// No description provided for @providerKeySecretHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Stored in a private server-side file. It is not kept in app preferences.'**
   String get providerKeySecretHint;
+
+  /// No description provided for @providerKeySecretRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter an API key.'**
   String get providerKeySecretRequired;
+
+  /// No description provided for @providerKeyCurrent.
+  ///
+  /// In en, this message translates to:
+  /// **'Currently in use'**
   String get providerKeyCurrent;
+
+  /// No description provided for @providerKeyAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved key'**
   String get providerKeyAvailable;
+
+  /// No description provided for @providerKeyActions.
+  ///
+  /// In en, this message translates to:
+  /// **'Actions for key “{name}”'**
   String providerKeyActions(String name);
+
+  /// No description provided for @providerKeyAdded.
+  ///
+  /// In en, this message translates to:
+  /// **'Key “{name}” added and selected'**
   String providerKeyAdded(String name);
+
+  /// No description provided for @providerKeyRenamed.
+  ///
+  /// In en, this message translates to:
+  /// **'Key renamed to “{name}”'**
   String providerKeyRenamed(String name);
+
+  /// No description provided for @providerKeyDeleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Key “{name}” removed from the list'**
   String providerKeyDeleted(String name);
+
+  /// No description provided for @providerKeyDeleteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove key “{name}”?'**
   String providerKeyDeleteTitle(String name);
+
+  /// No description provided for @providerKeyDeleteBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove this saved key. App-managed files are deleted when not referenced by another configured provider. External or shared files are kept.'**
   String get providerKeyDeleteBody;
+
+  /// No description provided for @providerKeyFileRetained.
+  ///
+  /// In en, this message translates to:
+  /// **'Removed from the list. The external, shared or undeletable key file was kept.'**
   String get providerKeyFileRetained;
+
+  /// No description provided for @providerKeyReloadNeeded.
+  ///
+  /// In en, this message translates to:
+  /// **'Configuration saved. Reload did not complete; restart the built-in server after its current work finishes.'**
   String get providerKeyReloadNeeded;
+
+  /// No description provided for @providerActions.
+  ///
+  /// In en, this message translates to:
+  /// **'Actions'**
   String get providerActions;
+
+  /// No description provided for @providerKeyCannotDeleteLast.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep at least one named key for this provider.'**
   String get providerKeyCannotDeleteLast;
+
+  /// No description provided for @providerKeyCannotDeleteActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose another key before removing the active one.'**
   String get providerKeyCannotDeleteActive;
 
   /// No description provided for @providerAddFetch.
@@ -57226,10 +58118,10 @@ abstract class AppLocalizations {
   /// **'Providers'**
   String get providerManageTitle;
 
-  /// The providers written into the server configuration. Tap a row to edit it; long-press for test and delete.
+  /// The providers written into the server configuration. Tap a row to edit it; long-press for test, hide or delete.
   ///
   /// In en, this message translates to:
-  /// **'The providers written into the server configuration. Tap a row to edit it; long-press for test and delete.'**
+  /// **'The providers written into the server configuration. Tap a row to edit it; long-press for test, hide or delete.'**
   String get providerManageIntro;
 
   /// Read again
@@ -57328,10 +58220,10 @@ abstract class AppLocalizations {
   /// **'{count} entries cannot be edited here'**
   String providerManageUnreadable(int count);
 
-  /// Their shape is not something this form can rewrite safely (an override of a built-in provider, for example). Edit them on the server.
+  /// Their shape is not something this form can rewrite safely (an override of a built-in provider, for example). Edit them on the server, or remove one from this list.
   ///
   /// In en, this message translates to:
-  /// **'Their shape is not something this form can rewrite safely (an override of a built-in provider, for example). Edit them on the server.'**
+  /// **'Their shape is not something this form can rewrite safely (an override of a built-in provider, for example). Edit them on the server, or remove one from this list.'**
   String get providerManageUnreadableBody;
 
   /// Edit provider
@@ -57687,10 +58579,35 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Set up'**
   String get providerManageSetup;
+
+  /// No description provided for @providerHide.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide from this list'**
   String get providerHide;
+
+  /// No description provided for @providerHiddenDone.
+  ///
+  /// In en, this message translates to:
+  /// **'“{name}” hidden'**
   String providerHiddenDone(String name);
+
+  /// No description provided for @providerShowHidden.
+  ///
+  /// In en, this message translates to:
+  /// **'Show {count} hidden providers'**
   String providerShowHidden(int count);
+
+  /// No description provided for @providerShowHiddenHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Hiding only affects this list. Nothing in the server configuration changes.'**
   String get providerShowHiddenHint;
+
+  /// No description provided for @providerShowHiddenDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Hidden providers shown again'**
   String get providerShowHiddenDone;
 
   /// Integrations entry row into the provider window
@@ -58154,6 +59071,150 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'server keys, API keys and sign-in tokens'**
   String get appLogBrowseKeys;
+
+  /// No description provided for @chatStatsCacheRate.
+  ///
+  /// In en, this message translates to:
+  /// **'{rate} cache hit'**
+  String chatStatsCacheRate(String rate);
+
+  /// No description provided for @chatStatsCacheRateLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cache hit rate'**
+  String get chatStatsCacheRateLabel;
+
+  /// No description provided for @sessionElapsedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Elapsed time'**
+  String get sessionElapsedTitle;
+
+  /// No description provided for @sessionElapsedEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No recorded timing yet'**
+  String get sessionElapsedEmpty;
+
+  /// No description provided for @sessionElapsedExplanation.
+  ///
+  /// In en, this message translates to:
+  /// **'Only server-recorded timestamps are shown. Phases may overlap; missing timing stays unreported.'**
+  String get sessionElapsedExplanation;
+
+  /// No description provided for @sessionElapsedTimeline.
+  ///
+  /// In en, this message translates to:
+  /// **'Replies'**
+  String get sessionElapsedTimeline;
+
+  /// No description provided for @sessionElapsedTurn.
+  ///
+  /// In en, this message translates to:
+  /// **'Reply {index}'**
+  String sessionElapsedTurn(int index);
+
+  /// No description provided for @sessionElapsedRecorded.
+  ///
+  /// In en, this message translates to:
+  /// **'Recorded phases {seconds}'**
+  String sessionElapsedRecorded(String seconds);
+
+  /// No description provided for @sessionElapsedWait.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for model'**
+  String get sessionElapsedWait;
+
+  /// No description provided for @sessionElapsedThinking.
+  ///
+  /// In en, this message translates to:
+  /// **'Thinking'**
+  String get sessionElapsedThinking;
+
+  /// No description provided for @sessionElapsedOutput.
+  ///
+  /// In en, this message translates to:
+  /// **'Output'**
+  String get sessionElapsedOutput;
+
+  /// No description provided for @sessionElapsedUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Unclassified streaming (including unreported tool arguments)'**
+  String get sessionElapsedUnknown;
+
+  /// No description provided for @sessionElapsedTool.
+  ///
+  /// In en, this message translates to:
+  /// **'Tool execution'**
+  String get sessionElapsedTool;
+
+  /// No description provided for @sessionElapsedSteps.
+  ///
+  /// In en, this message translates to:
+  /// **'{steps} model requests · {duration} recorded'**
+  String sessionElapsedSteps(int steps, String duration);
+
+  /// No description provided for @requestTimeline.
+  ///
+  /// In en, this message translates to:
+  /// **'Request timeline'**
+  String get requestTimeline;
+
+  /// No description provided for @requestTimelineIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat lanes use recorded model-step times. Local usage marks acknowledged prompt sends, not provider-request durations. API-key identity is not reported; no key lanes are inferred.'**
+  String get requestTimelineIntro;
+
+  /// No description provided for @requestTimelineEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No requests recorded in this window'**
+  String get requestTimelineEmpty;
+
+  /// No description provided for @requestTimelineNote.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} requests with recorded timestamps'**
+  String requestTimelineNote(int count);
+
+  /// No description provided for @requestTimelineUnknownModel.
+  ///
+  /// In en, this message translates to:
+  /// **'Model not reported'**
+  String get requestTimelineUnknownModel;
+
+  /// No description provided for @requestTimelineWindow.
+  ///
+  /// In en, this message translates to:
+  /// **'Time window'**
+  String get requestTimelineWindow;
+
+  /// No description provided for @requestTimeline15m.
+  ///
+  /// In en, this message translates to:
+  /// **'15 min'**
+  String get requestTimeline15m;
+
+  /// No description provided for @requestTimeline1h.
+  ///
+  /// In en, this message translates to:
+  /// **'1 hour'**
+  String get requestTimeline1h;
+
+  /// No description provided for @requestTimeline6h.
+  ///
+  /// In en, this message translates to:
+  /// **'6 hours'**
+  String get requestTimeline6h;
+
+  /// No description provided for @requestTimelineCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} requests in this window'**
+  String requestTimelineCount(int count);
 }
 
 class _AppLocalizationsDelegate

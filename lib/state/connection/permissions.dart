@@ -70,6 +70,13 @@ String _questionContents(PendingQuestion value) => jsonEncode([
 
 /// [ConnectionController]'s permission requests.
 mixin _ConnectionControllerPermissions on ChangeNotifier {
+  /// Syncs for one session are serialised and generation-checked. Fired in
+  /// parallel, a slow "automatic" write computed before the person switched
+  /// back to "ask" could land *after* the newer one and leave the server
+  /// approving tools the person had just taken back.
+  final Map<String, int> _permissionSyncGeneration = {};
+  final Map<String, Future<void>> _permissionSyncTail = {};
+
   ConnectionController get _self;
 
   bool permissionsLoading = false;
@@ -368,11 +375,26 @@ extension _ConnectionControllerPermissionsImpl on ConnectionController {
   /// follows it: an automatic session's tools run on the server's own rules
   /// instead of waiting for this phone. Best effort; the next message
   /// installs the same mode before it is sent.
+  ///
   void _syncServerPermissions(Set<String> sessionIDs) {
     final gateway = api;
     if (gateway is! Api2Gateway || !isConnected) return;
     for (final id in sessionIDs) {
-      unawaited(gateway.syncSessionPermissions(id).catchError((Object _) {}));
+      final generation = (_permissionSyncGeneration[id] ?? 0) + 1;
+      _permissionSyncGeneration[id] = generation;
+      final previous = _permissionSyncTail[id] ?? Future<void>.value();
+      final next = previous
+          .then((_) async {
+            // A newer choice for this session has been made: this write
+            // would install a mode the person already left.
+            if (_disposed || generation != _permissionSyncGeneration[id]) {
+              return;
+            }
+            if (!identical(api, gateway)) return;
+            await gateway.syncSessionPermissions(id);
+          })
+          .catchError((Object _) {});
+      _permissionSyncTail[id] = next;
     }
   }
 

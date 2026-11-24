@@ -65,6 +65,7 @@ abstract class PromptGateway {
     List<PromptAttachment> attachments,
     List<PromptAgentMention> agentMentions,
     PromptDelivery? delivery,
+    PromptCancellation? cancel,
   });
   Future<void> shell(
     String sessionID, {
@@ -83,10 +84,66 @@ abstract class PromptGateway {
   Future<void> abort(String sessionID);
 }
 
+/// Thrown when a send was called off.
+///
+/// [afterDispatch] is what the caller must act on. Stopped before the request
+/// left, nothing was sent and the words can be handed straight back. Stopped
+/// while the request was in flight, the server may already have admitted it:
+/// reporting that as "not sent" would invite a second copy of the same
+/// prompt, so the caller keeps the record for review instead.
+class PromptCancelledException implements Exception {
+  const PromptCancelledException({this.afterDispatch = false});
+  final bool afterDispatch;
+
+  @override
+  String toString() => afterDispatch
+      ? 'The send was stopped while its request was on the way.'
+      : 'The send was stopped before it left.';
+}
+
+/// A prompt that failed during preparation, before the request was made.
+///
+/// The distinction matters to the caller: an error after the request left
+/// cannot establish whether the server admitted the work, so the prompt must
+/// stay in review. An error here means nothing was sent, so the input goes
+/// back and the person is told plainly. [cause] is the original failure and
+/// keeps its type and tag.
+class PromptNotSentException implements Exception {
+  const PromptNotSentException(this.cause);
+  final Object cause;
+
+  @override
+  String toString() => cause.toString();
+}
+
+/// A send's cancellation, observed between preparation steps and by the
+/// transport.
+///
+/// The UI's "Stop while the send still waits" used to complete a [Future]
+/// that only ended the *caller's* wait: the gateway kept working through
+/// permission, memory and metadata and then posted the prompt anyway. A
+/// cancellation travels with the send into the gateway, so every await can
+/// be followed by a check and the HTTP request itself can be abandoned.
+abstract interface class PromptCancellation {
+  /// True once the person stopped this send.
+  bool get isCancelled;
+
+  /// Throws [PromptCancelledException] when [isCancelled].
+  void throwIfCancelled();
+
+  /// Calls [callback] when the send is cancelled — including when it already
+  /// was — and returns a function that unregisters it. The transport uses it
+  /// to abort an in-flight request.
+  void Function() onCancel(void Function() callback);
+}
+
 /// Optional exact dispatch correlation, separate from heuristic transcript
 /// reconciliation. This is not an idempotency or delivery-retry contract.
 /// The optional beforeSend fence runs synchronously after asynchronous preflight
 /// and immediately before HTTP dispatch; it may refuse a stale/deleted scope.
+///
+/// [cancel] must be honoured by every implementation that can: it is what
+/// keeps a prompt from being posted after the person stopped it.
 abstract interface class CorrelatedPromptGateway {
   String createPromptMessageID();
   Future<void> promptWithMessageID(
@@ -100,6 +157,7 @@ abstract interface class CorrelatedPromptGateway {
     List<PromptAgentMention> agentMentions,
     PromptDelivery? delivery,
     void Function()? beforeSend,
+    PromptCancellation? cancel,
   });
 }
 

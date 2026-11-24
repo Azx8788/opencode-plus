@@ -144,6 +144,8 @@ extension _ChatHistory on _ChatScreenState {
     // Inbox events are volatile: reconcile this session's pending sends
     // from REST whenever the transcript (re)hydrates. No-op on v1.
     unawaited(_conn.refreshInbox(widget.sessionID));
+    // Words taken back from the inbox whose replacement never went out.
+    unawaited(_recoverWithdrawnSteers());
     try {
       final api = scope.api;
       if (api == null) {
@@ -162,19 +164,30 @@ extension _ChatHistory on _ChatScreenState {
       // the opening excerpt for next time. A host without a saved,
       // connected server (the demo, tests) reads the gateway directly, and
       // so does watching: its poll must not rewrite the saved excerpt.
-      final page =
-          !_conn.isIsolated &&
-              !_watching &&
-              identical(api, _conn.api) &&
-              _conn.canLoadSessionTail(scope.session)
-          ? await _conn.loadSessionTail(scope.session)
-          : await readHistoryAtStagedBoundary(
-              api,
-              scope.session,
-              boundary:
-                  _conn.sessionsById[scope.session]?.stagedRevert?.messageID,
-              isCurrent: () => _currentHistory(generation, scope),
-            );
+      // A shared read may have started before events this page has already
+      // applied. It is merged against the version it actually reflects, not
+      // against this hydration's own start, or those events lose to the
+      // snapshot and the transcript steps back.
+      var mergeVersion = versionAtStart;
+      final ServerPage<MessageWithParts> page;
+      if (!_conn.isIsolated &&
+          !_watching &&
+          identical(api, _conn.api) &&
+          _conn.canLoadSessionTail(scope.session)) {
+        final read = await _conn.loadSessionTailStamped(
+          scope.session,
+          versionAtStart,
+        );
+        page = read.page;
+        if (read.startedAt < mergeVersion) mergeVersion = read.startedAt;
+      } else {
+        page = await readHistoryAtStagedBoundary(
+          api,
+          scope.session,
+          boundary: _conn.sessionsById[scope.session]?.stagedRevert?.messageID,
+          isCurrent: () => _currentHistory(generation, scope),
+        );
+      }
       if (!_currentHistory(generation, scope)) return;
       final anchor = _historyAnchor();
       final pinnedEnd = _renderedMessageCount == 0
@@ -191,7 +204,7 @@ extension _ChatHistory on _ChatScreenState {
       _setChatState(() {
         _messages = _mergeHydratedMessages(
           page.items,
-          versionAtStart,
+          mergeVersion,
           prefix: prefix,
         );
         if (!retainPrefix) {
@@ -331,6 +344,27 @@ extension _ChatHistory on _ChatScreenState {
     );
   }
 
+  /// Puts text that was taken back from the server's inbox, and never
+  /// re-admitted, back into the composer — once, and only after the draft
+  /// that now holds it was saved.
+  Future<void> _recoverWithdrawnSteers() async {
+    if (!mounted || _sending || _sendInFlight) return;
+    final held = _conn.withdrawnSteersFor(widget.sessionID);
+    if (held.isEmpty) return;
+    final pieces = [
+      for (final entry in held) entry.text,
+      if (_composer.text.trim().isNotEmpty) _composer.text,
+    ];
+    final merged = pieces.join('\n\n');
+    _setChatState(() {
+      _composer.text = merged;
+      _composer.selection = TextSelection.collapsed(offset: merged.length);
+    });
+    if (await _persistDraft()) {
+      await _conn.releaseWithdrawnSteers(widget.sessionID);
+    }
+  }
+
   List<MessageWithParts> _mergeHydratedMessages(
     List<MessageWithParts> hydrated,
     int versionAtStart, {
@@ -343,14 +377,18 @@ extension _ChatHistory on _ChatScreenState {
       if (message.info.role != 'user') continue;
       for (final pending in List<_PendingSend>.from(_pendingSends)) {
         if (pending.canonicalID != null) continue;
-        if (_matchesPendingPrompt(message.parts, pending)) {
-          _reconcilePendingMessage(
-            message.info,
-            canonicalParts: message.parts,
-            pendingSend: pending,
-          );
-          break;
-        }
+        // An authored message ID is the identity: the server echoes it and
+        // the live path binds by it. Guessing from words here bound a new
+        // bubble to an older message that happened to say the same thing.
+        if (pending.dispatchedMessageID != null) continue;
+        if (!_matchesPendingPrompt(message.parts, pending)) continue;
+        if (!_plausibleEchoTime(message.info.time?.created, pending)) continue;
+        _reconcilePendingMessage(
+          message.info,
+          canonicalParts: message.parts,
+          pendingSend: pending,
+        );
+        break;
       }
     }
 

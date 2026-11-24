@@ -46,7 +46,7 @@ extension _ChatPage on _ChatScreenState {
     final waiting = !_conn.isIsolated && _conn.capabilities.inbox
         ? [
             for (final item in _conn.inboxItemsFor(widget.sessionID))
-              if (item.type == 'user') item,
+              if (item.isPrompt) item,
           ]
         : const <Api2InboxItem>[];
     final waitingIDs = {for (final item in waiting) item.id};
@@ -58,6 +58,9 @@ extension _ChatPage on _ChatScreenState {
     final lastAssistant = _messages.lastIndexWhere(
       (message) => message.info.role == 'assistant',
     );
+    final optimisticIDs = {
+      for (final pending in _pendingSends) pending.localID,
+    };
     final waitingLocalIDs = <String>{
       if (waiting.isNotEmpty)
         for (var i = 0; i < _messages.length; i++)
@@ -67,7 +70,13 @@ extension _ChatPage on _ChatScreenState {
               // the optimistic copy is swapped for that message at once, so
               // the copy in the transcript usually carries the item's id.
               (waitingIDs.contains(_messages[i].info.id) ||
-                  (i > lastAssistant &&
+                  // The text fallback exists only for a bubble this page
+                  // drew and has not reconciled yet. Matching words in a
+                  // message the server actually has hid a real, delivered
+                  // prompt behind another one that happened to say the same
+                  // thing.
+                  (optimisticIDs.contains(_messages[i].info.id) &&
+                      i > lastAssistant &&
                       waitingTexts.contains(
                         _ChatScreenState._messageText(_messages[i]).trim(),
                       ))))
@@ -101,6 +110,7 @@ extension _ChatPage on _ChatScreenState {
             messages,
             refused: _promptError != null,
             running: busy || _sending || _live != null,
+            commandTexts: _sentCommandTexts,
             stoppedPromptID: stoppedPromptID,
           );
     _noteTurnFailure();

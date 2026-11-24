@@ -7,9 +7,10 @@ mixin _ChatSessionActionFields {
   bool _aborting = false;
   String? _localShareUrl;
 
-  /// Completed when the person presses Stop while a send waits (for the
-  /// connection, the model choice, storage): the send goes no further.
-  Completer<void>? _sendCancel;
+  /// The cancellation of the send in flight. It ends the caller's waits and
+  /// travels into the gateway, so a Stop during permission/memory/metadata
+  /// preparation leaves nothing on the wire.
+  _SendCancellation? _sendCancel;
 
   /// The bubble the send in flight shows, taken back out by a Stop.
   _PendingSend? _sendingBubble;
@@ -24,6 +25,51 @@ mixin _ChatSessionActionFields {
 
   /// The last [_abort] reached the server and stopped the turn.
   bool _abortSucceeded = false;
+
+  /// The stop request that has not settled yet, and whether another pass was
+  /// asked for while it ran. A stop is never dropped because one is already
+  /// in flight — the first interrupt may have reached the server before the
+  /// prompt it was meant to cancel was admitted.
+  Future<void>? _abortRun;
+  bool _abortAgain = false;
+}
+
+/// One send's cancellation: a [Future] for the waits that can be abandoned
+/// and a [PromptCancellation] for the work that is already running.
+class _SendCancellation implements PromptCancellation {
+  final Completer<void> _done = Completer<void>();
+  final List<void Function()> _listeners = [];
+
+  Future<void> get future => _done.future;
+  bool get isCompleted => _done.isCompleted;
+
+  @override
+  bool get isCancelled => _done.isCompleted;
+
+  @override
+  void throwIfCancelled() {
+    if (_done.isCompleted) throw const PromptCancelledException();
+  }
+
+  @override
+  void Function() onCancel(void Function() callback) {
+    if (_done.isCompleted) {
+      callback();
+      return () {};
+    }
+    _listeners.add(callback);
+    return () => _listeners.remove(callback);
+  }
+
+  void cancel() {
+    if (_done.isCompleted) return;
+    _done.complete();
+    final listeners = [..._listeners];
+    _listeners.clear();
+    for (final listener in listeners) {
+      listener();
+    }
+  }
 }
 
 extension _ChatSessionActions on _ChatScreenState {
@@ -34,14 +80,40 @@ extension _ChatSessionActions on _ChatScreenState {
   /// reach the server: the person pressed it to stop something now.
   static const _abortTransportWait = Duration(seconds: 5);
 
+  /// Stops the conversation's turn.
+  ///
+  /// Two rules keep this honest. A stop asked for while another is in flight
+  /// is queued, not discarded: the first interrupt can be a no-op because it
+  /// arrived before the prompt did. And the whole preparation runs inside
+  /// `try/finally`, so a connection error while preparing can never leave
+  /// the page's Stop permanently disabled.
   Future<void> _abort() async {
     _abortSucceeded = false;
-    if (_aborting) return;
-    if (!_conn.isIsolated) KitHaptics.commit(context);
+    final running = _abortRun;
+    if (running != null) {
+      _abortAgain = true;
+      await running;
+      return;
+    }
+    final run = _runAbort();
+    _abortRun = run;
+    try {
+      await run;
+    } finally {
+      _abortRun = null;
+      if (_abortAgain) {
+        _abortAgain = false;
+        unawaited(_abort());
+      }
+    }
+  }
+
+  Future<void> _runAbort() async {
+    if (!_conn.isIsolated && mounted) KitHaptics.commit(context);
     // The send is still waiting (for the connection, the model choice):
     // it is called off here, and nothing reaches the server.
     if (_sending && _sendCancel != null && !_promptOnWire) {
-      _stopPendingSend();
+      await _stopPendingSend();
       return;
     }
     // Its request is on the way: the turn is stopped now and once more
@@ -49,44 +121,69 @@ extension _ChatSessionActions on _ChatScreenState {
     if (_sending && _promptOnWire) _stopAfterDispatch = true;
     final location = _conn.locationRevision;
     final profileID = _conn.profile?.id;
-    _setChatState(() => _aborting = true);
-    final actionApi = await _conn.prepareActionTransport().timeout(
-      _abortTransportWait,
-      onTimeout: () => null,
-    );
-    if (!mounted) return;
-    if (location != _conn.locationRevision || profileID != _conn.profile?.id) {
-      _setChatState(() => _aborting = false);
-      _showActionError(_chatL10n(context).workContextChanged);
-      return;
-    }
-    if (actionApi == null) {
-      _setChatState(() => _aborting = false);
-      _showActionError(
-        _conn.connectionError ?? _reconnectingShortlyWords(context),
-      );
-      return;
-    }
-    // Noted before the call: the server's interrupt can arrive before the
-    // call returns, and must not read as a stop from another device.
-    _conn.noteStopFromThisApp(widget.sessionID);
+    // Captured before any await: this stop belongs to the prompt that is
+    // newest now. A send that starts while the request is in flight is a
+    // different turn and must not be marked stopped by this result.
+    final target = _newestPromptID();
+    if (mounted) _setChatState(() => _aborting = true);
     try {
-      await actionApi.abort(widget.sessionID);
-      _abortSucceeded = true;
-      _conn.markStoppedByPerson(widget.sessionID);
-      if (mounted) {
-        final prompt = _messages.lastIndexWhere(_isPrompt);
-        _setChatState(() {
-          _localTurnSince = null;
-          if (prompt >= 0) _stoppedPromptID = _messages[prompt].info.id;
-        });
+      final actionApi = await _conn.prepareActionTransport().timeout(
+        _abortTransportWait,
+        onTimeout: () => null,
+      );
+      if (location != _conn.locationRevision ||
+          profileID != _conn.profile?.id) {
+        if (mounted) _showActionError(_chatL10n(context).workContextChanged);
+        return;
       }
-    } catch (error) {
-      _conn.noteStopFromThisApp(widget.sessionID, asked: false);
-      if (mounted) _showActionError(error);
+      if (actionApi == null) {
+        if (mounted) {
+          _showActionError(
+            _conn.connectionError ?? _reconnectingShortlyWords(context),
+          );
+        }
+        return;
+      }
+      // Noted before the call: the server's interrupt can arrive before the
+      // call returns, and must not read as a stop from another device.
+      _conn.noteStopFromThisApp(widget.sessionID);
+      try {
+        await actionApi.abort(widget.sessionID);
+        _abortSucceeded = true;
+        _conn.markStoppedByPerson(widget.sessionID);
+        _markStoppedPrompt(target);
+      } catch (error) {
+        _conn.noteStopFromThisApp(widget.sessionID, asked: false);
+        if (mounted) _showActionError(error);
+      }
     } finally {
+      // Every path releases the mutex — including a transport that threw
+      // before the request was ever made.
       if (mounted) _setChatState(() => _aborting = false);
     }
+  }
+
+  /// The newest prompt's ID, as the transcript holds it right now.
+  String? _newestPromptID() {
+    final index = _messages.lastIndexWhere(_isPrompt);
+    return index < 0 ? null : _messages[index].info.id;
+  }
+
+  /// Marks [target] as the prompt the person stopped — and only that one.
+  /// The bubble is looked up by identity, so a send that started while the
+  /// interrupt was in flight keeps its own running state.
+  void _markStoppedPrompt(String? target) {
+    if (!mounted) return;
+    _setChatState(() {
+      _localTurnSince = null;
+      if (target == null) return;
+      final index = _messages.indexWhere((message) => message.info.id == target);
+      if (index < 0) return;
+      // A newer prompt appeared: this stop was about the earlier turn, and
+      // claiming the newest bubble would erase its live line.
+      if (_messages.lastIndexWhere(_isPrompt) != index) return;
+      _stoppedPromptID = target;
+    });
   }
 
   // A send in flight, and Stop while it still waits.
@@ -128,14 +225,17 @@ extension _ChatSessionActions on _ChatScreenState {
 
   /// Stop while the send still waits, before its request left: nothing is
   /// sent, the bubble goes and the words are back in the box.
-  void _stopPendingSend() {
+  Future<void> _stopPendingSend() async {
     final cancel = _sendCancel;
     if (cancel == null || cancel.isCompleted) return;
-    cancel.complete();
+    cancel.cancel();
     final bubble = _sendingBubble;
     _sendingBubble = null;
-    if (bubble != null) _rollbackOptimisticBubble(bubble);
-    _setChatState(() => _sending = false);
+    // The rollback saves the draft: only a saved copy may replace the
+    // durable record of this send.
+    final restored = bubble == null || await _rollbackOptimisticBubble(bubble);
+    _onlineSendRestored = restored;
+    if (mounted) _setChatState(() => _sending = false);
   }
 
   /// Whether the server still works on this conversation's newest turn,
