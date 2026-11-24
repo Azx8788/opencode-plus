@@ -124,8 +124,8 @@ class ProjectExportBridge(
     }
 
     /**
-     * The "Open" picker for an archive to restore. Deliberately `*/*`: a zip
-     * arrives as application/zip, application/x-zip-compressed or
+     * The "Open" picker for an archive to restore. Deliberately open to every
+     * type: a zip arrives as application/zip, application/x-zip-compressed or
      * application/octet-stream depending on the provider, and a filter hides
      * the file the person is looking at. The Dart half reads the manifest and
      * says "not a backup" when it is something else.
