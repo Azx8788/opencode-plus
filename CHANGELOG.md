@@ -2,6 +2,16 @@
 
 This project is in public alpha. Only the newest preview is supported.
 
+## 0.3.30+38 — 2026-11-24
+
+  * **Send-pipeline reliability (issue #22), verification build.** One send
+    identity and one preparation path, so a message cannot be duplicated or
+    prepared twice; a stop issued mid-request is distinguished from a stop
+    before a request, so cancelling an in-flight turn behaves correctly. Adds
+    escrow for steering input, offline-queue and receipt-transport hardening,
+    and a 642-case reliability test suite. Built from the `verify/22-send-pipeline`
+    branch to validate the fix without touching `main`.
+
 ## 0.3.29+37 — 2026-11-24
 
   * **Import: the other half of the backup.** Settings → This app → Backup and
