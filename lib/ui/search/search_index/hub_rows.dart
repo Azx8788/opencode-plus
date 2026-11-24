@@ -414,16 +414,20 @@ extension _IndexHubRows on _IndexBuild {
           (scope) => PrivacySettingsScreen(controller: scope.controller),
         ),
       ),
-      // Backup and export: settings, credentials and the conversations of a
-      // window the person chooses, in one zip. Its own words are not in the
-      // l10n files yet; the page speaks both languages from one table.
+      // Backup and restore: settings, credentials and the conversations of a
+      // window the person chooses, in one zip — and the way back in. Its own
+      // words are not in the l10n files yet; the page speaks both languages
+      // from one table.
       SearchEntry(
         id: 'settings-backup',
         kind: SearchEntryKind.hubRow,
         group: SettingsGroup.thisApp,
         icon: AppIconography.archive,
-        title: l10n.localeName.startsWith('zh') ? '备份与导出' : 'Backup and export',
-        keywords: 'backup export zip 备份 导出 密钥 凭证 配置 聊天记录 credentials settings',
+        title: l10n.localeName.startsWith('zh')
+            ? '备份与恢复'
+            : 'Backup and restore',
+        keywords:
+            'backup export import restore zip 备份 导出 导入 恢复 密钥 凭证 配置 聊天记录 credentials settings',
         pages: const ['backup'],
         open: _screen((scope) => BackupScreen(controller: scope.controller)),
       ),

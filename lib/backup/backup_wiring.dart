@@ -11,6 +11,7 @@ import '../builtin/project_export.dart' show MethodChannelProjectExport;
 import '../state/connection.dart';
 import 'backup_chat_reader.dart';
 import 'backup_controller.dart';
+import 'backup_restore_controller.dart';
 
 /// Builds the page's controller with everything the real app has. Kept apart
 /// from the page so a test can build the same controller from fakes.
@@ -60,4 +61,51 @@ Future<Directory> backupStagingDirectory() async {
   return Directory(
     '${cache.path}/backup-${DateTime.now().microsecondsSinceEpoch}',
   );
+}
+
+/// The page's other half: reading an archive back in.
+Future<RestoreController> createRestoreController() async => RestoreController(
+  platform: MethodChannelProjectExport(),
+  stagingDirectory: backupStagingDirectory,
+  readSettings: readAppSettings,
+  writeSettings: writeAppSettings,
+  readSecrets: readAppSecrets,
+  writeSecrets: writeAppSecrets,
+  restoredChatsDirectory: restoredChatsDirectory,
+);
+
+/// Puts settings back as they were stored: the same keys, the same shapes.
+/// A key the archive does not hold is left alone, so a setting added after the
+/// backup was taken keeps its current value.
+Future<void> writeAppSettings(Map<String, Object?> values) async {
+  final prefs = await SharedPreferences.getInstance();
+  for (final entry in values.entries) {
+    final value = entry.value;
+    if (value is String) {
+      await prefs.setString(entry.key, value);
+    } else if (value is bool) {
+      await prefs.setBool(entry.key, value);
+    } else if (value is int) {
+      await prefs.setInt(entry.key, value);
+    } else if (value is double) {
+      await prefs.setDouble(entry.key, value);
+    } else if (value is List) {
+      await prefs.setStringList(entry.key, [for (final item in value) '$item']);
+    }
+  }
+}
+
+/// Puts credentials back into Android's keystore.
+Future<void> writeAppSecrets(Map<String, String> values) async {
+  const storage = FlutterSecureStorage();
+  for (final entry in values.entries) {
+    await storage.write(key: entry.key, value: entry.value);
+  }
+}
+
+/// The shelf restored conversations live on: this app's own folder, not
+/// OpenCode's, whose schema is not ours to write.
+Future<Directory> restoredChatsDirectory() async {
+  final support = await getApplicationSupportDirectory();
+  return Directory('${support.path}/restored-chats');
 }

@@ -19,6 +19,7 @@ import java.io.FileInputStream
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
 /**
@@ -34,6 +35,10 @@ import java.util.zip.ZipOutputStream
  *
  * Also the manage-space actions: measure/clear the cache (never the running
  * in-app server's proot-tmp) and ActivityManager.clearApplicationUserData.
+ *
+ * And the import side of the same channel: the "Open" picker, and unpacking
+ * the chosen archive into a folder the Dart half reads before it decides what
+ * to put back.
  */
 class ProjectExportBridge(
     private val activity: Activity,
@@ -43,6 +48,7 @@ class ProjectExportBridge(
     private val handler = Handler(Looper.getMainLooper())
     private val context: Context = activity.applicationContext
     private var pickResult: MethodChannel.Result? = null
+    private var sourceResult: MethodChannel.Result? = null
     private var worker: Thread? = null
     private val cancelled = AtomicBoolean(false)
     private var disposed = false
@@ -57,13 +63,22 @@ class ProjectExportBridge(
         channel.setMethodCallHandler(null)
         pickResult?.success(null)
         pickResult = null
+        sourceResult?.success(null)
+        sourceResult = null
     }
 
-    /** Forwarded from the host activity; true when it was the picker. */
+    /** Forwarded from the host activity; true when it was a picker. */
     fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
-        if (requestCode != REQUEST_PICK) return false
-        val result = pickResult ?: return true
-        pickResult = null
+        if (requestCode != REQUEST_PICK && requestCode != REQUEST_PICK_SOURCE) return false
+        val pending: MethodChannel.Result?
+        if (requestCode == REQUEST_PICK) {
+            pending = pickResult
+            pickResult = null
+        } else {
+            pending = sourceResult
+            sourceResult = null
+        }
+        val result = pending ?: return true
         val uri = if (resultCode == Activity.RESULT_OK) data?.data else null
         result.success(uri?.toString())
         return true
@@ -72,6 +87,8 @@ class ProjectExportBridge(
     private fun onCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "pickDestination" -> pick(call.argument<String>("name") ?: "projects.zip", result)
+            "pickSource" -> pickSource(result)
+            "extract" -> extract(call, result)
             "export" -> export(call, result)
             "cancel" -> {
                 cancelled.set(true)
@@ -103,6 +120,106 @@ class ProjectExportBridge(
         } catch (_: Exception) {
             pickResult = null
             result.error("unavailable", null, null)
+        }
+    }
+
+    /**
+     * The "Open" picker for an archive to restore. Deliberately `*/*`: a zip
+     * arrives as application/zip, application/x-zip-compressed or
+     * application/octet-stream depending on the provider, and a filter hides
+     * the file the person is looking at. The Dart half reads the manifest and
+     * says "not a backup" when it is something else.
+     */
+    private fun pickSource(result: MethodChannel.Result) {
+        if (sourceResult != null) {
+            result.error("busy", null, null)
+            return
+        }
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("*/*")
+        sourceResult = result
+        try {
+            activity.startActivityForResult(intent, REQUEST_PICK_SOURCE)
+        } catch (_: Exception) {
+            sourceResult = null
+            result.error("unavailable", null, null)
+        }
+    }
+
+    private fun extract(call: MethodCall, result: MethodChannel.Result) {
+        val uriText = call.argument<String>("uri")
+        val dirPath = call.argument<String>("dir")
+        if (uriText == null || dirPath == null || worker?.isAlive == true) {
+            result.success(failure("failed", "busy or missing arguments"))
+            return
+        }
+        cancelled.set(false)
+        val uri = Uri.parse(uriText)
+        val target = File(dirPath)
+        val thread = Thread({
+            val outcome = runExtract(uri, target)
+            handler.post { if (!disposed) result.success(outcome) }
+        }, "backup-import")
+        worker = thread
+        thread.start()
+    }
+
+    /**
+     * Unpacks the chosen archive into [target], which the Dart half then reads.
+     * Nothing outside [target] is written: a name with `..` or an absolute
+     * path is skipped, and the canonical path is checked after joining. Two
+     * ceilings (entries, total bytes) keep a zip bomb from filling the phone.
+     */
+    private fun runExtract(uri: Uri, target: File): Map<String, Any> {
+        var bytes = 0L
+        var files = 0
+        var lastReport = 0L
+        try {
+            target.deleteRecursively()
+            target.mkdirs()
+            if (!target.isDirectory) return failure("failed", "no directory")
+            val root = target.canonicalPath + File.separator
+            val input = context.contentResolver.openInputStream(uri)
+                ?: return failure("source", "no stream")
+            ZipInputStream(input.buffered(BUFFER)).use { zip ->
+                while (true) {
+                    if (cancelled.get()) throw Cancelled()
+                    val entry = zip.nextEntry ?: break
+                    val name = entry.name
+                    if (entry.isDirectory || !safeName(name)) continue
+                    if (++files > MAX_ENTRIES) return failure("source", "too many entries")
+                    val out = File(target, name)
+                    if (!out.canonicalPath.startsWith(root)) continue
+                    out.parentFile?.mkdirs()
+                    out.outputStream().buffered(BUFFER).use { sink ->
+                        val buffer = ByteArray(BUFFER)
+                        while (true) {
+                            if (cancelled.get()) throw Cancelled()
+                            val read = zip.read(buffer)
+                            if (read < 0) break
+                            bytes += read
+                            if (bytes > MAX_BYTES) return failure("source", "too large")
+                            sink.write(buffer, 0, read)
+                            val now = System.currentTimeMillis()
+                            if (now - lastReport > PROGRESS_MS) {
+                                lastReport = now
+                                val done = bytes
+                                handler.post {
+                                    if (!disposed) channel.invokeMethod("progress", done)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return mapOf("ok" to true, "bytes" to bytes, "files" to files)
+        } catch (_: Cancelled) {
+            target.deleteRecursively()
+            return failure("cancelled", "")
+        } catch (e: Exception) {
+            target.deleteRecursively()
+            return failure("source", e.javaClass.simpleName)
         }
     }
 
@@ -276,8 +393,13 @@ class ProjectExportBridge(
     companion object {
         const val CHANNEL_NAME = "oc/project_export"
         private const val REQUEST_PICK = 0x0c5e
+        private const val REQUEST_PICK_SOURCE = 0x0c5f
         private const val BUFFER = 64 * 1024
         private const val PROGRESS_MS = 250L
         private const val PROOT_TMP = "proot-tmp"
+
+        /** A backup of a phone is megabytes; these only stop a zip bomb. */
+        private const val MAX_ENTRIES = 20000
+        private const val MAX_BYTES = 512L * 1024 * 1024
     }
 }

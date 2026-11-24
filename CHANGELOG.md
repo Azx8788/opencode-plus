@@ -2,6 +2,34 @@
 
 This project is in public alpha. Only the newest preview is supported.
 
+## 0.3.29+37 — 2026-11-24
+
+  * **Import: the other half of the backup.** Settings → This app → Backup and
+    restore now reads a zip back. The file is unpacked into the cache and shown
+    — taken when, by which version, how much of it — before anything is
+    written, and each part can be left out.
+  * **Settings and credentials go back where they came from**, key by key. A
+    value in the archive wins; a key it does not mention is left alone, so a
+    setting added after the backup keeps its current value. Nothing is deleted.
+    Restart the app afterwards: settings and the Telegram relay are read at
+    startup.
+  * **Conversations come back as a read-only shelf**, not as server sessions.
+    OpenCode owns its store and its schema; a wrong write there breaks the
+    server rather than the archive. *Restored conversations* lists the
+    archives, their conversations, and the words of each — selectable, with
+    nothing that could be sent. Importing the same file twice replaces its
+    copy instead of piling up a second one.
+  * **A file that is not a backup says so by name**: no manifest, a different
+    kind of zip, a format from a newer app, damaged, or empty. A zip bomb is
+    stopped by two ceilings (20 000 entries, 512 MB), and a name with `..` or
+    an absolute path is skipped rather than written.
+  * **The unpacked copy is deleted** when the page closes or the restore ends.
+    It holds the credentials in plain text, and a second copy in the cache is
+    exactly what a backup is supposed to prevent.
+  * **Covered by tests.** 19 rules tests (round trip, format refusals, merge
+    semantics, the shelf, message shapes), 8 flow tests for the controller, and
+    the page driven end to end in both languages.
+
 ## 0.3.28+36 — 2026-11-23
 
   * **Backup and export: one zip with everything a lost phone would take.**

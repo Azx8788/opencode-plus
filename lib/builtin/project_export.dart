@@ -516,7 +516,26 @@ abstract class ProjectExportPlatform {
   Future<int> savedServers();
 }
 
-class MethodChannelProjectExport implements ProjectExportPlatform {
+/// The native half's import side: choose an archive, and unpack it. Same
+/// channel, same worker and the same cancel as the export, so an import and
+/// an export can never run at once.
+abstract class ProjectImportPlatform {
+  /// The system "Open" picker; null when the person backed out.
+  Future<String?> pickSource();
+
+  /// Unpacks [uri]'s zip into [directory], which is created empty. On any
+  /// failure the folder is removed again.
+  Future<ProjectExportResult> extract({
+    required String uri,
+    required String directory,
+    required void Function(int bytesDone) onProgress,
+  });
+
+  Future<void> cancel();
+}
+
+class MethodChannelProjectExport
+    implements ProjectExportPlatform, ProjectImportPlatform {
   MethodChannelProjectExport({MethodChannel? channel})
     : _channel = channel ?? const MethodChannel('oc/project_export') {
     _channel.setMethodCallHandler(_onCall);
@@ -541,13 +560,31 @@ class MethodChannelProjectExport implements ProjectExportPlatform {
     required String destination,
     required String planPath,
     required void Function(int bytesDone) onProgress,
-  }) async {
+  }) => _run('export', {'uri': destination, 'plan': planPath}, onProgress);
+
+  @override
+  Future<String?> pickSource() => _channel.invokeMethod<String>('pickSource');
+
+  @override
+  Future<ProjectExportResult> extract({
+    required String uri,
+    required String directory,
+    required void Function(int bytesDone) onProgress,
+  }) => _run('extract', {'uri': uri, 'dir': directory}, onProgress);
+
+  /// Both halves answer the same shape (`ok`, `bytes`, `files`, or a `reason`
+  /// and a `detail`), so both are read the same way.
+  Future<ProjectExportResult> _run(
+    String method,
+    Map<String, Object?> arguments,
+    void Function(int bytesDone) onProgress,
+  ) async {
     _progress = onProgress;
     try {
-      final result = await _channel.invokeMapMethod<String, Object?>('export', {
-        'uri': destination,
-        'plan': planPath,
-      });
+      final result = await _channel.invokeMapMethod<String, Object?>(
+        method,
+        arguments,
+      );
       if (result == null) {
         return const ProjectExportResult.failed(ProjectExportFailure.failed);
       }

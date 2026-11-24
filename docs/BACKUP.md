@@ -1,12 +1,14 @@
-# Backup and export
+# Backup and restore
 
-Settings → This app → **Backup and export** writes one zip with the app's
-settings, its credentials, and the conversations of a window you choose.
+Settings → This app → **Backup and restore** writes one zip with the app's
+settings, its credentials, and the conversations of a window you choose — and
+reads one back.
 
 The point is a file you can take *before* something goes wrong. Android's
 "Clear storage" deletes everything the app holds — the servers, the keystore,
 the Ubuntu with OpenCode and every conversation in it — and a reinstall does
-the same. This archive is the copy that survives that.
+the same. This archive is the copy that survives that, and the import is what
+makes it worth taking.
 
 ## What is in the zip
 
@@ -64,34 +66,70 @@ credentials were left out.
 
 ## Restoring
 
-There is no import yet. What the archive is good for today:
+**Choose a backup file** opens the system picker. The archive is unpacked into
+the app's cache, read, and shown — taken when, by which version, how much of
+it there is — *before* anything is written. Each part can be left out:
 
-- Settings and credentials can be read and typed back in by hand.
-- Conversations are readable JSON: the text, the tool calls (unless text only
-  was chosen), the timestamps, the model and the cost of each message.
-- A project folder can be rebuilt from the project export, which *is*
-  restorable by unzipping it back into place.
+| Part | Where it goes back |
+| --- | --- |
+| Settings | `SharedPreferences`, key by key, as stored |
+| Credentials | Android secure storage |
+| Conversations | A read-only shelf inside this app |
 
-An import that writes conversations back into the server's database is a
-different problem — the database belongs to OpenCode, not to this app — and is
-not promised by this feature.
+Rules that matter:
+
+- **A value in the archive wins; a key it does not mention is left alone.** A
+  setting added after the backup was taken keeps its current value instead of
+  being reset to a default.
+- **Nothing is deleted.** Import is a merge, not a replacement.
+- **Restart the app afterwards.** Settings and the Telegram relay are read
+  when the app starts, so the running process keeps the old values until then.
+- **The unpacked copy is deleted** when the page closes or the restore ends.
+  It holds the credentials in plain text; leaving it in the cache would keep a
+  second copy of them on the phone.
+- A file that is not a backup is refused by name: not a backup, a different
+  kind of zip, made by a newer app, damaged, or empty.
+
+### Conversations are restored, not re-created
+
+The conversations go onto a shelf this app owns — *Restored conversations*,
+under the same settings page — where they can be read and copied from, one
+conversation at a time.
+
+They are **not** written back into OpenCode's own store. That store belongs to
+OpenCode, its schema is versioned by OpenCode, and a write that is slightly
+wrong breaks the server rather than the archive. They also cannot be continued
+from the chat screen: they are a record, not a session.
+
+Importing the same archive twice replaces its copy on the shelf instead of
+piling up a second one, because the folder is named after the moment the
+backup was taken.
 
 ## Where the code lives
 
 - `lib/backup/app_backup.dart` — the window, the text-only trim, the file
   names, the manifest, and the writer. No platform calls; unit-tested.
+- `lib/backup/app_restore.dart` — reading an unpacked archive back: the format
+  checks, the merge rules, the shelf, and what a message said. No platform
+  calls; unit-tested.
 - `lib/backup/backup_chat_reader.dart` — reads conversations from the
   connected server through the same gateway the chat screen uses, keeping the
   server's JSON.
 - `lib/backup/backup_controller.dart` — one backup's states: read, stage, ask
   where, stream.
+- `lib/backup/backup_restore_controller.dart` — one restore's states: choose,
+  unpack, inspect, apply.
 - `lib/backup/backup_wiring.dart` — preferences, the keystore, the server, the
-  native export channel.
+  native channel, the shelf's folder.
 - `lib/ui/screens/settings/backup_screen.dart` — the page.
-- `test/backup_export_test.dart` — the window rules, the trim, the names, the
-  archive's contents, and a whole backup against a fake destination.
+- `lib/ui/screens/settings/restored_chats_screen.dart` — the shelf's viewer.
+- `test/backup_export_test.dart`, `test/backup_restore_test.dart` — the rules,
+  the merge, the shelf, and a whole archive read back.
+- `test/backup_page_widget_test.dart`, `test/backup_restore_flow_test.dart` —
+  the page in both languages, and both halves against fakes.
 
-The zip itself is written by the native half of the project export
+The zip itself is written and unpacked by the native half
 (`ProjectExportBridge.kt`, channel `oc/project_export`), which streams the
 planned files into a document the person picked through the Storage Access
-Framework. Nothing is left running when the page closes.
+Framework, and unpacks the chosen one into the cache. Nothing is left running
+when the page closes.
