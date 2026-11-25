@@ -527,10 +527,15 @@ void main() {
     await provider.connect();
     await _waitFor(() => provider.status.state == ProviderState.online);
     server.closeSocket();
+
+    // The connection count rises when the server accepts, before the client has
+    // written its resume frame, so waiting on it would make the assertions
+    // below depend on scheduling. Wait for the frame itself.
     await _waitFor(
-      () => server.connections >= 2,
-      timeout: const Duration(seconds: 3),
+      () => server.frames.any((frame) => frame['op'] == 6),
+      timeout: const Duration(seconds: 8),
     );
+    expect(server.connections, greaterThanOrEqualTo(2));
 
     final resume = server.frames.where((frame) => frame['op'] == 6).toList();
     expect(resume, isNotEmpty);
