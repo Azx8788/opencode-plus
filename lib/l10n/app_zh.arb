@@ -6764,6 +6764,8 @@
   "settingsV3Providers": "提供商",
   "settingsV3Shell": "命令所用 Shell",
   "settingsV3VoiceTyping": "语音输入",
+  "channelsSettingsTitle": "消息渠道",
+  "channelsSettingsKeywords": "消息渠道 机器人 Telegram QQ 官方 普通账号 OneBot LLBot 远程 Agent 接入",
   "telegramBotSettingsTitle": "Telegram 机器人",
   "telegramBotSettingsKeywords": "Telegram 电报 机器人 Agent 远程 消息 进度 指令 用户 ID",
   "settingsV3Permissions": "权限与自动化",

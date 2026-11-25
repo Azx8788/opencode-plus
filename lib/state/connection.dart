@@ -124,6 +124,8 @@ import 'orchestration_store.dart';
 import 'elsewhere_attention.dart';
 import 'profiles.dart';
 import '../telegram/telegram_bot.dart';
+import '../channels/channel_agent_port.dart';
+import '../channels/channel_hub.dart';
 import 'task_trace.dart';
 import '../domain/task_trace.dart';
 import '../api2/task_trace.dart';
@@ -263,9 +265,8 @@ final connProvider = Provider<ConnectionController>(
 
 typedef ServerGatewayFactory = ServerGateway Function(ServerProfile profile);
 
-typedef ProductRepositoryFactory = ServerOperationsGateway Function(
-  ServerGateway api,
-);
+typedef ProductRepositoryFactory =
+    ServerOperationsGateway Function(ServerGateway api);
 
 /// Builds the OpenCode 2 gateway pair for a profile whose detected flavor is
 /// [ServerFlavor.v2]. Injected by tests; production uses the Api2Transport →
@@ -277,12 +278,13 @@ typedef V2GatewayPairFactory =
 
 typedef LocalWakeLockEnsurer = Future<void> Function();
 
-typedef EventStreamFactory = LiveEventChannel Function({
-  required ServerGateway api,
-  required void Function(EventEnvelope event) onEvent,
-  required void Function(StreamStatus status) onStatus,
-  void Function(Object error)? onError,
-});
+typedef EventStreamFactory =
+    LiveEventChannel Function({
+      required ServerGateway api,
+      required void Function(EventEnvelope event) onEvent,
+      required void Function(StreamStatus status) onStatus,
+      void Function(Object error)? onError,
+    });
 
 /// Everything the UI needs about the active server connection.
 ///
@@ -351,6 +353,21 @@ class ConnectionController extends ChangeNotifier
     readLatestReply: _readLatestTelegramReply,
     agentStatus: _telegramAgentStatus,
     isSessionBusy: (sessionID) => busySessions.contains(sessionID),
+  );
+
+  /// The two QQ channels. Telegram keeps its own bridge above, but both run on
+  /// the same channel engine and provider contract.
+  late final ChannelHub channels = ChannelHub(
+    preferences: store.prefs,
+    secureStorage: store.secure,
+    agent: _ConnectionChannelAgentPort(this),
+    events: events,
+    profileID: () => (_connectedProfile ?? profile)?.id,
+    directory: () => directory,
+    workspace: () => workspace,
+    supported: _telegramSupported,
+    addHostListener: addListener,
+    removeHostListener: removeListener,
   );
 
   /// Answers to agents' requests held briefly so they can be undone (see
@@ -813,6 +830,7 @@ class ConnectionController extends ChangeNotifier
       if (_hasUsageReaders) usageSubscriptions.start();
       _paWarmUp();
       unawaited(telegramBot.initialize());
+      unawaited(channels.initialize());
     }
   }
   void _quotaMonitorChanged() {
@@ -1074,7 +1092,10 @@ class ConnectionController extends ChangeNotifier
   void dispose() {
     if (_disposed) return;
     _disposed = true;
-    if (_ownsProfileServices) telegramBot.dispose();
+    if (_ownsProfileServices) {
+      telegramBot.dispose();
+      channels.dispose();
+    }
     _forgetTurnStalls();
     _mcpChatDispose();
     _connectorSearchDispose();
@@ -1166,7 +1187,9 @@ class ConnectionController extends ChangeNotifier
     var transport = await _requireActionTransport();
     await ensureInteractiveSendAllowed(expectedApi: transport);
     final owner = (_connectedProfile ?? profile)?.id;
-    if (owner == null) throw const ProductException('No OpenCode server is selected.');
+    if (owner == null) {
+      throw const ProductException('No OpenCode server is selected.');
+    }
     final sessionKey = '${TelegramBotBridge.sessionIDKeyPrefix}$owner';
     final directoryKey = '${TelegramBotBridge.directoryKeyPrefix}$owner';
     final workspaceKey = '${TelegramBotBridge.workspaceKeyPrefix}$owner';
@@ -1220,7 +1243,9 @@ class ConnectionController extends ChangeNotifier
       );
     }
     if (!busySessions.contains(sessionID)) {
-      throw const ProductException('The Telegram session is not running a task.');
+      throw const ProductException(
+        'The Telegram session is not running a task.',
+      );
     }
     final transport = await _requireActionTransport();
     await ensureInteractiveSendAllowed(expectedApi: transport);
@@ -1257,12 +1282,130 @@ class ConnectionController extends ChangeNotifier
       return '本机 OpenCode 当前未连接。';
     }
     final sessionID = telegramBot.snapshot.sessionID;
-    if (sessionID == null) return '本机 OpenCode 已连接；尚未绑定会话。打开一个对话，或在 Telegram 发送指令开始新会话。';
+    if (sessionID == null) {
+      return '本机 OpenCode 已连接；尚未绑定会话。打开一个对话，或在 Telegram 发送指令开始新会话。';
+    }
     return busySessions.contains(sessionID)
         ? '本机 Agent 正在执行任务。'
         : '本机 OpenCode 已连接；Agent 当前空闲。';
   }
 
+  // ------------------------------------------------------------ QQ channels
+
+  /// Sends one QQ-channel prompt through the app's normal prompt path.
+  ///
+  /// The session is per conversation and per workspace: a group member's
+  /// session is never reused for another member, and a session opened in
+  /// another project is replaced rather than prompted in the wrong tree.
+  Future<String> _sendChannelPrompt(ChannelPromptRequest request) async {
+    if (!_telegramSupported()) {
+      throw const ProductException(
+        'Connect to this phone’s OpenCode server before sending channel commands.',
+      );
+    }
+    if (directory == null || workspaceChoiceRequired) {
+      throw const ProductException(
+        'Open a project folder in OpenCode Plus before sending channel commands.',
+      );
+    }
+    var transport = await _requireActionTransport();
+    await ensureInteractiveSendAllowed(expectedApi: transport);
+    var sessionID = request.binding?.sessionID;
+    final binding = request.binding;
+    if (sessionID == null ||
+        sessionID.isEmpty ||
+        binding == null ||
+        !binding.matches(directory: directory!, workspace: workspace ?? '')) {
+      sessionID = (await createSession()).id;
+      transport = await _requireActionTransport();
+      await ensureInteractiveSendAllowed(expectedApi: transport);
+    }
+    final agent = selectedAgent.trim();
+    final variant = selectedVariant.trim();
+    await transport.promptAsync(
+      sessionID,
+      text: request.text,
+      model: selectedModel,
+      agent: agent.isEmpty ? null : agent,
+      variant: variant.isEmpty ? null : variant,
+    );
+    return sessionID;
+  }
+
+  Future<void> _stopChannelTask(String? sessionID) async {
+    if (sessionID == null || sessionID.isEmpty) {
+      throw const ProductException('There is no channel session to stop.');
+    }
+    if (!busySessions.contains(sessionID)) {
+      throw const ProductException(
+        'The channel session is not running a task.',
+      );
+    }
+    final transport = await _requireActionTransport();
+    await ensureInteractiveSendAllowed(expectedApi: transport);
+    noteStopFromThisApp(sessionID);
+    try {
+      await transport.abort(sessionID);
+    } on Object {
+      noteStopFromThisApp(sessionID, asked: false);
+      rethrow;
+    }
+  }
+
+  Future<String?> _readLatestReplyFor(String sessionID) async {
+    final gateway = api;
+    if (gateway == null) return null;
+    final messages = await gateway.messages(sessionID);
+    for (final message in messages.reversed) {
+      if (message.info.role != 'assistant') continue;
+      if (message.info.time?.isDone != true) return null;
+      final text = message.parts
+          .where((part) => part.type == 'text' && !part.synthetic)
+          .map((part) => part.text)
+          .where((part) => part.trim().isNotEmpty)
+          .join('\n')
+          .trim();
+      if (text.isNotEmpty) return text;
+    }
+    return null;
+  }
+
+  String _channelAgentStatus() {
+    if (!_telegramSupported() || !isConnected || api is! Api2Gateway) {
+      return '本机 OpenCode 当前未连接。';
+    }
+    return '本机 OpenCode 已连接。';
+  }
+
   /// Announces [profileDataChanges] for the deletion sweep in its part.
   void _notifyProfileDataChanged() => _profileDataChanges.notifyListeners();
+}
+
+/// The only door between the QQ channels and this controller.
+///
+/// Everything the channel layer may do with the agent passes through here, and
+/// nothing here can create a tool call, approve a permission or bypass the
+/// app's own send gates.
+class _ConnectionChannelAgentPort extends ChannelAgentPort {
+  _ConnectionChannelAgentPort(this._controller);
+
+  final ConnectionController _controller;
+
+  @override
+  Future<String> sendPrompt(ChannelPromptRequest request) =>
+      _controller._sendChannelPrompt(request);
+
+  @override
+  Future<void> stopTask(String? sessionID) =>
+      _controller._stopChannelTask(sessionID);
+
+  @override
+  Future<String?> latestReply(String sessionID) =>
+      _controller._readLatestReplyFor(sessionID);
+
+  @override
+  String statusText() => _controller._channelAgentStatus();
+
+  @override
+  bool isBusy(String sessionID) => _controller.busySessions.contains(sessionID);
 }

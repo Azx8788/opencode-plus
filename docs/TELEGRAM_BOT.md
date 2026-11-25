@@ -4,6 +4,12 @@ The optional Telegram relay connects one private Telegram account to the
 OpenCode server installed on this phone. It uses Telegram long polling from the
 Android app; it is not a public bot service or a separate VPS deployment.
 
+Since the multi-channel work it is one of three channels and runs on the shared
+engine described in [CHANNELS.md](CHANNELS.md): this page keeps its product
+behaviour, while transport, de-duplication, task lifecycle and delivery live in
+`lib/channels/`. Its settings page is still reachable on its own, and also from
+**Settings → 消息渠道 → Telegram**.
+
 ## Setup
 
 1. Create a bot with [@BotFather](https://t.me/BotFather) and copy its token.
@@ -38,6 +44,8 @@ process; start the app again to resume polling.
   already completed.
 - `/new` binds the next Telegram prompt to a new session; it does not cancel an
   existing task.
+- `/queue <text>` runs `<text>` as a new task after the current one finishes. A
+  plain message during a run is a supplement to the current task instead.
 - `/start` and `/help` show a short usage message. Other text, including other
   slash commands, is sent to the agent as a prompt.
 - The bot reports that work started, occasionally names a running tool, and

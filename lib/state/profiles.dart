@@ -37,6 +37,7 @@ import 'session_link_bindings.dart';
 import 'agent_handoff_links.dart';
 import 'pending_command_journal.dart';
 import '../telegram/telegram_bot.dart' show TelegramBotBridge;
+import '../channels/channel_config.dart' show ChannelConfigStore;
 
 export '../domain/server_probe.dart' show ServerFlavor;
 export '../domain/loopback_host.dart' show isLoopbackHost, isPrivateNetworkHost;
@@ -167,6 +168,8 @@ class ProfileStore {
         key.startsWith(quotaTokenKeyPrefix) ||
         key.startsWith(githubTokenKeyPrefix) ||
         key.startsWith(TelegramBotBridge.tokenKeyPrefix) ||
+        key == ChannelConfigStore.qqSecretKey ||
+        key == ChannelConfigStore.oneBotTokenKey ||
         key.startsWith(phoneAgentHostSecretPrefix) ||
         key.startsWith(byoHostSecretsKeyPrefix);
     try {

@@ -44,6 +44,7 @@ import '../screens/session_import_screen.dart';
 import '../screens/settings/ai_setup_screen.dart';
 import '../screens/settings/backup_screen.dart';
 import '../screens/settings/search_provider_screen.dart';
+import '../screens/settings/channels_screen.dart';
 import '../screens/settings/telegram_bot_screen.dart';
 import '../screens/settings/shizuku_screen.dart';
 import '../screens/settings/tips_screen.dart';

@@ -36507,6 +36507,8 @@
     "description": "Settings hub row: the shell a server runs commands in."
   },
   "settingsV3VoiceTyping": "Voice typing",
+  "channelsSettingsTitle": "Message channels",
+  "channelsSettingsKeywords": "channels messaging Telegram QQ official bot OneBot LLBot personal account remote agent",
   "telegramBotSettingsTitle": "Telegram bot",
   "telegramBotSettingsKeywords": "Telegram bot remote agent messages progress command chat ID token",
   "@settingsV3VoiceTyping": {

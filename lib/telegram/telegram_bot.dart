@@ -1,11 +1,19 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../channels/channel_agent_port.dart';
+import '../channels/channel_engine.dart';
+import '../channels/channel_identity.dart';
+import '../channels/channel_inbox.dart';
+import '../channels/channel_message.dart';
+import '../channels/channel_outbox.dart';
+import '../channels/channel_provider.dart';
+import '../channels/channel_sessions.dart';
+import '../channels/channel_text.dart';
+import '../channels/providers/telegram_provider.dart';
 import '../domain/models.dart';
 import '../ui/kit/kit_redact.dart';
 
@@ -17,6 +25,9 @@ enum TelegramBotPhase { disabled, needsSetup, starting, polling, error }
 @visibleForTesting
 String telegramApiOrigin = 'https://api.telegram.org';
 
+/// Whether [senderID] may talk to the bot in a private chat owned by
+/// [allowedUserID]. Kept as a named predicate because it is the one rule the
+/// relay must never get wrong.
 @visibleForTesting
 bool telegramPrivateMessageAllowed({
   required String allowedUserID,
@@ -32,24 +43,8 @@ bool telegramPrivateMessageAllowed({
     '$chatID' == allowedUserID;
 
 @visibleForTesting
-List<String> telegramMessageChunks(String text) {
-  const maxCodeUnits = 3500;
-  final chunks = <String>[];
-  final chunk = <int>[];
-  var codeUnits = 0;
-  for (final rune in text.runes) {
-    final width = rune > 0xffff ? 2 : 1;
-    if (codeUnits + width > maxCodeUnits && chunk.isNotEmpty) {
-      chunks.add(String.fromCharCodes(chunk));
-      chunk.clear();
-      codeUnits = 0;
-    }
-    chunk.add(rune);
-    codeUnits += width;
-  }
-  if (chunk.isNotEmpty) chunks.add(String.fromCharCodes(chunk));
-  return List.unmodifiable(chunks);
-}
+List<String> telegramMessageChunks(String text) =>
+    chunkText(text, maxCodeUnits: 3500);
 
 @immutable
 class TelegramBotSnapshot {
@@ -82,6 +77,12 @@ class TelegramBotSnapshot {
 /// Bot credentials stay in Android secure storage. Incoming Telegram text is
 /// sent as an ordinary agent prompt; this bridge never approves permissions
 /// or executes a shell command itself.
+///
+/// Since the channel refactor this class is a facade: the transport lives in
+/// [TelegramProvider], and everything about prompts, tasks, progress and
+/// final answers lives in the shared [ChannelConversationEngine] that QQ uses
+/// too. Its public surface is unchanged so the settings page, the connection
+/// controller and the regression tests keep working.
 class TelegramBotBridge extends ChangeNotifier {
   TelegramBotBridge({
     required SharedPreferences preferences,
@@ -111,7 +112,10 @@ class TelegramBotBridge extends ChangeNotifier {
        _stopAgent = stopAgent,
        _readLatestReply = readLatestReply,
        _agentStatus = agentStatus,
-       _isSessionBusy = isSessionBusy;
+       _isSessionBusy = isSessionBusy {
+    _inbox = ChannelInbox(preferences: preferences);
+    _outbox = ChannelOutbox(preferences: preferences);
+  }
 
   static const tokenKeyPrefix = 'oc.telegramBot.token.';
   static const enabledKeyPrefix = 'oc.telegramBot.enabled.';
@@ -136,7 +140,14 @@ class TelegramBotBridge extends ChangeNotifier {
   final String Function() _agentStatus;
   final bool Function(String sessionID) _isSessionBusy;
 
+  late final ChannelInbox _inbox;
+  late final ChannelOutbox _outbox;
+
   StreamSubscription<EventEnvelope>? _eventSubscription;
+  TelegramProvider? _provider;
+  ChannelConversationEngine? _engine;
+  ChannelSessionBinding? _binding;
+
   String? _ownerID;
   String? _token;
   String _chatID = '';
@@ -145,19 +156,9 @@ class TelegramBotBridge extends ChangeNotifier {
   String? _sessionWorkspace;
   bool _enabled = false;
   bool _disposed = false;
-  bool _polling = false;
-  int _pollGeneration = 0;
-  int? _offset;
-  bool _sessionRunning = false;
-  String? _lastSentAssistantText;
   bool? _supportedAtLoad;
   int _loadGeneration = 0;
-  DateTime? _lastProgress;
-  HttpClient? _http;
   Future<void>? _initializing;
-  int _consecutiveFailures = 0;
-  String? _lastError;
-  TelegramBotPhase _phase = TelegramBotPhase.needsSetup;
 
   TelegramBotSnapshot get snapshot => TelegramBotSnapshot(
     profileID: _ownerID,
@@ -166,8 +167,28 @@ class TelegramBotBridge extends ChangeNotifier {
     enabled: _enabled,
     hasToken: _token != null,
     phase: _phase,
-    lastError: _lastError,
+    lastError: _provider?.status.lastError,
   );
+
+  /// The engine behind the facade, exposed for diagnostics and tests that need
+  /// to see the shared pipeline rather than the transport.
+  ChannelConversationEngine? get engine => _engine;
+
+  TelegramBotPhase get _phase {
+    if (!_enabled) return TelegramBotPhase.disabled;
+    if (!_supported() || _token == null || _chatID.isEmpty) {
+      return TelegramBotPhase.needsSetup;
+    }
+    return switch (_provider?.status.state) {
+      null || ProviderState.connecting => TelegramBotPhase.starting,
+      ProviderState.online => TelegramBotPhase.polling,
+      ProviderState.reconnecting ||
+      ProviderState.error => TelegramBotPhase.error,
+      ProviderState.needsSetup => TelegramBotPhase.needsSetup,
+      ProviderState.disabled ||
+      ProviderState.closed => TelegramBotPhase.starting,
+    };
+  }
 
   Future<void> initialize() => _initializing ??= _doInitialize();
 
@@ -186,31 +207,37 @@ class TelegramBotBridge extends ChangeNotifier {
 
   String _profileKey(String prefix, String profileID) => '$prefix$profileID';
 
-  Future<void> _stopPolling() async {
-    _polling = false;
-    _pollGeneration++;
-    _http?.close(force: true);
-    _http = null;
+  bool get _canPoll =>
+      !_disposed &&
+      _enabled &&
+      _token != null &&
+      _chatID.isNotEmpty &&
+      _ownerID != null &&
+      _supported();
+
+  Future<void> _teardownChannel() async {
+    final engine = _engine;
+    final provider = _provider;
+    _engine = null;
+    _provider = null;
+    await engine?.stop();
+    await provider?.dispose();
   }
 
   Future<void> _loadCurrentProfile() async {
     final generation = ++_loadGeneration;
-    await _stopPolling();
+    await _teardownChannel();
     if (generation != _loadGeneration || _disposed) return;
     final owner = _profileID();
     _ownerID = owner;
     _supportedAtLoad = _supported();
-    _lastProgress = null;
     _chatID = '';
     _sessionID = null;
     _sessionDirectory = null;
     _sessionWorkspace = null;
-    _sessionRunning = false;
-    _lastSentAssistantText = null;
+    _binding = null;
     _token = null;
     _enabled = false;
-    _offset = null;
-    _lastError = null;
     if (owner != null && owner.isNotEmpty) {
       try {
         _token = await _secureStorage.read(
@@ -230,75 +257,129 @@ class TelegramBotBridge extends ChangeNotifier {
         );
         _enabled =
             _preferences.getBool(_profileKey(enabledKeyPrefix, owner)) ?? false;
-        _offset = _preferences.getInt(_profileKey(_offsetPrefix, owner));
+        if (_sessionID != null && _sessionID!.isNotEmpty) {
+          _binding = ChannelSessionBinding(
+            sessionID: _sessionID!,
+            directory: _sessionDirectory ?? '',
+            workspace: _sessionWorkspace ?? '',
+          );
+        }
         if (generation != _loadGeneration || _disposed) return;
       } catch (_) {
-        _phase = TelegramBotPhase.error;
         _notify();
         return;
       }
     }
-    _phase = !_enabled
-        ? TelegramBotPhase.disabled
-        : (!_supported() || _token == null || _chatID.isEmpty)
-        ? TelegramBotPhase.needsSetup
-        : TelegramBotPhase.starting;
     _notify();
-    if (_canPoll) unawaited(_pollLoop(owner!, _token!, _chatID));
+    if (_canPoll) await _startChannel(generation);
   }
 
-  Future<void> bindSession(String? sessionID) async {
-    final owner = _profileID();
-    if (owner == null) return;
-    final normalized = sessionID?.trim();
-    final nextSessionID = normalized == null || normalized.isEmpty
-        ? null
-        : normalized;
-    if (nextSessionID != _sessionID) {
-      _lastSentAssistantText = null;
-      _sessionRunning = false;
+  Future<void> _startChannel(int generation) async {
+    final owner = _ownerID;
+    final token = _token;
+    if (owner == null || token == null) return;
+    final provider = TelegramProvider(
+      accountId: owner,
+      token: token,
+      chatId: _chatID,
+      apiOrigin: () => telegramApiOrigin,
+    )..offset = _preferences.getInt(_profileKey(_offsetPrefix, owner));
+    final engine = ChannelConversationEngine(
+      provider: provider,
+      policy: ChannelPolicy(
+        allowedUsers: {_chatID},
+        allowDirectMessages: true,
+        allowGroupMessages: false,
+      ),
+      agent: _TelegramAgentPort(this),
+      inbox: _inbox,
+      outbox: _outbox,
+      conversationKeyOf: (_) => _conversationKey(owner),
+      primaryConversation: _conversationKey(owner),
+      workspaceId: owner,
+      directory: () => _directory() ?? '',
+      workspace: () => _workspace() ?? '',
+      agentReady: () => _supported() && _token != null,
+      copy: const ChannelEngineCopy(channelNoun: '机器人'),
+      adoptViewedSession: true,
+      onChanged: _notify,
+    );
+    engine.useSessionStores(
+      (_) => CallbackChannelSessionStore(
+        read: () => _binding,
+        write: _writeBinding,
+      ),
+    );
+    _provider = provider;
+    _engine = engine;
+    await engine.start();
+    if (generation != _loadGeneration || _disposed) {
+      await _teardownChannel();
+      return;
     }
-    if (normalized == null || normalized.isEmpty) {
+    await provider.connect();
+  }
+
+  ConversationKey _conversationKey(String owner) => ConversationKey(
+    workspaceId: owner,
+    providerId: ChannelProviderIds.telegram,
+    accountId: owner,
+    conversationType: ChannelConversationKind.direct,
+    conversationId: _chatID.isEmpty ? 'pending' : _chatID,
+    ownerActorId: _chatID.isEmpty ? 'pending' : _chatID,
+  );
+
+  /// Persists a binding with the same keys the relay has always used, so an
+  /// existing installation keeps its conversation and the connection
+  /// controller's prompt path keeps finding it.
+  Future<void> _writeBinding(ChannelSessionBinding? binding) async {
+    final owner = _ownerID;
+    if (owner == null) return;
+    _binding = binding;
+    if (binding == null) {
       _sessionID = null;
       _sessionDirectory = null;
       _sessionWorkspace = null;
       await _preferences.remove(_profileKey(sessionIDKeyPrefix, owner));
       await _preferences.remove(_profileKey(directoryKeyPrefix, owner));
       await _preferences.remove(_profileKey(workspaceKeyPrefix, owner));
-    } else {
-      final directory = _directory() ?? '';
-      final workspace = _workspace() ?? '';
-      _sessionID = normalized;
-      _sessionDirectory = directory;
-      _sessionWorkspace = workspace;
-      await _preferences.setString(
-        _profileKey(sessionIDKeyPrefix, owner),
-        normalized,
-      );
-      await _preferences.setString(
-        _profileKey(directoryKeyPrefix, owner),
-        directory,
-      );
-      await _preferences.setString(
-        _profileKey(workspaceKeyPrefix, owner),
-        workspace,
-      );
-      if (!_sessionRunning && _isSessionBusy(normalized)) {
-        _sessionRunning = true;
-        _lastSentAssistantText = null;
-        unawaited(_sendToAllowed('本地 Agent 已开始处理任务。'));
-      }
+      return;
     }
-    _notify();
+    _sessionID = binding.sessionID;
+    _sessionDirectory = binding.directory;
+    _sessionWorkspace = binding.workspace;
+    await _preferences.setString(
+      _profileKey(sessionIDKeyPrefix, owner),
+      binding.sessionID,
+    );
+    await _preferences.setString(
+      _profileKey(directoryKeyPrefix, owner),
+      binding.directory,
+    );
+    await _preferences.setString(
+      _profileKey(workspaceKeyPrefix, owner),
+      binding.workspace,
+    );
   }
 
-  bool get _canPoll =>
-      !_disposed &&
-      _enabled &&
-      _token != null &&
-      _chatID.isNotEmpty &&
-      _ownerID != null &&
-      _supported();
+  Future<void> bindSession(String? sessionID) async {
+    final engine = _engine;
+    if (engine == null) {
+      await _writeBinding(
+        sessionID == null || sessionID.trim().isEmpty
+            ? null
+            : ChannelSessionBinding(
+                sessionID: sessionID.trim(),
+                directory: _directory() ?? '',
+                workspace: _workspace() ?? '',
+              ),
+      );
+      _notify();
+      return;
+    }
+    await engine.bindSession(sessionID);
+    _notify();
+  }
 
   /// Saves a configuration. A null [token] keeps the existing secret; an
   /// empty string also means "leave the saved token unchanged".
@@ -374,6 +455,8 @@ class TelegramBotBridge extends ChangeNotifier {
     await _preferences.remove(_profileKey(workspaceKeyPrefix, owner));
     await _preferences.remove(_profileKey(_offsetPrefix, owner));
     await _secureStorage.delete(key: _profileKey(tokenKeyPrefix, owner));
+    await _inbox.clear(ChannelProviderIds.telegram, owner);
+    await _outbox.clear(ChannelProviderIds.telegram, owner);
     await _loadCurrentProfile();
   }
 
@@ -402,505 +485,21 @@ class TelegramBotBridge extends ChangeNotifier {
         'Save a bot token and Telegram user ID first.',
       );
     }
-    final Map<String, dynamic> me;
-    try {
-      me = await _request(
-        token,
-        'getMe',
-        const {},
-        timeout: const Duration(seconds: 12),
-      );
-    } on _TelegramFailure catch (error) {
-      throw FormatException(error.message);
-    }
-    final result = me['result'];
-    final username = result is Map ? result['username']?.toString() ?? '' : '';
-    final botName = username.isEmpty ? '该机器人' : '@$username';
-    try {
-      await _request(token, 'getChat', {
-        'chat_id': chat,
-      }, timeout: const Duration(seconds: 12));
-    } on _TelegramFailure {
-      return 'Token 验证成功（$botName），但还没有与该用户的私聊。'
-          '请先在 Telegram 中打开机器人私聊并发送 /start，再回来启用。';
-    }
-    return 'Token 验证成功（$botName），可以与该用户私聊。';
-  }
-
-  Future<void> _pollLoop(String owner, String token, String chatID) async {
-    _polling = true;
-    final generation = _pollGeneration;
-    _phase = TelegramBotPhase.starting;
-    _notify();
-    await _prepareBot(token);
-    while (!_disposed &&
-        generation == _pollGeneration &&
-        _polling &&
-        _ownerID == owner &&
-        _token == token &&
-        _chatID == chatID &&
-        _supported()) {
-      final http = HttpClient()
-        ..connectionTimeout = const Duration(seconds: 10);
-      _http = http;
-      try {
-        final query = <String, String>{
-          'timeout': '25',
-          'allowed_updates': '["message"]',
-          if (_offset != null) 'offset': '$_offset',
-        };
-        final result = await _request(
-          token,
-          'getUpdates',
-          query,
-          get: true,
-          timeout: const Duration(seconds: 35),
-          client: http,
-        );
-        if (!_polling || generation != _pollGeneration || _ownerID != owner) {
-          break;
-        }
-        if (result['result'] is! List) {
-          throw const _TelegramFailure('Telegram 返回了无法识别的消息格式。');
-        }
-        if (_phase != TelegramBotPhase.polling) {
-          _phase = TelegramBotPhase.polling;
-          _lastError = null;
-          _notify();
-        }
-        _consecutiveFailures = 0;
-        _lastError = null;
-        for (final raw in result['result'] as List) {
-          if (raw is! Map || raw['update_id'] is! int) continue;
-          final updateID = raw['update_id'] as int;
-          // Advance before dispatch: a process death cannot replay an agent
-          // prompt whose delivery to OpenCode may already have succeeded.
-          _offset = updateID + 1;
-          await _preferences.setInt(
-            _profileKey(_offsetPrefix, owner),
-            _offset!,
-          );
-          await _handleUpdate(token, chatID, Map<String, dynamic>.from(raw));
-        }
-      } on Object catch (error) {
-        if (!_polling || generation != _pollGeneration || _disposed) break;
-        _consecutiveFailures = (_consecutiveFailures + 1).clamp(1, 5);
-        _phase = TelegramBotPhase.error;
-        _lastError = error is _TelegramFailure
-            ? error.message
-            : '与 Telegram 的连接中断，正在重试。';
-        _notify();
-        final seconds = 1 << _consecutiveFailures;
-        await Future<void>.delayed(Duration(seconds: seconds.clamp(5, 60)));
-        if (!_polling || generation != _pollGeneration || _disposed) break;
-        _phase = TelegramBotPhase.starting;
-        _notify();
-      } finally {
-        if (identical(_http, http)) _http = null;
-        http.close(force: true);
-      }
-    }
-    if (generation == _pollGeneration) _polling = false;
-    if (generation != _pollGeneration) return;
-    if (!_disposed && _enabled) {
-      _phase = _supported()
-          ? TelegramBotPhase.starting
-          : TelegramBotPhase.needsSetup;
-      _notify();
-    }
-  }
-
-  /// Claims the bot for long polling and gives it a visible command menu.
-  ///
-  /// A webhook left behind by another setup answers `getUpdates` with 409 and
-  /// the relay would look "connected but deaf", so removing it is part of
-  /// starting up rather than something the person has to remember. Both calls
-  /// are best-effort: a network hiccup here must not stop the poll loop, which
-  /// reports its own failures.
-  Future<void> _prepareBot(String token) async {
-    try {
-      await _request(token, 'deleteWebhook', const {
-        'drop_pending_updates': false,
-      }, timeout: const Duration(seconds: 12));
-    } on Object {
-      // getUpdates still reports 409 if a webhook really is in the way.
-    }
-    try {
-      await _request(token, 'setMyCommands', const {
-        'commands': [
-          {'command': 'status', 'description': '查看连接与会话状态'},
-          {'command': 'stop', 'description': '停止当前 Agent 任务'},
-          {'command': 'new', 'description': '开始新的 Agent 会话'},
-          {'command': 'help', 'description': '显示使用说明'},
-        ],
-      }, timeout: const Duration(seconds: 12));
-    } on Object {
-      // The menu is a convenience; commands work when typed.
-    }
-  }
-
-  Future<Map<String, dynamic>> _request(
-    String token,
-    String method,
-    Map<String, dynamic> values, {
-    bool get = false,
-    Duration timeout = const Duration(seconds: 15),
-    HttpClient? client,
-  }) async {
-    final http =
-        client ??
-        (HttpClient()..connectionTimeout = const Duration(seconds: 10));
-    final ownsClient = client == null;
-    try {
-      var uri = Uri.parse('$telegramApiOrigin/bot$token/$method');
-      if (get) {
-        uri = uri.replace(
-          queryParameters: {
-            for (final entry in values.entries) entry.key: '${entry.value}',
-          },
-        );
-      }
-      final request = get
-          ? await http.getUrl(uri).timeout(const Duration(seconds: 12))
-          : await http.postUrl(uri).timeout(const Duration(seconds: 12));
-      request.followRedirects = false;
-      if (!get) {
-        request.headers.contentType = ContentType.json;
-        request.write(jsonEncode(values));
-      }
-      final httpResponse = await request.close().timeout(timeout);
-      final body = await httpResponse
-          .transform(utf8.decoder)
-          .join()
-          .timeout(timeout);
-      final payload = _telegramPayload(body);
-      if (httpResponse.statusCode != HttpStatus.ok || payload?['ok'] != true) {
-        throw _TelegramFailure(
-          _telegramErrorText(payload, httpResponse.statusCode),
-        );
-      }
-      return payload!;
-    } on _TelegramFailure {
-      rethrow;
-    } on Object {
-      throw const _TelegramFailure('无法连接 Telegram，请检查网络后重试。');
-    } finally {
-      if (ownsClient) http.close(force: true);
-    }
-  }
-
-  static Map<String, dynamic>? _telegramPayload(String body) {
-    try {
-      final decoded = jsonDecode(body);
-      return decoded is Map ? Map<String, dynamic>.from(decoded) : null;
-    } on FormatException {
-      return null;
-    }
-  }
-
-  /// Telegram's own words when it gives any, plus the one failure people
-  /// actually hit: a second poller or a webhook holding the same bot.
-  static String _telegramErrorText(
-    Map<String, dynamic>? payload,
-    int statusCode,
-  ) {
-    final raw = payload?['error_code'];
-    final code = raw is int ? raw : statusCode;
-    final description = payload?['description']?.toString().trim() ?? '';
-    return switch (code) {
-      401 || 404 => 'Bot Token 无效或已被撤销，请重新生成。',
-      409 => '该 Bot 已被其他程序或 Webhook 占用，无法同时接收消息。',
-      429 => 'Telegram 请求过于频繁，稍后会自动重试。',
-      _ when description.isNotEmpty => 'Telegram 返回错误：$description',
-      _ => 'Telegram 请求失败（HTTP $statusCode）。',
-    };
-  }
-
-  Future<void> _handleUpdate(
-    String token,
-    String allowedID,
-    Map<String, dynamic> update,
-  ) async {
-    final message = update['message'];
-    if (message is! Map || message['chat'] is! Map || message['from'] is! Map) {
-      return;
-    }
-    final chat = message['chat'] as Map;
-    final from = message['from'] as Map;
-    if (!telegramPrivateMessageAllowed(
-      allowedUserID: allowedID,
-      chatType: chat['type'],
-      senderID: from['id'],
-      chatID: chat['id'],
-      senderIsBot: from['is_bot'] == true,
-    )) {
-      return;
-    }
-    final rawText = message['text'];
-    if (rawText is! String || rawText.trim().isEmpty) {
-      await _reply(token, allowedID, '目前只支持文字消息。');
-      return;
-    }
-    final text = rawText.trim();
-    final command = text
-        .split(RegExp(r'\s+'))
-        .first
-        .split('@')
-        .first
-        .toLowerCase();
-    switch (command) {
-      case '/start' || '/help':
-        await _reply(
-          token,
-          allowedID,
-          '已连接到 OpenCode Plus。直接发送文字即可作为 Agent 指令。\n'
-          '/status 查看连接状态 · /stop 停止当前任务 · /new 开始新会话。其他文字（含自定义斜杠指令）会发送给 Agent。',
-        );
-        return;
-      case '/status':
-        await _reply(token, allowedID, _statusText());
-        return;
-      case '/stop':
-        try {
-          await _stopAgent();
-          await _reply(token, allowedID, '已请求停止当前 Agent 任务。');
-        } on Object {
-          await _reply(token, allowedID, '无法停止任务；请检查 App 与本机 Agent 连接。');
-        }
-        return;
-      case '/new':
-        await bindSession(null);
-        _sessionRunning = false;
-        _lastSentAssistantText = null;
-        await _reply(token, allowedID, '下条消息将开始一个新的 Agent 会话；已有任务不会被取消。');
-        return;
-      default:
-        try {
-          final sessionID = await _sendPrompt(text);
-          if (sessionID != _sessionID) await bindSession(sessionID);
-          await _reply(token, allowedID, '已转发给本地 Agent。');
-        } on Object {
-          await _reply(
-            token,
-            allowedID,
-            '没有发送成功。请确认 App 已连接到本机 OpenCode、已打开项目，并检查是否有待处理的权限确认。',
-          );
-        }
-        return;
-    }
-  }
-
-  /// Sends a reply without letting a send failure end the poll loop: the
-  /// conversation is already advanced, and the next poll should still run.
-  Future<void> _reply(String token, String chatID, String text) async {
-    try {
-      await _sendTelegram(token, chatID, text);
-    } on Object {
-      // Nothing useful to do; polling reports its own transport state.
-    }
-  }
-
-  /// `/status`: the connection as the app sees it, plus what this bridge is
-  /// bound to, so "why is nothing arriving?" is answerable from the chat.
-  String _statusText() {
-    final buffer = StringBuffer(_agentStatus());
-    final directory = _directory() ?? '';
-    if (directory.isNotEmpty) {
-      final parts = directory
-          .split(RegExp(r'[\\/]'))
-          .where((part) => part.isNotEmpty)
-          .toList();
-      if (parts.isNotEmpty) buffer.write('\n项目：${parts.last}');
-    }
-    final sessionID = _sessionID;
-    buffer.write(
-      sessionID == null || sessionID.isEmpty
-          ? '\n会话：未绑定（发送任意文字会新建会话）'
-          : '\n会话：${sessionID.length > 12 ? sessionID.substring(0, 12) : sessionID}',
+    final probe = TelegramProvider(
+      accountId: owner,
+      token: token,
+      chatId: chat,
+      apiOrigin: () => telegramApiOrigin,
     );
-    buffer.write('\n机器人：${_phaseText(_phase)}');
-    final error = _lastError;
-    if (error != null && _phase == TelegramBotPhase.error) {
-      buffer.write('\n错误：$error');
+    try {
+      return await probe.probe();
+    } finally {
+      await probe.dispose();
     }
-    return buffer.toString();
   }
-
-  static String _phaseText(TelegramBotPhase phase) => switch (phase) {
-    TelegramBotPhase.disabled => '已关闭',
-    TelegramBotPhase.needsSetup => '等待本机 OpenCode 连接',
-    TelegramBotPhase.starting => '正在连接 Telegram',
-    TelegramBotPhase.polling => '正在接收消息',
-    TelegramBotPhase.error => '连接异常，正在重试',
-  };
 
   void _onEvent(EventEnvelope event) {
-    final props = event.properties;
-    final owner = _ownerID;
-    if (owner == null || !_enabled || !_supported()) return;
-    if ((event.directory != null &&
-            event.directory!.trim() != (_directory() ?? '').trim()) ||
-        (event.workspace != null &&
-            event.workspace!.trim() != (_workspace() ?? '').trim())) {
-      return;
-    }
-    if (event.type == 'session.viewed') {
-      final viewedID = props['sessionID']?.toString();
-      if (viewedID != null && viewedID.isNotEmpty) {
-        unawaited(_bindViewedSession(viewedID));
-      }
-      return;
-    }
-    final sessionID = _sessionID;
-    if (_sessionDirectory != (_directory() ?? '') ||
-        _sessionWorkspace != (_workspace() ?? '')) {
-      return;
-    }
-    if (sessionID == null || props['sessionID']?.toString() != sessionID) {
-      return;
-    }
-    if (event.type == 'session.status') {
-      final status = props['status'];
-      final type = status is Map
-          ? status['type']?.toString()
-          : status?.toString();
-      if (type == 'busy') {
-        if (!_sessionRunning) {
-          _sessionRunning = true;
-          _lastSentAssistantText = null;
-          unawaited(_sendToAllowed('本地 Agent 已开始处理任务。'));
-        }
-      } else if (type == 'idle') {
-        if (_sessionRunning) unawaited(_sendCompletedReply());
-      }
-    } else if (event.type == 'session.idle') {
-      if (_sessionRunning) unawaited(_sendCompletedReply());
-    } else if (event.type == 'message.part.updated') {
-      final part = props['part'];
-      if (part is! Map || part['type'] != 'tool') return;
-      final state = part['state'];
-      if (state is! Map || state['status'] != 'running') return;
-      final now = DateTime.now();
-      if (_lastProgress != null &&
-          now.difference(_lastProgress!) < const Duration(seconds: 25)) {
-        return;
-      }
-      _lastProgress = now;
-      final rawTool = part['tool']?.toString() ?? '';
-      final tool = RegExp(r'^[a-zA-Z0-9_-]{1,32}$').hasMatch(rawTool)
-          ? rawTool
-          : '工具';
-      unawaited(_sendToAllowed('Agent 进度：正在使用 $tool。'));
-    } else if (event.type == 'message.updated') {
-      final info = props['info'];
-      final time = info is Map ? info['time'] : null;
-      if (info is Map &&
-          info['role'] == 'assistant' &&
-          time is Map &&
-          (time['completed'] != null || time['end'] != null) &&
-          _sessionRunning) {
-        unawaited(_sendAssistantMilestone());
-      }
-    } else if (event.type == 'session.error') {
-      _sessionRunning = false;
-      unawaited(_sendToAllowed('本地 Agent 遇到错误，请在 OpenCode Plus 中查看详情。'));
-    } else if (event.type == 'permission.asked' ||
-        event.type == 'permission.v2.asked' ||
-        event.type == 'question.asked' ||
-        event.type == 'question.v2.asked') {
-      unawaited(
-        _sendToAllowed(
-          'Agent 正在等待权限或问题确认。请在 OpenCode Plus 应用中查看并处理；Telegram 不会自动批准。',
-        ),
-      );
-    }
-  }
-
-  Future<void> _bindViewedSession(String sessionID) async {
-    try {
-      await bindSession(sessionID);
-    } on Object {
-      return;
-    }
-    if (_isSessionBusy(sessionID) && !_sessionRunning) {
-      _sessionRunning = true;
-      _lastSentAssistantText = null;
-      await _sendToAllowed('本地 Agent 已开始处理任务。');
-    }
-  }
-
-  Future<void> _sendCompletedReply() async {
-    if (!_sessionRunning) return;
-    final sessionID = _sessionID;
-    _sessionRunning = false;
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    if (!_canPoll ||
-        _sessionRunning ||
-        sessionID == null ||
-        _sessionID != sessionID ||
-        _sessionDirectory != (_directory() ?? '') ||
-        _sessionWorkspace != (_workspace() ?? '')) {
-      return;
-    }
-    String? reply;
-    try {
-      reply = await _readLatestReply();
-    } on Object {
-      reply = null;
-    }
-    if (_sessionRunning || _sessionID != sessionID) return;
-    if (reply == null || reply.trim().isEmpty) {
-      await _sendToAllowed('Agent 已结束，但没有可显示的文字回复。');
-      return;
-    }
-    final text = reply.trim();
-    if (text == _lastSentAssistantText) return;
-    _lastSentAssistantText = text;
-    await _sendToAllowed(text);
-  }
-
-  Future<void> _sendAssistantMilestone() async {
-    final sessionID = _sessionID;
-    await Future<void>.delayed(const Duration(milliseconds: 350));
-    if (!_canPoll ||
-        !_sessionRunning ||
-        sessionID == null ||
-        _sessionID != sessionID) {
-      return;
-    }
-    String? reply;
-    try {
-      reply = await _readLatestReply();
-    } on Object {
-      return;
-    }
-    if (!_sessionRunning || _sessionID != sessionID) return;
-    final text = reply?.trim() ?? '';
-    if (text.isEmpty || text == _lastSentAssistantText) return;
-    _lastSentAssistantText = text;
-    await _sendToAllowed('Agent 更新：\n$text');
-  }
-
-  Future<void> _sendToAllowed(String text) async {
-    final token = _token;
-    final chatID = _chatID;
-    if (token == null || chatID.isEmpty || !_canPoll) return;
-    try {
-      await _sendTelegram(token, chatID, text);
-    } on Object {
-      _phase = TelegramBotPhase.error;
-      _notify();
-    }
-  }
-
-  Future<void> _sendTelegram(String token, String chatID, String text) async {
-    for (final chunk in telegramMessageChunks(text)) {
-      await _request(token, 'sendMessage', {
-        'chat_id': chatID,
-        'text': chunk,
-        'disable_web_page_preview': true,
-      });
-    }
+    _engine?.handleAgentEvent(event);
   }
 
   void _notify() {
@@ -912,13 +511,31 @@ class TelegramBotBridge extends ChangeNotifier {
     _disposed = true;
     _removeHostListener(_hostChanged);
     unawaited(_eventSubscription?.cancel());
-    unawaited(_stopPolling());
+    unawaited(_teardownChannel());
+    unawaited(_outbox.dispose());
     super.dispose();
   }
 }
 
-class _TelegramFailure implements Exception {
-  const _TelegramFailure([this.message = 'Telegram 请求失败。']);
+/// The narrow door from the Telegram channel into the agent.
+class _TelegramAgentPort extends ChannelAgentPort {
+  _TelegramAgentPort(this._bridge);
 
-  final String message;
+  final TelegramBotBridge _bridge;
+
+  @override
+  Future<String> sendPrompt(ChannelPromptRequest request) =>
+      _bridge._sendPrompt(request.text);
+
+  @override
+  Future<void> stopTask(String? sessionID) => _bridge._stopAgent();
+
+  @override
+  Future<String?> latestReply(String sessionID) => _bridge._readLatestReply();
+
+  @override
+  String statusText() => _bridge._agentStatus();
+
+  @override
+  bool isBusy(String sessionID) => _bridge._isSessionBusy(sessionID);
 }
