@@ -84,6 +84,10 @@ class FakeAgentPort extends ChannelAgentPort {
   final List<String> stopped = [];
   String nextSession = 'ses-1';
   String? reply = '完成。';
+
+  /// The id the reply is reported under. Turns deliver each id at most once,
+  /// so tests that run two turns need two ids.
+  String replyId = 'msg-1';
   bool busy = false;
   Object? sendError;
   String Function(ChannelPromptRequest request)? sessionFor;
@@ -107,6 +111,14 @@ class FakeAgentPort extends ChannelAgentPort {
   Future<String?> latestReply(String sessionID) async {
     latestReplyCalls++;
     return reply;
+  }
+
+  @override
+  Future<ChannelAgentReply?> latestReplyInfo(String sessionID) async {
+    latestReplyCalls++;
+    final text = reply;
+    if (text == null) return null;
+    return ChannelAgentReply(text: text, messageId: replyId);
   }
 
   @override

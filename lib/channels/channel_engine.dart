@@ -9,6 +9,7 @@ import 'channel_outbox.dart';
 import 'channel_provider.dart';
 import 'channel_sessions.dart';
 import 'channel_text.dart';
+import 'channel_turn.dart';
 
 /// Every sentence the shared pipeline says back into a chat.
 ///
@@ -19,6 +20,7 @@ class ChannelEngineCopy {
   const ChannelEngineCopy({
     this.channelNoun = '渠道',
     this.forwarded = '已转发给本地 Agent。',
+    this.supplemented = '已并入当前任务，Agent 会在下一步看到。',
     this.forwardFailed = '没有发送成功。请确认 App 已连接到本机 OpenCode、已打开项目，并检查是否有待处理的权限确认。',
     this.agentOffline = '本机 OpenCode 当前未连接，指令没有发送。请先在 App 中连接本机服务器并打开项目。',
     this.started = '本地 Agent 已开始处理任务。',
@@ -47,6 +49,7 @@ class ChannelEngineCopy {
 
   final String channelNoun;
   final String forwarded;
+  final String supplemented;
   final String forwardFailed;
   final String agentOffline;
   final String started;
@@ -80,30 +83,6 @@ class ChannelEngineCopy {
   };
 }
 
-/// One main task: one independent user request.
-///
-/// Supplements and corrections during its run belong to it. A queued request
-/// becomes the next task, never a sibling of this one.
-class ChannelTask {
-  ChannelTask({
-    required this.id,
-    required this.conversationKey,
-    required this.prompt,
-    required this.startedAt,
-  });
-
-  final String id;
-  final String conversationKey;
-  final String prompt;
-  final DateTime startedAt;
-
-  int supplements = 0;
-  bool waitingPermission = false;
-  String? sessionID;
-
-  bool get hasSupplements => supplements > 0;
-}
-
 class _QueuedPrompt {
   _QueuedPrompt(this.message, this.text);
 
@@ -116,8 +95,12 @@ class _ConversationRuntime {
 
   final ConversationKey key;
   final ChannelSessionStore store;
-  ChannelTask? task;
+  ChannelTurn? turn;
   final List<_QueuedPrompt> queue = [];
+
+  /// Whether the *session* is executing. Kept for `/status` and the channel
+  /// card; it never decides whether an answer is delivered — the turn does,
+  /// because this flag belongs to whichever turn happens to be current.
   bool running = false;
 
   /// Whether "the agent started working" has already been said in this chat.
@@ -127,8 +110,8 @@ class _ConversationRuntime {
   bool announcedStart = false;
   bool waitingPermission = false;
   ChannelMessage? lastMessage;
-  String? lastSentText;
   DateTime? lastProgressAt;
+  DateTime? lastIntermediateAt;
   int taskSequence = 0;
 
   /// Handles one message at a time per conversation: two prompts racing to
@@ -224,21 +207,49 @@ class ChannelConversationEngine {
 
   int get duplicateCount => _duplicates;
 
-  ChannelTask? get currentTask => _primary?.task;
+  ChannelTurn? get currentTask =>
+      _primary?.turn ?? _firstOpenTurn() ?? _lastTurn();
 
-  /// How many requests are waiting behind the running task.
-  int get queuedCount => _primary?.queue.length ?? 0;
+  /// How many requests are waiting, across every conversation this account
+  /// serves — not just one arbitrary runtime.
+  int get queuedCount =>
+      _runtimes.values.fold(0, (sum, runtime) => sum + runtime.queue.length);
 
   List<String> get queuedPrompts => [
-    for (final item in _primary?.queue ?? const <_QueuedPrompt>[]) item.text,
+    for (final runtime in _runtimes.values)
+      for (final item in runtime.queue) item.text,
   ];
 
-  String? get boundSessionID => _primary?.sessionID ?? _anyRuntime()?.sessionID;
+  String? get boundSessionID =>
+      _primary?.sessionID ??
+      _firstOpenTurn()?.sessionID ??
+      _anyRuntime()?.sessionID;
 
-  bool get isRunning => _primary?.running ?? _anyRuntime()?.running ?? false;
+  /// True when any conversation of this account is executing. Reading one
+  /// arbitrary runtime showed a channel card the state of somebody else's
+  /// conversation.
+  bool get isRunning =>
+      _runtimes.values.any((runtime) => runtime.turn?.isOpen ?? false);
 
-  bool get waitingPermission =>
-      _primary?.waitingPermission ?? _anyRuntime()?.waitingPermission ?? false;
+  bool get waitingPermission => _runtimes.values.any(
+    (runtime) => runtime.turn?.waitingPermission ?? false,
+  );
+
+  ChannelTurn? _firstOpenTurn() {
+    for (final runtime in _runtimes.values) {
+      final turn = runtime.turn;
+      if (turn != null && turn.isOpen) return turn;
+    }
+    return null;
+  }
+
+  ChannelTurn? _lastTurn() {
+    for (final runtime in _runtimes.values) {
+      final turn = runtime.turn;
+      if (turn != null) return turn;
+    }
+    return null;
+  }
 
   _ConversationRuntime? _anyRuntime() =>
       _runtimes.values.isEmpty ? null : _runtimes.values.first;
@@ -298,15 +309,13 @@ class ChannelConversationEngine {
     if (normalized == null || normalized.isEmpty) {
       await runtime.store.bind(null);
       runtime.running = false;
-      runtime.task = null;
-      runtime.lastSentText = null;
+      runtime.turn = null;
       _notify();
       return;
     }
     if (runtime.sessionID != normalized) {
-      runtime.lastSentText = null;
       runtime.running = false;
-      runtime.task = null;
+      runtime.turn = null;
     }
     await runtime.store.bind(
       ChannelSessionBinding(
@@ -318,8 +327,9 @@ class ChannelConversationEngine {
     );
     if (!runtime.running && agent.isBusy(normalized)) {
       runtime.running = true;
-      runtime.task ??= _newTask(runtime, '（在 App 中打开的会话）');
-      runtime.lastSentText = null;
+      runtime.turn ??= _newTurn(runtime, '（在 App 中打开的会话）')
+        ..sessionID = normalized;
+      runtime.announcedStart = true;
       unawaited(_notifyChat(runtime, copy.started, DeliveryPurpose.notice));
     }
     _notify();
@@ -376,10 +386,10 @@ class ChannelConversationEngine {
       if (type == 'busy') {
         _onBusy(runtime);
       } else if (type == 'idle') {
-        unawaited(_finishTask(runtime));
+        _onIdle(runtime);
       }
     } else if (event.type == 'session.idle') {
-      unawaited(_finishTask(runtime));
+      _onIdle(runtime);
     } else if (event.type == 'message.part.updated') {
       _onPartUpdated(runtime, event.properties['part']);
     } else if (event.type == 'message.updated') {
@@ -393,24 +403,41 @@ class ChannelConversationEngine {
         event.type == 'question.asked' ||
         event.type == 'question.v2.asked') {
       runtime.waitingPermission = true;
-      runtime.task?.waitingPermission = true;
+      runtime.turn?.waitingPermission = true;
       unawaited(_notifyChat(runtime, copy.permission, DeliveryPurpose.notice));
     } else if (event.type == 'permission.replied' ||
         event.type == 'question.replied' ||
         event.type == 'question.v2.replied') {
       runtime.waitingPermission = false;
-      runtime.task?.waitingPermission = false;
+      runtime.turn?.waitingPermission = false;
     }
   }
 
   void _onBusy(_ConversationRuntime runtime) {
-    final firstNotice = !runtime.announcedStart;
     runtime.running = true;
-    runtime.task ??= _newTask(runtime, '（在 App 中开始的会话）');
-    if (!firstNotice) return;
+    // A turn nobody typed a prompt for: one started in the app, or a queued
+    // prompt the server picked up. Its answer still belongs to this
+    // conversation, so it gets a turn of its own.
+    final current = runtime.turn;
+    if (current == null || !current.isOpen) {
+      // The session is known even when the prompt was not ours, and the turn
+      // needs it to fetch its answer.
+      runtime.turn = _newTurn(runtime, '（在 App 中开始的会话）')
+        ..sessionID = runtime.sessionID;
+    }
+    if (runtime.announcedStart) return;
     runtime.announcedStart = true;
-    runtime.lastSentText = null;
     unawaited(_notifyChat(runtime, copy.started, DeliveryPurpose.notice));
+  }
+
+  /// The session went idle: end the turn that was running.
+  void _onIdle(_ConversationRuntime runtime) {
+    final turn = runtime.turn;
+    if (turn == null || !turn.isOpen) {
+      runtime.running = false;
+      return;
+    }
+    unawaited(_finishTurn(runtime, turn));
   }
 
   void _onPartUpdated(_ConversationRuntime runtime, Object? part) {
@@ -418,6 +445,20 @@ class ChannelConversationEngine {
     final state = part['state'];
     if (state is! Map || state['status'] != 'running') return;
     final now = _clock();
+
+    // A tool started, so the assistant message that completed before it is an
+    // intermediate step rather than the answer. This is the only place an
+    // "update" comes from now: nothing is decided on a timer.
+    final turn = runtime.turn;
+    if (turn != null && turn.isOpen) {
+      final lastUpdate = runtime.lastIntermediateAt;
+      if (lastUpdate == null ||
+          now.difference(lastUpdate) >= const Duration(seconds: 3)) {
+        runtime.lastIntermediateAt = now;
+        unawaited(_sendIntermediate(runtime, turn));
+      }
+    }
+
     final last = runtime.lastProgressAt;
     if (last != null && now.difference(last) < progressInterval) return;
     runtime.lastProgressAt = now;
@@ -439,73 +480,122 @@ class ChannelConversationEngine {
     final time = info['time'];
     final completed =
         time is Map && (time['completed'] != null || time['end'] != null);
-    if (!completed || !runtime.running) return;
-    unawaited(_sendMilestone(runtime));
+    if (!completed) return;
+    // Recorded, not sent: whether this message is an intermediate step or the
+    // answer is decided by what happens next (a tool, another message, idle),
+    // not by how long ago it arrived.
+    runtime.turn?.remember(info['id']?.toString());
   }
 
-  Future<void> _sendMilestone(_ConversationRuntime runtime) async {
-    final sessionID = runtime.sessionID;
-    if (sessionID == null) return;
-    await Future<void>.delayed(const Duration(milliseconds: 350));
-    if (_disposed || !runtime.running || runtime.sessionID != sessionID) return;
-    String? reply;
+  /// Sends the message that finished before a tool call, labelled as an
+  /// update. Only a tool start proves a message is intermediate, which is why
+  /// this is called from there and nowhere else.
+  Future<void> _sendIntermediate(
+    _ConversationRuntime runtime,
+    ChannelTurn turn,
+  ) async {
+    final sessionID = turn.sessionID;
+    if (sessionID == null || _disposed) return;
+    // A tool can start before any assistant message has finished (the model
+    // opens with a call). Nothing completed, so there is nothing to report.
+    final seen = turn.lastSeenMessageId;
+    if (seen == null || seen.isEmpty) return;
+    ChannelAgentReply? reply;
     try {
-      reply = await agent.latestReply(sessionID);
+      reply = await agent.latestReplyInfo(sessionID);
     } on Object {
       return;
     }
-    if (_disposed || !runtime.running || runtime.sessionID != sessionID) {
-      return;
-    }
-    final text = reply?.trim() ?? '';
-    if (text.isEmpty || text == runtime.lastSentText) return;
-    runtime.lastSentText = text;
+    if (_disposed || reply == null || reply.isEmpty) return;
+    if (turn.isCancelled || turn.hasDelivered(reply.messageId)) return;
+    // Only the message this turn saw complete may be reported as its update;
+    // a newer one belongs to whatever comes next.
+    if (reply.messageId.isNotEmpty && reply.messageId != seen) return;
+    turn.markDelivered(reply.messageId);
     await _notifyChat(
       runtime,
-      '${copy.updatePrefix}$text',
+      '${copy.updatePrefix}${reply.text.trim()}',
       DeliveryPurpose.progress,
+      turn: turn,
     );
   }
 
-  Future<void> _finishTask(_ConversationRuntime runtime) async {
-    if (!runtime.running) return;
-    final sessionID = runtime.sessionID;
+  /// Ends [turn] and delivers its answer exactly once.
+  ///
+  /// Nothing here reads `runtime.running`. That flag belongs to the session
+  /// and describes whichever turn is current; the answer belongs to this turn.
+  /// Reading the flag was how a turn starting 350–500 ms after the previous one
+  /// ended made both the update and the final answer return early, dropping the
+  /// text entirely.
+  Future<void> _finishTurn(
+    _ConversationRuntime runtime,
+    ChannelTurn turn,
+  ) async {
+    if (!turn.isOpen) return;
+    turn.sessionID ??= runtime.sessionID;
+    turn.phase = TurnPhase.finishing;
+    turn.finishedAt = _clock();
     runtime.running = false;
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    if (_disposed || runtime.running || runtime.sessionID != sessionID) {
+
+    if (turn.isCancelled) {
+      _closeTurn(runtime, turn);
       return;
     }
-    if (sessionID != null) {
-      String? reply;
-      try {
-        reply = await agent.latestReply(sessionID);
-      } on Object {
-        reply = null;
-      }
-      if (_disposed || runtime.running || runtime.sessionID != sessionID) {
-        return;
-      }
-      final text = reply?.trim() ?? '';
-      if (text.isEmpty) {
-        await _notifyChat(
-          runtime,
-          copy.finishedEmpty,
-          DeliveryPurpose.finalAnswer,
-        );
-      } else if (text != runtime.lastSentText) {
-        runtime.lastSentText = text;
-        await _notifyChat(runtime, text, DeliveryPurpose.finalAnswer);
-      }
-    } else {
+
+    final reply = await _awaitAnswer(turn);
+    if (turn.isCancelled) {
+      _closeTurn(runtime, turn);
+      return;
+    }
+    if (reply == null || reply.isEmpty) {
+      turn.markDelivered(null);
       await _notifyChat(
         runtime,
         copy.finishedEmpty,
         DeliveryPurpose.finalAnswer,
+        turn: turn,
+      );
+    } else if (turn.hasDelivered(reply.messageId)) {
+      // Already in the chat as an update; the words arrived once.
+      turn.phase = TurnPhase.delivered;
+    } else {
+      turn.markDelivered(reply.messageId);
+      await _notifyChat(
+        runtime,
+        reply.text.trim(),
+        DeliveryPurpose.finalAnswer,
+        turn: turn,
       );
     }
-    runtime.task = null;
-    runtime.announcedStart = false;
+    _closeTurn(runtime, turn);
     await _drainQueue(runtime);
+  }
+
+  /// The answer owed by [turn], waiting briefly for the server to finish
+  /// writing it: `session.idle` can arrive before the last `message.updated`.
+  /// The wait decides *what* to send, never *whether* to send.
+  Future<ChannelAgentReply?> _awaitAnswer(ChannelTurn turn) async {
+    final sessionID = turn.sessionID;
+    if (sessionID == null) return null;
+    for (var attempt = 0; attempt < 8; attempt++) {
+      if (_disposed || turn.isCancelled) return null;
+      ChannelAgentReply? reply;
+      try {
+        reply = await agent.latestReplyInfo(sessionID);
+      } on Object {
+        reply = null;
+      }
+      if (reply != null && !reply.isEmpty) return reply;
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+    }
+    return null;
+  }
+
+  void _closeTurn(_ConversationRuntime runtime, ChannelTurn turn) {
+    if (turn.phase == TurnPhase.finishing) turn.phase = TurnPhase.delivered;
+    if (!identical(runtime.turn, turn)) return;
+    runtime.turn = null;
+    runtime.announcedStart = false;
   }
 
   Future<void> _drainQueue(_ConversationRuntime runtime) async {
@@ -579,8 +669,7 @@ class ChannelConversationEngine {
       case ChannelCommand.newSession:
         await runtime.store.bind(null);
         runtime.running = false;
-        runtime.task = null;
-        runtime.lastSentText = null;
+        runtime.turn = null;
         await _replyTo(runtime, message, copy.newSession);
         return true;
       case ChannelCommand.queue:
@@ -609,9 +698,17 @@ class ChannelConversationEngine {
     ChannelMessage message,
   ) async {
     try {
+      final turn = runtime.turn;
       await agent.stopTask(runtime.sessionID);
       runtime.running = false;
       runtime.queue.clear();
+      // The turn is closed before anything else: an answer that arrives after
+      // the person asked to stop is not the answer they are waiting for.
+      if (turn != null && turn.isOpen) {
+        turn.phase = TurnPhase.cancelled;
+        runtime.turn = null;
+        runtime.announcedStart = false;
+      }
       await _replyTo(runtime, message, copy.stopRequested);
     } on Object {
       await _replyTo(runtime, message, copy.stopFailed);
@@ -627,10 +724,9 @@ class ChannelConversationEngine {
       await _replyTo(runtime, message, copy.agentOffline);
       return;
     }
-    final isSupplement = runtime.running;
-    final task = isSupplement
-        ? (runtime.task ??= _newTask(runtime, text))
-        : _newTask(runtime, text);
+    final open = runtime.turn;
+    final isSupplement = open != null && open.isOpen;
+    final turn = isSupplement ? open : _newTurn(runtime, text);
     try {
       final sessionID = await agent.sendPrompt(
         ChannelPromptRequest(
@@ -650,14 +746,19 @@ class ChannelConversationEngine {
           ),
         );
       }
-      task.sessionID = sessionID;
-      runtime.task = task;
+      turn.sessionID = sessionID;
+      runtime.turn = turn;
       runtime.running = true;
       if (!isSupplement) runtime.announcedStart = false;
-      if (isSupplement) task.supplements++;
-      await _replyTo(runtime, message, copy.forwarded, taskId: task.id);
+      if (isSupplement) turn.supplements++;
+      await _replyTo(
+        runtime,
+        message,
+        isSupplement ? copy.supplemented : copy.forwarded,
+        taskId: turn.id,
+      );
     } on Object {
-      if (!isSupplement) runtime.task = null;
+      if (!isSupplement) runtime.turn = null;
       await _replyTo(
         runtime,
         message,
@@ -668,9 +769,9 @@ class ChannelConversationEngine {
     _notify();
   }
 
-  ChannelTask _newTask(_ConversationRuntime runtime, String prompt) {
+  ChannelTurn _newTurn(_ConversationRuntime runtime, String prompt) {
     runtime.taskSequence++;
-    return ChannelTask(
+    return ChannelTurn(
       id: '${runtime.key.conversationId}#${runtime.taskSequence}',
       conversationKey: runtime.key.value,
       prompt: prompt,
@@ -690,17 +791,23 @@ class ChannelConversationEngine {
     ChannelAddress.of(message),
     text,
     purpose: purpose,
-    taskId: taskId ?? runtime.task?.id,
+    taskId: taskId ?? runtime.turn?.id,
   );
 
   Future<void> _notifyChat(
     _ConversationRuntime runtime,
     String text,
-    DeliveryPurpose purpose,
-  ) {
+    DeliveryPurpose purpose, {
+    ChannelTurn? turn,
+  }) {
     final address = _addressFor(runtime);
     if (address == null) return Future<void>.value();
-    return _send(address, text, purpose: purpose, taskId: runtime.task?.id);
+    return _send(
+      address,
+      text,
+      purpose: purpose,
+      taskId: (turn ?? runtime.turn)?.id,
+    );
   }
 
   /// The last address seen in a conversation, so an asynchronous notice

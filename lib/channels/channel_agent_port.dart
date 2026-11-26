@@ -23,6 +23,23 @@ class ChannelPromptRequest {
   final ChannelSessionBinding? binding;
 }
 
+/// One finished assistant message, with the identity needed to deliver it
+/// exactly once.
+///
+/// The text alone is not enough: the same sentence can be produced by two
+/// turns, and a turn that is followed immediately by another must not have its
+/// answer mistaken for the next one's. [messageId] is the server's own id; it
+/// is empty only on gateways that do not expose one.
+@immutable
+class ChannelAgentReply {
+  const ChannelAgentReply({required this.text, this.messageId = ''});
+
+  final String text;
+  final String messageId;
+
+  bool get isEmpty => text.trim().isEmpty;
+}
+
 /// What the channel layer is allowed to ask of the agent.
 ///
 /// This is the only door between messaging and the agent core. It has no
@@ -41,6 +58,14 @@ abstract class ChannelAgentPort {
   /// The last finished assistant text of [sessionID], or null when the last
   /// turn produced none.
   Future<String?> latestReply(String sessionID);
+
+  /// The same reply, with the server's message id when the gateway exposes
+  /// one. The default keeps gateways that only have text working: they lose
+  /// id-based de-duplication, not delivery.
+  Future<ChannelAgentReply?> latestReplyInfo(String sessionID) async {
+    final text = await latestReply(sessionID);
+    return text == null ? null : ChannelAgentReply(text: text);
+  }
 
   /// One line describing the local agent, for `/status`.
   String statusText();
