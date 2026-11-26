@@ -308,6 +308,10 @@ class ChannelHub extends ChangeNotifier {
       webSocketUrl: _oneBotConfig.webSocketUrl,
       accessToken: token,
       expectedSelfId: _oneBotConfig.expectedSelfId,
+      transport: _oneBotConfig.transport == OneBotTransport.reverse
+          ? OneBot11Transport.reverse
+          : OneBot11Transport.forward,
+      listenPort: _oneBotConfig.listenPort,
     );
     final built = _buildEngine(provider: created, policy: _oneBotConfig.policy);
     _oneBotProvider = created;
@@ -464,7 +468,8 @@ class ChannelHub extends ChangeNotifier {
     String? accessToken,
   }) async {
     final target = candidate ?? _oneBotConfig;
-    if (target.webSocketUrl.isEmpty) {
+    if (target.transport == OneBotTransport.forward &&
+        target.webSocketUrl.isEmpty) {
       throw const FormatException('请先填写 OneBot 11 的 WebSocket 地址。');
     }
     final token = accessToken?.trim().isNotEmpty == true
@@ -477,6 +482,10 @@ class ChannelHub extends ChangeNotifier {
       webSocketUrl: target.webSocketUrl,
       accessToken: token,
       expectedSelfId: target.expectedSelfId,
+      transport: target.transport == OneBotTransport.reverse
+          ? OneBot11Transport.reverse
+          : OneBot11Transport.forward,
+      listenPort: target.listenPort,
     );
     try {
       return await provider.probe();
@@ -484,6 +493,22 @@ class ChannelHub extends ChangeNotifier {
       throw FormatException(_messageOf(error));
     } finally {
       await provider.dispose();
+    }
+  }
+
+  /// Asks the connected implementation which groups the account is in.
+  ///
+  /// Throws when nothing is connected: an empty list would look like "no
+  /// groups" and send the person hunting for a permission problem.
+  Future<List<OneBotGroup>> fetchOneBotGroups() async {
+    final provider = _oneBotProvider;
+    if (provider == null || !provider.status.isOnline) {
+      throw const FormatException('QQ 普通账号尚未连接，无法读取群列表。');
+    }
+    try {
+      return await provider.fetchGroupList();
+    } on OneBotFailure catch (error) {
+      throw FormatException(error.message);
     }
   }
 

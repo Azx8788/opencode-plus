@@ -27,12 +27,14 @@ of losing its servers and its Ubuntu.
   plus brief progress notices. The bot token stays in Android secure storage.
   See [docs/TELEGRAM_BOT.md](docs/TELEGRAM_BOT.md) for setup and limits.
 - **Three message channels on one engine**: Telegram, an official QQ bot from
-  the Tencent Open Platform, and a personal QQ account through an LLBot you run
-  yourself. Same commands, same allowlists, same session isolation, same
+  the Tencent Open Platform, and a personal QQ account through LLBot, NapCat or
+  SnowLuma — a OneBot 11 implementation you run yourself, connected in either
+  direction. Same commands, same allowlists, same session isolation, same
   delivery rules; each channel keeps its own configuration, capabilities and
   limits. See [docs/CHANNELS.md](docs/CHANNELS.md),
-  [docs/QQ_CHANNELS.md](docs/QQ_CHANNELS.md) and
-  [docs/CHANNELS_LIMITATIONS.md](docs/CHANNELS_LIMITATIONS.md).
+  [docs/QQ_CHANNELS.md](docs/QQ_CHANNELS.md),
+  [docs/CHANNELS_LIMITATIONS.md](docs/CHANNELS_LIMITATIONS.md) and
+  [docs/CHANNELS_PRIOR_ART.md](docs/CHANNELS_PRIOR_ART.md).
 - **Backup and restore**: one zip with the settings, the credentials and the
   conversations of the last 7, 30 or 90 days — or all of them — because
   "Clear storage" and a reinstall take all three at once, and the way back in.

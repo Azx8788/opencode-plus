@@ -101,7 +101,20 @@ authorised; only a real message can.
 | Send fails with a permission error | Active message not approved for this scene |
 | `403` on a group send | The bot was removed from the group, or the group permission was revoked |
 
-## 2. Personal QQ account: LLBot + OneBot 11
+## 2. Personal QQ account: LLBot, NapCat or SnowLuma + OneBot 11
+
+Three implementations are known to work; all three speak OneBot 11, so the app
+speaks the same protocol to each and only the defaults and the words on the page
+change. See [`CHANNELS_PRIOR_ART.md`](CHANNELS_PRIOR_ART.md) for what was read
+from each project.
+
+| Implementation | Where it runs | Console | OneBot 11 |
+| --- | --- | --- | --- |
+| LLBot | Linux x64, headless | — | Forward WS, usually 3001 |
+| NapCat | Next to the QQ NT client | 6099 | HTTP 3000, WS server 3001, WS client dials a URL |
+| SnowLuma | Windows x64 or Linux x64/arm64 | 5099 | HTTP 3000, WS 3001, WS server and client |
+
+None of them is bundled, and none is supported inside Android/PRoot.
 
 This route logs a real QQ account in through a third-party implementation. It is
 not authorised by Tencent, it can get an account restricted, and it is **not
@@ -137,16 +150,23 @@ Settings → 消息渠道 → **QQ 普通账号（OneBot 11）**:
 
 | Field | Meaning |
 | --- | --- |
-| WebSocket address | `ws://host:port` or `wss://host/path` |
-| Access token | Sent as a Bearer header |
+| Protocol implementation | LLBot, NapCat or SnowLuma — the defaults and the console hint follow this choice |
+| Direction | *App connects out* (forward) or *Bot connects in* (reverse) |
+| WebSocket address | Forward only: `ws://host:port` or `wss://host/path` |
+| Listening port | Reverse only: the phone listens, the bot dials `ws://<phone>:port`. 8082 is NapCat's own default |
+| Access token | Sent as a Bearer header; required in reverse mode |
 | Expected QQ account | `self_id` the implementation must report |
 | Allowed QQ numbers | Who may drive the agent; empty means nobody |
 | Allowed group numbers | Which groups the bot may answer in |
 | Allow private / group chat | Scene switches |
 | Require @ or a command in groups | On by default |
 
-"Test connection" opens the socket, waits for the lifecycle event, checks
-`self_id`, calls `get_version_info` and disconnects. It sends no message.
+"Test connection" opens the socket — or starts the listener and waits for the
+bot to dial in — then waits for the lifecycle event, checks `self_id`, calls
+`get_version_info` and disconnects. It sends no message.
+
+"Choose from the bot's groups" calls `get_group_list` and writes the chosen
+groups into the allowlist, so a group number never has to be typed by hand.
 
 A plain `ws://` address to a non-loopback host shows a warning: the token and
 all messages would travel unencrypted.

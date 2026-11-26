@@ -7,6 +7,7 @@ import '../../../channels/channel_capabilities.dart';
 import '../../../channels/channel_config.dart';
 import '../../../channels/channel_hub.dart';
 import '../../../channels/channel_provider.dart';
+import '../../../channels/providers/onebot11_provider.dart' show OneBotGroup;
 import '../../../state/connection.dart';
 import '../../app_iconography.dart';
 import '../../../telegram/telegram_bot.dart';
@@ -615,6 +616,11 @@ class OneBot11Screen extends StatefulWidget {
 class _OneBot11ScreenState extends State<OneBot11Screen> {
   late final ChannelHub _hub = widget.controller.channels;
   late final TextEditingController _url = TextEditingController();
+  late final TextEditingController _port = TextEditingController(
+    text: '${OneBot11Config.defaultListenPort}',
+  );
+  OneBotBackend _backend = OneBotBackend.llbot;
+  OneBotTransport _transport = OneBotTransport.forward;
   late final TextEditingController _token = TextEditingController();
   late final TextEditingController _selfId = TextEditingController();
   late final TextEditingController _users = TextEditingController();
@@ -672,6 +678,7 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
     _hub.removeListener(_changed);
     widget.controller.removeListener(_changed);
     _url.dispose();
+    _port.dispose();
     _token.dispose();
     _selfId.dispose();
     _users.dispose();
@@ -680,7 +687,10 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
   }
 
   OneBot11Config _candidate() => OneBot11Config(
+    backend: _backend,
+    transport: _transport,
     webSocketUrl: _url.text.trim(),
+    listenPort: int.tryParse(_port.text.trim()) ?? 0,
     expectedSelfId: _selfId.text.trim(),
     enabled: _enabled,
     allowedUsers: _splitIds(_users.text),
@@ -689,6 +699,115 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
     allowGroup: _allowGroup,
     requireMentionInGroups: _requireMention,
   );
+
+  String _backendHint(OneBotBackend backend) => switch (backend) {
+    OneBotBackend.llbot => _text(
+      'LLBot on a Linux machine. Its OneBot 11 plugin exposes a forward WebSocket, usually on port 3001.',
+      'LLBot 运行在 Linux 机器上，其 OneBot 11 插件提供正向 WebSocket，通常监听 3001 端口。',
+    ),
+    OneBotBackend.napcat => _text(
+      'NapCat logs in the QQ NT client. Its WebUI is on port 6099; add a WebSocket client there that points at this phone.',
+      'NapCat 登录 QQ NT 客户端。WebUI 在 6099 端口；在它的网络配置里加一个 WebSocket 客户端，指向这台手机。',
+    ),
+    OneBotBackend.snowLuma => _text(
+      'SnowLuma bridges the desktop QQ client. Its console is on port 5099 and its OneBot gateway on 3000/3001.',
+      'SnowLuma 在桌面上桥接 QQ 客户端。控制台在 5099 端口，OneBot 网关在 3000/3001。',
+    ),
+  };
+
+  /// Reads the real group list from the connected implementation and writes
+  /// the chosen groups into the allowlist. Typing nine-digit numbers is how an
+  /// allowlist ends up wrong without anyone noticing.
+  Future<void> _fetchGroups() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _notice = null;
+    });
+    List<OneBotGroup> groups = const [];
+    try {
+      groups = await _hub.fetchOneBotGroups();
+    } on FormatException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+      return;
+    } on Object {
+      if (mounted) {
+        setState(() {
+          _error = _text(
+            'Could not read the group list from the bot.',
+            '无法从机器人读取群列表。',
+          );
+        });
+      }
+      return;
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    if (!mounted) return;
+    if (groups.isEmpty) {
+      setState(() {
+        _notice = _text(
+          'The bot is not in any group.',
+          '机器人目前不在任何群里。',
+        );
+      });
+      return;
+    }
+    final selected = {..._splitIds(_groups.text)};
+    final chosen = await showDialog<Set<String>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(_text('Groups the bot is in', '机器人所在的群')),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                for (final group in groups)
+                  CheckboxListTile(
+                    key: ValueKey('onebot-group-${group.id}'),
+                    value: selected.contains(group.id),
+                    title: Text(group.name),
+                    subtitle: Text(
+                      group.memberCount == null
+                          ? group.id
+                          : '${group.id} · ${group.memberCount}',
+                    ),
+                    onChanged: (value) => setDialogState(() {
+                      if (value == true) {
+                        selected.add(group.id);
+                      } else {
+                        selected.remove(group.id);
+                      }
+                    }),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(_text('Cancel', '取消')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(selected),
+              child: Text(_text('Use these', '使用这些群')),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (chosen == null || !mounted) return;
+    setState(() {
+      _groups.text = chosen.join(', ');
+      _notice = _text(
+        'Allowed groups updated. Save to apply.',
+        '允许的群已更新，保存后生效。',
+      );
+    });
+  }
 
   static Set<String> _splitIds(String raw) => {
     for (final part in raw.split(RegExp(r'[\s,，;；]+')))
@@ -834,26 +953,87 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
             ),
           ],
           SizedBox(height: tokens.space5),
-          KitField(
-            key: const ValueKey('onebot-url'),
-            label: _text('WebSocket address', 'WebSocket 地址'),
-            controller: _url,
-            enabled: !_busy,
+          KitSegmented<OneBotBackend>(
+            key: const ValueKey('onebot-backend'),
+            segments: const [
+              KitSegment(value: OneBotBackend.llbot, label: 'LLBot'),
+              KitSegment(value: OneBotBackend.napcat, label: 'NapCat'),
+              KitSegment(value: OneBotBackend.snowLuma, label: 'SnowLuma'),
+            ],
+            selected: _backend,
+            onChanged: _busy
+                ? null
+                : (value) => setState(() => _backend = value),
             disabledReason: _busy ? _text('Saving', '正在保存') : null,
-            hint: 'ws://192.168.1.10:3001',
-            helper: _text(
-              'The forward WebSocket server the OneBot 11 plugin exposes.',
-              'OneBot 11 插件提供的正向 WebSocket 服务地址。',
-            ),
+            semanticsLabel: _text('Protocol implementation', '协议端'),
           ),
-          if (insecure) ...[
+          SizedBox(height: tokens.space2),
+          KitText(_backendHint(_backend), role: KitTextRole.caption),
+          SizedBox(height: tokens.space4),
+          KitSegmented<OneBotTransport>(
+            key: const ValueKey('onebot-transport'),
+            segments: [
+              KitSegment(
+                value: OneBotTransport.forward,
+                label: _text('App connects out', '应用主动连接'),
+              ),
+              KitSegment(
+                value: OneBotTransport.reverse,
+                label: _text('Bot connects in', '协议端连入'),
+              ),
+            ],
+            selected: _transport,
+            onChanged: _busy
+                ? null
+                : (value) => setState(() => _transport = value),
+            disabledReason: _busy ? _text('Saving', '正在保存') : null,
+            semanticsLabel: _text('Connection direction', '连接方向'),
+          ),
+          SizedBox(height: tokens.space3),
+          if (_transport == OneBotTransport.forward) ...[
+            KitField(
+              key: const ValueKey('onebot-url'),
+              label: _text('WebSocket address', 'WebSocket 地址'),
+              controller: _url,
+              enabled: !_busy,
+              disabledReason: _busy ? _text('Saving', '正在保存') : null,
+              hint: 'ws://192.168.1.10:3001',
+              helper: _text(
+                'The forward WebSocket server the implementation exposes.',
+                '协议端提供的正向 WebSocket 服务地址。',
+              ),
+            ),
+            if (insecure) ...[
+              SizedBox(height: tokens.space2),
+              KitNotice(
+                message: _text(
+                  'This is a plain ws:// address, so the access token travels unencrypted. Use wss:// or a trusted private network.',
+                  '当前是明文 ws:// 地址，Access Token 会以明文传输。请使用 wss:// 或可信私有网络。',
+                ),
+                tone: AppStatusTone.failure,
+              ),
+            ],
+          ] else ...[
+            KitField(
+              key: const ValueKey('onebot-listen-port'),
+              label: _text('Listening port', '监听端口'),
+              kind: KitFieldKind.number,
+              controller: _port,
+              enabled: !_busy,
+              disabledReason: _busy ? _text('Saving', '正在保存') : null,
+              hint: '8082',
+              helper: _text(
+                'This phone listens; the bot dials ws://<phone-ip>:port with the token below. 8082 is what NapCat suggests.',
+                '由这台手机监听，协议端带着下面的 Token 连接 ws://<手机地址>:端口。NapCat 默认填 8082。',
+              ),
+            ),
             SizedBox(height: tokens.space2),
             KitNotice(
               message: _text(
-                'This is a plain ws:// address, so the access token travels unencrypted. Use wss:// or a trusted private network.',
-                '当前是明文 ws:// 地址，Access Token 会以明文传输。请使用 wss:// 或可信私有网络。',
+                'Anyone who can reach this port with the token can drive the agent. Keep the phone on a trusted network, and the token is required — the listener will not start without one.',
+                '能访问该端口并持有 Token 的人即可驱动 Agent。请只在可信网络使用；Token 是必填项，没有 Token 不会开始监听。',
               ),
-              tone: AppStatusTone.failure,
+              tone: AppStatusTone.attention,
             ),
           ],
           SizedBox(height: tokens.space3),
@@ -911,6 +1091,16 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
               'A group must be listed here before the bot answers in it.',
               '只有列在这里的群，机器人才能回复。',
             ),
+          ),
+          SizedBox(height: tokens.space2),
+          KitButton.secondary(
+            key: const ValueKey('onebot-groups-fetch'),
+            label: _text(
+              'Choose from the bot\'s groups',
+              '从机器人拉取群列表',
+            ),
+            onPressed: _busy ? null : _fetchGroups,
+            working: _busy,
           ),
           SizedBox(height: tokens.space3),
           KitSwitchRow(
@@ -991,8 +1181,8 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
           SizedBox(height: tokens.space3),
           KitGroupNote(
             message: _text(
-              'Deploy LLBot on a Linux x64 machine (headless is enough): install the OneBot 11 plugin, enable the forward WebSocket server, set an access token, then paste the ws:// address here and enter the QQ number it logs in. Android/PRoot hosting is experimental and not supported by this app. LLBot and its OneBot plugin are GPL-2.0 and are never bundled with the APK.',
-              '请在 Linux x64 机器上部署 LLBot（无头模式即可）：安装 OneBot 11 插件，开启正向 WebSocket 服务，设置 Access Token，然后把 ws:// 地址填到这里，并填写它登录的 QQ 号。Android/PRoot 托管属于实验能力，本应用不提供支持。LLBot 与其 OneBot 插件为 GPL-2.0，不会随 APK 分发。',
+              'Run the protocol implementation on a Linux x64 machine or a PC: LLBot, NapCat or SnowLuma. Turn on its OneBot 11 WebSocket — forward if it can listen, reverse if it should dial this phone — set an access token, then fill in the address or the port and the QQ number it logs in. None of them is bundled with this app — LLBot is GPL-2.0, NapCat and SnowLuma carry their own licences — and hosting any of them under Android/PRoot is not supported.',
+              '请在一台 Linux x64 机器或 PC 上运行协议端：LLBot、NapCat 或 SnowLuma。开启它的 OneBot 11 WebSocket——能监听就用正向，需要主动连出就用反向——设置 Access Token，然后填写地址或端口，以及它登录的 QQ 号。三者都不随本应用分发（LLBot 为 GPL-2.0，NapCat 与 SnowLuma 各有自己的许可），也不支持在 Android/PRoot 里托管。',
             ),
           ),
         ],

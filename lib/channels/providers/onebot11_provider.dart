@@ -7,22 +7,68 @@ import '../channel_capabilities.dart';
 import '../channel_message.dart';
 import '../channel_provider.dart';
 
-/// The ordinary-QQ channel, as a OneBot 11 client connected to an LLBot that
-/// the person runs themselves.
+/// Which side of the WebSocket this app is.
+///
+/// NapCat, SnowLuma and LLBot all offer a WebSocket server (we dial them) and
+/// most also offer a client that dials a URL we host. The second direction is
+/// what makes a phone usable as the bot: the PC running the QQ client does not
+/// need an inbound port, only a route to the phone.
+enum OneBot11Transport {
+  /// The app dials `webSocketUrl`. The protocol implementation listens.
+  forward,
+
+  /// The app listens on `listenPort`; the protocol implementation dials it.
+  reverse,
+}
+
+/// One group the account is in, as `get_group_list` reports it.
+class OneBotGroup {
+  const OneBotGroup({
+    required this.id,
+    required this.name,
+    this.memberCount,
+    this.maxMemberCount,
+  });
+
+  final String id;
+  final String name;
+  final int? memberCount;
+  final int? maxMemberCount;
+
+  @override
+  String toString() => 'OneBotGroup($id, $name)';
+}
+
+/// The account the implementation says it is logged in as.
+class OneBotLogin {
+  const OneBotLogin({required this.id, required this.nickname});
+
+  final String id;
+  final String nickname;
+}
+
+/// The ordinary-QQ channel, as a OneBot 11 client connected to a protocol
+/// implementation the person runs themselves — LLBot, NapCat or SnowLuma.
 ///
 /// This is not an official Tencent interface and the code does not pretend
 /// otherwise: LLBot logs a real QQ account in and exposes OneBot 11, which is
 /// why the settings page says so and why nothing here is bundled into the APK.
 ///
-/// The client speaks the forward-WebSocket half of OneBot 11: events arrive on
-/// the socket, API calls go out on the same socket and are correlated by
-/// `echo`. Message bodies are structured segment arrays, never CQ strings.
+/// The client speaks OneBot 11 over a WebSocket, in whichever direction the
+/// deployment needs: [OneBot11Transport.forward] dials the protocol
+/// implementation, [OneBot11Transport.reverse] listens and lets it dial us.
+/// Events arrive on the socket, API calls go out on the same socket and are
+/// correlated by `echo`. Message bodies are structured segment arrays, never
+/// CQ strings.
 class OneBot11Provider extends ChannelProviderBase {
   OneBot11Provider({
     required super.accountId,
     required this.webSocketUrl,
     this.accessToken = '',
     this.expectedSelfId = '',
+    this.transport = OneBot11Transport.forward,
+    this.listenHost = '0.0.0.0',
+    this.listenPort = 8082,
     this.actionTimeout = const Duration(seconds: 15),
     this.heartbeatTimeout = const Duration(seconds: 90),
     this.watchdogInterval = const Duration(seconds: 15),
@@ -32,6 +78,15 @@ class OneBot11Provider extends ChannelProviderBase {
 
   final String webSocketUrl;
   final String accessToken;
+
+  /// Which side opens the socket.
+  final OneBot11Transport transport;
+
+  /// Where [OneBot11Transport.reverse] binds. The default matches the address
+  /// NapCat's WebSocket client ships with, so a fresh NapCat needs only the
+  /// phone's IP.
+  final String listenHost;
+  final int listenPort;
 
   /// The QQ number the implementation must report. Empty means "accept what
   /// the first lifecycle event says", which the settings page discourages.
@@ -96,6 +151,8 @@ class OneBot11Provider extends ChannelProviderBase {
 
   WebSocket? _socket;
   StreamSubscription<dynamic>? _subscription;
+  HttpServer? _server;
+  StreamSubscription<HttpRequest>? _serverSubscription;
   Timer? _reconnectTimer;
   Timer? _heartbeatWatchdog;
   bool _running = false;
@@ -114,18 +171,44 @@ class OneBot11Provider extends ChannelProviderBase {
   @override
   Future<void> connect() async {
     if (isClosed || _running) return;
-    final uri = Uri.tryParse(webSocketUrl);
-    if (uri == null || (uri.scheme != 'ws' && uri.scheme != 'wss')) {
-      publishStatus(
-        ProviderState.needsSetup,
-        detail: 'WebSocket 地址无效',
-        clearError: true,
-      );
-      return;
+    switch (transport) {
+      case OneBot11Transport.forward:
+        final uri = Uri.tryParse(webSocketUrl);
+        if (uri == null || (uri.scheme != 'ws' && uri.scheme != 'wss')) {
+          publishStatus(
+            ProviderState.needsSetup,
+            detail: 'WebSocket 地址无效',
+            clearError: true,
+          );
+          return;
+        }
+      case OneBot11Transport.reverse:
+        // A listener without a token is an open door to the agent for everyone
+        // on the same network. Refused, not warned about.
+        if (accessToken.trim().isEmpty) {
+          publishStatus(
+            ProviderState.needsSetup,
+            detail: '反向连接必须设置 Access Token',
+            clearError: true,
+          );
+          return;
+        }
+        if (listenPort <= 0 || listenPort > 65535) {
+          publishStatus(
+            ProviderState.needsSetup,
+            detail: '监听端口无效',
+            clearError: true,
+          );
+          return;
+        }
     }
     _running = true;
     _generation++;
-    unawaited(_connectOnce(_generation));
+    unawaited(
+      transport == OneBot11Transport.forward
+          ? _connectOnce(_generation)
+          : _listenOnce(_generation),
+    );
   }
 
   @override
@@ -134,6 +217,7 @@ class OneBot11Provider extends ChannelProviderBase {
     _generation++;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
+    await _stopListening();
     await _closeSocket();
     if (!isClosed) publishStatus(ProviderState.disabled, detail: '已断开');
   }
@@ -154,32 +238,153 @@ class OneBot11Provider extends ChannelProviderBase {
         await socket.close();
         return;
       }
-      _socket = socket;
-      _lastHeartbeat = DateTime.now();
-      _subscription = socket.listen(
-        (frame) => _onFrame(frame, generation),
-        onError: (Object error) {
-          if (!_running || generation != _generation || isClosed) return;
-          _scheduleReconnect(generation, '与 LLBot 的连接中断，正在重连。');
-        },
-        onDone: () {
-          if (!_running || generation != _generation || isClosed) return;
-          _scheduleReconnect(generation, 'LLBot 已断开连接，正在重连。');
-        },
-        cancelOnError: true,
-      );
-      _startWatchdog(generation);
-      // The socket is up but not yet authenticated for our purposes: the
-      // lifecycle event carries self_id, and that is what proves which QQ
-      // account is on the other end.
-      publishStatus(
-        ProviderState.connecting,
-        detail: '已连接，等待 OneBot 生命周期事件',
-        clearError: true,
-      );
+      _attachSocket(socket, generation);
     } on Object {
       if (!_running || generation != _generation || isClosed) return;
-      _scheduleReconnect(generation, '无法连接 LLBot，请检查地址、端口和 Access Token。');
+      _scheduleReconnect(generation, '无法连接 QQ 协议端，请检查地址、端口和 Access Token。');
+    }
+  }
+
+  /// Binds the reverse-WebSocket port and waits. Nothing is reported online
+  /// until a peer connects and sends a lifecycle event carrying its `self_id`.
+  Future<void> _listenOnce(int generation) async {
+    publishStatus(
+      ProviderState.connecting,
+      detail: '正在监听 $listenHost:$listenPort，等待协议端连接',
+      clearError: true,
+    );
+    _selfId = null;
+    try {
+      final server = await HttpServer.bind(listenHost, listenPort);
+      if (!_running || generation != _generation) {
+        await server.close(force: true);
+        return;
+      }
+      _server = server;
+      _serverSubscription = server.listen(
+        (request) => unawaited(_onReverseRequest(request, generation)),
+        onError: (Object _) {},
+        cancelOnError: false,
+      );
+      publishStatus(
+        ProviderState.connecting,
+        detail: '已监听 $listenHost:$listenPort，等待 OneBot 连接',
+      );
+    } on Object catch (error) {
+      if (!_running || generation != _generation || isClosed) return;
+      publishStatus(
+        ProviderState.error,
+        lastError: '无法监听端口 $listenPort：$error',
+      );
+      _running = false;
+    }
+  }
+
+  Future<void> _onReverseRequest(HttpRequest request, int generation) async {
+    if (!_running || generation != _generation || isClosed) {
+      await _refuse(request, 503, 'channel closed');
+      return;
+    }
+    if (!WebSocketTransformer.isUpgradeRequest(request)) {
+      await _refuse(request, 426, 'websocket upgrade required');
+      return;
+    }
+    if (!_authorized(request)) {
+      await _refuse(request, 401, 'unauthorized');
+      return;
+    }
+    final WebSocket socket;
+    try {
+      socket = await WebSocketTransformer.upgrade(request);
+    } on Object {
+      return;
+    }
+    if (!_running || generation != _generation) {
+      await socket.close();
+      return;
+    }
+    // A peer that reconnects leaves its old socket to die on its own; the
+    // newest connection is the one that answers.
+    await _closeSocket();
+    _attachSocket(socket, generation);
+  }
+
+  static Future<void> _refuse(
+    HttpRequest request,
+    int status,
+    String reason,
+  ) async {
+    request.response
+      ..statusCode = status
+      ..write(reason);
+    await request.response.close();
+  }
+
+  bool _authorized(HttpRequest request) {
+    final expected = accessToken.trim();
+    if (expected.isEmpty) return false;
+    final header =
+        request.headers.value(HttpHeaders.authorizationHeader) ?? '';
+    final bearer = header.toLowerCase().startsWith('bearer ')
+        ? header.substring(7).trim()
+        : '';
+    final query = request.uri.queryParameters['access_token'] ?? '';
+    return _sameSecret(bearer, expected) || _sameSecret(query, expected);
+  }
+
+  /// Length-independent comparison: a wrong token must not be distinguishable
+  /// from a shorter one by how long the answer takes.
+  static bool _sameSecret(String given, String expected) {
+    if (given.length != expected.length) return false;
+    var diff = 0;
+    for (var i = 0; i < given.length; i++) {
+      diff |= given.codeUnitAt(i) ^ expected.codeUnitAt(i);
+    }
+    return diff == 0;
+  }
+
+  void _attachSocket(WebSocket socket, int generation) {
+    _socket = socket;
+    _lastHeartbeat = DateTime.now();
+    _subscription = socket.listen(
+      (frame) => _onFrame(frame, generation),
+      onError: (Object error) => _onSocketGone(generation, '与 OneBot 的连接中断。'),
+      onDone: () => _onSocketGone(generation, 'OneBot 已断开连接。'),
+      cancelOnError: true,
+    );
+    _startWatchdog(generation);
+    // The socket is up but not yet authenticated for our purposes: the
+    // lifecycle event carries self_id, and that is what proves which QQ
+    // account is on the other end.
+    publishStatus(
+      ProviderState.connecting,
+      detail: '已连接，等待 OneBot 生命周期事件',
+      clearError: true,
+    );
+  }
+
+  void _onSocketGone(int generation, String reason) {
+    if (!_running || generation != _generation || isClosed) return;
+    if (transport == OneBot11Transport.forward) {
+      _scheduleReconnect(generation, reason);
+      return;
+    }
+    // Reverse mode keeps the listener up: the peer reconnects to us, so there
+    // is nothing to redial and no backoff to apply.
+    unawaited(_closeSocket());
+    publishStatus(ProviderState.reconnecting, lastError: reason);
+  }
+
+  Future<void> _stopListening() async {
+    final subscription = _serverSubscription;
+    _serverSubscription = null;
+    final server = _server;
+    _server = null;
+    await subscription?.cancel();
+    try {
+      await server?.close(force: true);
+    } on Object {
+      // Already closed.
     }
   }
 
@@ -187,6 +392,9 @@ class OneBot11Provider extends ChannelProviderBase {
     _heartbeatWatchdog?.cancel();
     _heartbeatWatchdog = Timer.periodic(watchdogInterval, (_) {
       if (!_running || generation != _generation) return;
+      // In reverse mode the listener is up while nobody is connected; silence
+      // there is waiting, not a dead socket.
+      if (_socket == null) return;
       final last = _lastHeartbeat;
       if (last == null) return;
       final interval = _heartbeatInterval;
@@ -264,7 +472,7 @@ class OneBot11Provider extends ChannelProviderBase {
         ProviderState.error,
         lastError: 'self_id 不匹配：配置为 $expectedSelfId，实际为 $reported。',
       );
-      emitNotice('LLBot 报告的账号与配置不一致，已断开以避免用错账号回复。', isError: true);
+      emitNotice('协议端报告的账号与配置不一致，已断开以避免用错账号回复。', isError: true);
       unawaited(_stopForIdentityFailure(generation));
       return;
     }
@@ -280,6 +488,7 @@ class OneBot11Provider extends ChannelProviderBase {
   Future<void> _stopForIdentityFailure(int generation) async {
     if (generation != _generation) return;
     _running = false;
+    await _stopListening();
     await _closeSocket();
   }
 
@@ -485,6 +694,51 @@ class OneBot11Provider extends ChannelProviderBase {
     } finally {
       if (!previous) await disconnect();
     }
+  }
+
+  /// Asks the implementation which account is really logged in.
+  ///
+  /// The lifecycle event already carries `self_id`; this adds the nickname the
+  /// person recognises, and proves the action channel works before a message is
+  /// sent anywhere.
+  Future<OneBotLogin> fetchLoginInfo() async {
+    final response = await call('get_login_info', const {});
+    final failure = _failureOf(response);
+    if (failure != null) throw OneBotFailure(failure.message);
+    final data = response['data'];
+    final map = data is Map ? data : const {};
+    final id = map['user_id']?.toString() ?? _selfId ?? '';
+    if (id.isEmpty) throw const OneBotFailure('OneBot 未返回登录账号。');
+    return OneBotLogin(id: id, nickname: map['nickname']?.toString() ?? '');
+  }
+
+  /// Asks the implementation for the groups this account is in.
+  ///
+  /// A group number is nine or ten digits and easy to mistype; choosing from
+  /// the real list is the difference between an allowlist that works and one
+  /// that silently answers nobody.
+  Future<List<OneBotGroup>> fetchGroupList() async {
+    final response = await call('get_group_list', const {});
+    final failure = _failureOf(response);
+    if (failure != null) throw OneBotFailure(failure.message);
+    final data = response['data'];
+    if (data is! List) return const [];
+    final groups = <OneBotGroup>[];
+    for (final entry in data) {
+      if (entry is! Map) continue;
+      final id = entry['group_id']?.toString() ?? '';
+      if (id.isEmpty) continue;
+      groups.add(
+        OneBotGroup(
+          id: id,
+          name: entry['group_name']?.toString() ?? id,
+          memberCount: (entry['member_count'] as num?)?.toInt(),
+          maxMemberCount: (entry['max_member_count'] as num?)?.toInt(),
+        ),
+      );
+    }
+    groups.sort((a, b) => a.name.compareTo(b.name));
+    return groups;
   }
 
   /// Turns one OneBot message event into the shared model.

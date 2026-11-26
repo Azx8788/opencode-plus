@@ -100,4 +100,38 @@ void main() {
     expect(find.textContaining('AppID'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('the OneBot page offers NapCat and SnowLuma', (tester) async {
+    final controller = await _controller();
+    addTearDown(controller.dispose);
+    await _pump(tester, OneBot11Screen(controller: controller));
+
+    expect(find.text('NapCat'), findsOneWidget);
+    expect(find.text('SnowLuma'), findsOneWidget);
+    // LLBot is the default backend, so its hint is the one on screen.
+    expect(find.textContaining('3001'), findsWidgets);
+
+    await tester.tap(find.text('NapCat'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('6099'), findsOneWidget);
+  });
+
+  testWidgets('choosing the reverse direction swaps the address for a port', (
+    tester,
+  ) async {
+    final controller = await _controller();
+    addTearDown(controller.dispose);
+    await _pump(tester, OneBot11Screen(controller: controller));
+
+    expect(find.byKey(const ValueKey('onebot-url')), findsOneWidget);
+
+    await tester.tap(find.text('Bot connects in'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('onebot-listen-port')), findsOneWidget);
+    expect(find.byKey(const ValueKey('onebot-url')), findsNothing);
+    // A listener without a token is refused, and the page says so.
+    expect(find.textContaining('token'), findsWidgets);
+  });
 }

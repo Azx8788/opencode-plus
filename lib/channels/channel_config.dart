@@ -104,11 +104,51 @@ class OfficialQqConfig {
       );
 }
 
+/// Which protocol implementation the account talks to.
+///
+/// All three speak OneBot 11 over a WebSocket; the value chooses the defaults
+/// and the words on the page, never a different wire format. Adding a fourth
+/// implementation that speaks OneBot 11 means adding a value here.
+enum OneBotBackend {
+  llbot('llbot'),
+  napcat('napcat'),
+  snowLuma('snowluma');
+
+  const OneBotBackend(this.id);
+
+  /// Stored form. Never the enum name: renaming a value must not lose the
+  /// setting.
+  final String id;
+
+  static OneBotBackend fromId(String? id) => values.firstWhere(
+    (value) => value.id == id,
+    orElse: () => OneBotBackend.llbot,
+  );
+}
+
+/// Which side opens the socket, stored as a string for the same reason.
+enum OneBotTransport {
+  forward('forward'),
+  reverse('reverse');
+
+  const OneBotTransport(this.id);
+
+  final String id;
+
+  static OneBotTransport fromId(String? id) => values.firstWhere(
+    (value) => value.id == id,
+    orElse: () => OneBotTransport.forward,
+  );
+}
+
 /// Everything stored about a OneBot 11 account, minus its access token.
 @immutable
 class OneBot11Config {
   const OneBot11Config({
+    this.backend = OneBotBackend.llbot,
+    this.transport = OneBotTransport.forward,
     this.webSocketUrl = '',
+    this.listenPort = defaultListenPort,
     this.expectedSelfId = '',
     this.enabled = false,
     this.allowedUsers = const {},
@@ -118,9 +158,18 @@ class OneBot11Config {
     this.requireMentionInGroups = true,
   });
 
-  /// The forward WebSocket address of the LLBot OneBot 11 plugin, for example
-  /// `ws://192.168.1.10:3001`.
+  /// The port a reverse connection listens on. 8082 is what NapCat's WebSocket
+  /// client ships with, so the default needs only the phone's address.
+  static const defaultListenPort = 8082;
+
+  final OneBotBackend backend;
+  final OneBotTransport transport;
+
+  /// The forward WebSocket address, for example `ws://192.168.1.10:3001`.
   final String webSocketUrl;
+
+  /// Where a reverse connection listens. Ignored in forward mode.
+  final int listenPort;
 
   /// The QQ number the OneBot implementation reports as `self_id`. Checked
   /// against the first lifecycle event; a mismatch stops the connection
@@ -134,7 +183,9 @@ class OneBot11Config {
   final bool allowGroup;
   final bool requireMentionInGroups;
 
-  bool get configured => webSocketUrl.isNotEmpty;
+  bool get configured => transport == OneBotTransport.forward
+      ? webSocketUrl.isNotEmpty
+      : listenPort > 0 && listenPort <= 65535;
 
   /// Plain `ws://` to a non-loopback host sends the access token in clear
   /// text. Allowed (home LANs are common) but always reported in the UI.
@@ -157,7 +208,10 @@ class OneBot11Config {
   );
 
   OneBot11Config copyWith({
+    OneBotBackend? backend,
+    OneBotTransport? transport,
     String? webSocketUrl,
+    int? listenPort,
     String? expectedSelfId,
     bool? enabled,
     Set<String>? allowedUsers,
@@ -166,7 +220,10 @@ class OneBot11Config {
     bool? allowGroup,
     bool? requireMentionInGroups,
   }) => OneBot11Config(
+    backend: backend ?? this.backend,
+    transport: transport ?? this.transport,
     webSocketUrl: webSocketUrl ?? this.webSocketUrl,
+    listenPort: listenPort ?? this.listenPort,
     expectedSelfId: expectedSelfId ?? this.expectedSelfId,
     enabled: enabled ?? this.enabled,
     allowedUsers: allowedUsers ?? this.allowedUsers,
@@ -178,7 +235,10 @@ class OneBot11Config {
   );
 
   Map<String, Object?> toJson() => {
+    'backend': backend.id,
+    'transport': transport.id,
     'webSocketUrl': webSocketUrl,
+    'listenPort': listenPort,
     'expectedSelfId': expectedSelfId,
     'enabled': enabled,
     'allowedUsers': allowedUsers.toList(),
@@ -189,7 +249,11 @@ class OneBot11Config {
   };
 
   static OneBot11Config fromJson(Map<String, Object?> json) => OneBot11Config(
+    backend: OneBotBackend.fromId(json['backend']?.toString()),
+    transport: OneBotTransport.fromId(json['transport']?.toString()),
     webSocketUrl: json['webSocketUrl']?.toString() ?? '',
+    listenPort:
+        (json['listenPort'] as num?)?.toInt() ?? defaultListenPort,
     expectedSelfId: json['expectedSelfId']?.toString() ?? '',
     enabled: json['enabled'] == true,
     allowedUsers: _stringSet(json['allowedUsers']),
@@ -320,7 +384,8 @@ class ChannelConfigStore {
     String? accessToken,
   }) async {
     final url = config.webSocketUrl.trim();
-    if (config.enabled || url.isNotEmpty) {
+    final reverse = config.transport == OneBotTransport.reverse;
+    if (!reverse && (config.enabled || url.isNotEmpty)) {
       final uri = Uri.tryParse(url);
       if (uri == null ||
           (uri.scheme != 'ws' && uri.scheme != 'wss') ||
@@ -329,6 +394,9 @@ class ChannelConfigStore {
           'WebSocket 地址需要以 ws:// 或 wss:// 开头，并包含主机和端口。',
         );
       }
+    }
+    if (reverse && (config.listenPort < 1 || config.listenPort > 65535)) {
+      throw const FormatException('监听端口需要在 1 到 65535 之间。');
     }
     final selfId = config.expectedSelfId.trim();
     if (selfId.isNotEmpty && !RegExp(r'^[0-9]{5,12}$').hasMatch(selfId)) {
@@ -342,8 +410,14 @@ class ChannelConfigStore {
       await _secureStorage.write(key: oneBotTokenKey, value: token);
       KitRedact.registerKnownSecret(token);
     }
-    if (config.enabled && url.isEmpty) {
+    if (config.enabled && !reverse && url.isEmpty) {
       throw const FormatException('启用前需要填写 OneBot 11 的 WebSocket 地址。');
+    }
+    if (config.enabled && reverse) {
+      final stored = await _secureStorage.read(key: oneBotTokenKey);
+      if (stored == null || stored.trim().isEmpty) {
+        throw const FormatException('反向连接启用前需要设置 Access Token。');
+      }
     }
     final saved = await _preferences.setString(
       '${_oneBotPrefix}config',

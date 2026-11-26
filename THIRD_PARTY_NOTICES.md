@@ -486,12 +486,17 @@ and none of them is packaged into the APK.
 | QQ Open Platform (v2 API and gateway) | Official QQ bot transport | Tencent platform terms | Remote service |
 | LLBot | Logs a personal QQ account in and exposes OneBot 11 | **GPL-2.0** (upstream project) | **Not distributed.** The user installs and runs it separately |
 | LLBot OneBot 11 plugin | Protocol adapter inside LLBot | **GPL-2.0** | **Not distributed.** Installed by the user |
+| NapCat | Runs beside the QQ NT client and exposes OneBot 11 | **Limited Redistribution License** (custom, upstream) | **Not distributed.** The user installs and runs it separately |
+| SnowLuma | Bridges a desktop QQ client to OneBot 11 | **Source-available non-commercial licence + EULA** (upstream) | **Not distributed.** The user installs and runs it separately |
+| AstrBot | Agent chatbot platform that consumes OneBot 11 | **AGPL-3.0** (upstream) | **Not distributed.** A separate program, not a channel of this app |
 | OneBot 11 | Protocol specification the client implements | Specification, no code copied | n/a |
 
 The OneBot 11 client in `lib/channels/providers/onebot11_provider.dart` was
-written against the published protocol: forward WebSocket, JSON actions,
-`echo` correlation, message segment arrays. It contains no LLBot source, links
-no LLBot library and starts no third-party process.
+written against the published protocol: forward and reverse WebSocket, JSON
+actions, `echo` correlation, message segment arrays. It contains no source from
+LLBot, NapCat or SnowLuma, links none of their libraries and starts no
+third-party process. What was learned from them is recorded in
+[`docs/CHANNELS_PRIOR_ART.md`](docs/CHANNELS_PRIOR_ART.md).
 
 PMHQ is deliberately absent: its licence and distribution boundary have not
 been verified, so it is neither offered nor documented as an option.

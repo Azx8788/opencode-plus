@@ -146,4 +146,86 @@ void main() {
     );
     expect(store.loadOfficialQq().appId, isEmpty);
   });
+
+  test('the backend, direction and port survive a round trip', () async {
+    final store = await _store();
+    await store.saveOneBot11(
+      const OneBot11Config(
+        backend: OneBotBackend.napcat,
+        transport: OneBotTransport.reverse,
+        listenPort: 8082,
+        expectedSelfId: '10001',
+      ),
+      accessToken: 'token-value-123',
+    );
+
+    final loaded = store.loadOneBot11();
+
+    expect(loaded.backend, OneBotBackend.napcat);
+    expect(loaded.transport, OneBotTransport.reverse);
+    expect(loaded.listenPort, 8082);
+    expect(loaded.configured, isTrue);
+  });
+
+  test('a config written before backends existed reads as LLBot forward', () async {
+    SharedPreferences.setMockInitialValues({
+      'oc.channels.onebot11.config':
+          '{"webSocketUrl":"ws://127.0.0.1:3001","enabled":true}',
+    });
+    FlutterSecureStorage.setMockInitialValues({});
+    final store = ChannelConfigStore(
+      preferences: await SharedPreferences.getInstance(),
+      secureStorage: const FlutterSecureStorage(),
+    );
+
+    final loaded = store.loadOneBot11();
+
+    expect(loaded.backend, OneBotBackend.llbot);
+    expect(loaded.transport, OneBotTransport.forward);
+    expect(loaded.listenPort, OneBot11Config.defaultListenPort);
+    expect(loaded.webSocketUrl, 'ws://127.0.0.1:3001');
+  });
+
+  test('a reverse listener is refused without a token', () async {
+    final store = await _store();
+    await expectLater(
+      store.saveOneBot11(
+        const OneBot11Config(
+          transport: OneBotTransport.reverse,
+          enabled: true,
+        ),
+      ),
+      throwsFormatException,
+    );
+  });
+
+  test('a reverse listener does not need a WebSocket address', () async {
+    final store = await _store();
+    await store.saveOneBot11(
+      const OneBot11Config(
+        transport: OneBotTransport.reverse,
+        enabled: true,
+        listenPort: 9000,
+      ),
+      accessToken: 'token-value-123',
+    );
+
+    final loaded = store.loadOneBot11();
+    expect(loaded.configured, isTrue);
+    expect(loaded.enabled, isTrue);
+  });
+
+  test('an impossible port is refused', () async {
+    final store = await _store();
+    await expectLater(
+      store.saveOneBot11(
+        const OneBot11Config(
+          transport: OneBotTransport.reverse,
+          listenPort: 70000,
+        ),
+        accessToken: 'token-value-123',
+      ),
+      throwsFormatException,
+    );
+  });
 }
