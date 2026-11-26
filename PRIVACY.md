@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Effective date: September 6, 2026**
+**Effective date: November 26, 2026**
 
 OpenCode Plus is a client for OpenCode servers. It does not provide a
 developer-operated account, advertising, analytics, or crash-reporting service.
@@ -70,6 +70,33 @@ infrastructure receive whatever prompt and reply text you choose to send;
 Telegram's retention and privacy practices apply. The bridge does not approve
 OpenCode permissions. Disabling the bridge stops polling, and deleting the
 server profile removes its Telegram token and local bot settings.
+
+### Optional QQ channels
+
+The two QQ channels are off until you configure them, and each keeps only its
+own credentials. The official bot stores an AppID and client secret; the
+personal account stores the address and access token of an LLBot you run.
+Secrets go to Android secure storage; the allowlists, the on/off switch and the
+record of what was sent stay in app preferences.
+
+With the **official QQ bot**, message text, the agent's replies and its brief
+progress notices travel through Tencent's Open Platform to the QQ chat that
+asked for them. Tencent's retention and privacy practices apply to what it
+carries and stores. The channel does not approve OpenCode permissions for you:
+a permission the platform or the console never granted is reported in the chat
+rather than retried.
+
+With the **personal QQ account**, the app connects outward to an LLBot that you
+install and run yourself. LLBot is not part of this app and is never bundled
+with it, so it, and Tencent as the account holder's platform, receive the
+prompts and replies the channel carries; their retention applies and neither is
+controlled by this app. The address and token you enter are the only
+credentials the app holds for it.
+
+Disabling a channel stops its connection. Removing its configuration deletes
+the stored credentials together with the de-duplication and delivery records
+for that account. None of this deletes anything already sent to Telegram,
+Tencent or your LLBot.
 
 On-device Termux setup writes a server password into the private Termux/Ubuntu
 environment so that the local server can restart. Protect access to both apps

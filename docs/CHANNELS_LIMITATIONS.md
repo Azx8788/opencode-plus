@@ -93,7 +93,7 @@ credentials and approvals this repository does not have.
 
 | Component | Licence | Bundled? | Who runs it |
 | --- | --- | --- | --- |
-| Telegram Bot API | Tencent/Telegram platform terms | No | Telegram |
+| Telegram Bot API | Telegram platform terms | No | Telegram |
 | QQ Open Platform API | Tencent platform terms | No | Tencent |
 | LLBot | GPL-2.0 | **No** | You |
 | LLBot OneBot 11 plugin | GPL-2.0 | **No** | You |
@@ -101,3 +101,8 @@ credentials and approvals this repository does not have.
 
 No new Dart package was added for the channel work: the WebSocket, HTTP and JSON
 support comes from `dart:io` and `dart:convert`.
+
+What a channel carries leaves the phone: message text and the agent's replies go
+to Telegram, to Tencent's Open Platform, or through the LLBot you run. The
+[privacy policy](../PRIVACY.md) says what is stored locally, what is transmitted
+and what deleting a configuration does and does not remove.
