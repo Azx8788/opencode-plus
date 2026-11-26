@@ -2,6 +2,38 @@
 
 This project is in public alpha. Only the newest preview is supported.
 
+## 0.3.32+41 — 2026-11-26
+
+  * **The answer to "when is the agent done" is no longer a flag.** A turn now
+    carries its own id, session, delivered message ids and outcome. The update
+    at 350 ms and the finish at 500 ms used to read the same `running` boolean;
+    a queued prompt starting the next turn between them made both return early
+    and the answer was dropped. Seven timings around that window are now
+    tests, and each one delivers the answer exactly once.
+  * **Tasks are recorded, separately from their delivery.** A durable ledger
+    holds id, conversation, session, status, result, error and delivery state,
+    with transitions checked in one table. "The agent finished" and "the person
+    was told" are two fields, and the manager page shows a completed task whose
+    message the platform refused as 未送达 rather than as done.
+  * **A manager agent, off by default.** A separate model reads each channel
+    message and decides what the person sees. Its tools are `submit_task`,
+    `send_message`, `get_task_status`, `get_task_result`, `cancel_task`,
+    `list_tasks` and `stay_silent`; none of them takes a recipient, so a
+    confused model cannot address another chat. It cannot approve a permission,
+    create a session or send a file.
+  * **The manager can be wrong without taking the channel with it.** With it
+    off, channels relay as before. With it on but unreachable, the same relay
+    runs as a fallback — a broken manager degrades, it does not disconnect.
+  * **`/stop` closes the turn before aborting**, so an answer that arrives
+    afterwards is not delivered; a correction is acknowledged as 已并入当前任务
+    instead of the same 已转发 a new task gets.
+  * **Status is per account, not per first conversation.** `isRunning`,
+    `waitingPermission` and `queuedCount` aggregate every conversation; reading
+    one arbitrary runtime showed a channel card somebody else's state.
+  * **Covered by tests.** 755 in total; the new suites pin the seven timings,
+    the task state machine and its persistence, the manager's wire format and
+    tools against a loopback server, and the fallback path.
+
 ## 0.3.31+39 — 2026-11-26
 
   * **Three message channels, one engine.** Settings → Conversations → Message
