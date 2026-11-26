@@ -304,6 +304,23 @@ extension _IndexHubRows on _IndexBuild {
         open: _openVoice,
       ),
       SearchEntry(
+        id: 'settings-channels',
+        kind: SearchEntryKind.hubRow,
+        group: SettingsGroup.chat,
+        icon: AppIconography.chat,
+        title: l10n.channelsSettingsTitle,
+        keywords: l10n.channelsSettingsKeywords,
+        pages: const ['channels'],
+        gate: (scope) =>
+            scope.platform.supportsBackgroundService &&
+            !scope.controller.isIsolated &&
+            !scope.controller.isAgentBackend &&
+            !scope.controller.isSideBackend,
+        open: _screen(
+          (scope) => ChannelsScreen(controller: scope.controller),
+        ),
+      ),
+      SearchEntry(
         id: 'settings-telegram-bot',
         kind: SearchEntryKind.hubRow,
         group: SettingsGroup.chat,

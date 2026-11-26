@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -8,6 +7,123 @@ import 'app_localizations.dart';
 /// The translations for Chinese (`zh`).
 class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
+
+  @override
+  String get insightsTitle => 'AI 任务与使用统计';
+
+  @override
+  String get insightsTask => '用户任务';
+
+  @override
+  String get insightsSubagent => '子代理';
+
+  @override
+  String get insightsCalls => '模型请求步骤';
+
+  @override
+  String get insightsMessages => '消息轮次';
+
+  @override
+  String get insightsPending => '关联待确认';
+
+  @override
+  String get insightsPendingExplanation =>
+      '无法确认实际执行任务。此项已保留，暂不计入用户任务数，不按消息时间擅自归类。';
+
+  @override
+  String get insightsExplanation =>
+      '用户任务、消息轮次、模型请求分别计数。子代理结果不直接决定主任务结果。历史仅展示实际记录的事件。';
+
+  @override
+  String get insightsQueue => '排队中';
+
+  @override
+  String get insightsLive => '运行中';
+
+  @override
+  String get insightsSuccess => '成功';
+
+  @override
+  String get insightsFailed => '失败';
+
+  @override
+  String get insightsCancelled => '取消／中断';
+
+  @override
+  String get insightsState => '执行状态';
+
+  @override
+  String get insightsDetails => '任务详情';
+
+  @override
+  String get insightsModels => '模型使用统计';
+
+  @override
+  String get insightsSuccessRate => '成功率（已结束步骤）';
+
+  @override
+  String get insightsMissingUsage => 'Token 用量未知的步骤';
+
+  @override
+  String get insightsError => '已报告错误';
+
+  @override
+  String get insightsRetries => '已安排的重试';
+
+  @override
+  String get insightsRateLimit => '供应商拒绝 · HTTP 429';
+
+  @override
+  String get insightsPartial => '当前历史不完整。缺失事件不会被补成成功或零用量。';
+
+  @override
+  String get insightsPrevious => '更早';
+
+  @override
+  String get insightsNext => '更晚';
+
+  @override
+  String get insightsNow => '回到现在';
+
+  @override
+  String get insightsAll => '全部';
+
+  @override
+  String get insightsWaitingToken => '速度待数据回传';
+
+  @override
+  String get insightsUnavailable => '采集插件未加载或已断连。已有记录仍保留；请在当前任务结束后重启内置服务器加载插件。';
+
+  @override
+  String get insightsInstall => '安装搜索设置与任务采集插件';
+
+  @override
+  String get insightsReload => '已安装，尚未生效。请在当前任务结束后重启内置服务器。';
+
+  @override
+  String get insightsSearchTitle => '搜索供应商';
+
+  @override
+  String get insightsSearchDisclosure =>
+      '配置的是当前 OpenCode 服务器，不只是本条会话。密钥由服务器的集成凭据库安全保存。供应商出现在列表中不代表已经授权；固定选择后不会静默切换供应商。';
+
+  @override
+  String get insightsAuthorized => '已连接凭据';
+
+  @override
+  String get insightsNotAuthorized => '尚未授权 · 点击连接';
+
+  @override
+  String get insightsSelected => '已选择';
+
+  @override
+  String get insightsSearchOff => '关闭 AI 网页搜索';
+
+  @override
+  String get insightsSearchTest => '测试所选搜索供应商';
+
+  @override
+  String get insightsSearchTestOK => '所选供应商已返回真实网页来源。';
 
   @override
   String get servicesTitle => '开发服务';
@@ -18315,10 +18431,15 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get modelEffortCustomHint => '此等级将保存到服务器，服务商可能不支持。';
+
   @override
-  String modelEffortUnavailable(String level) => '$level · 不可用';
+  String modelEffortUnavailable(String level) {
+    return '$level · 不可用';
+  }
+
   @override
   String get modelEffortSaveFailed => '思考等级保存失败，当前选择未改变。';
+
   @override
   String get modelEffortSavedNotLoaded =>
       '已保存，但服务器尚未加载此等级。请刷新模型，或在当前任务结束后重启内置服务器。';
@@ -28376,6 +28497,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsV3VoiceTyping => '语音输入';
 
   @override
+  String get channelsSettingsTitle => '消息渠道';
+
+  @override
+  String get channelsSettingsKeywords =>
+      '消息渠道 机器人 Telegram QQ 官方 普通账号 OneBot LLBot 远程 Agent 接入';
+
+  @override
   String get telegramBotSettingsTitle => 'Telegram 机器人';
 
   @override
@@ -34116,8 +34244,154 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get providerKeysTitle => '命名 API 密钥';
+
   @override
   String get providerKeysHint => '默认沿用上次选中的密钥；新添加的密钥会自动选中，不会轮询使用。';
+
+  @override
+  String get chatStatsTitle => '回答统计';
+
+  @override
+  String get memoryTitle => '记忆';
+
+  @override
+  String get memoryIntro =>
+      '跨会话保留偏好和项目约定。内容加密保存在本机；发送消息时，适用记忆会发给当前 OpenCode 服务器和模型。不后台提取，不自动保存。';
+
+  @override
+  String get memoryHistoryNotice =>
+      '关闭或删除后，本应用不再用于后续发送；无法抹除已进入旧对话的内容。其他客户端、定时任务和外部智能体不会同步这个本机记忆库。';
+
+  @override
+  String get memoryUse => '使用已保存的记忆';
+
+  @override
+  String get memoryEntryUse => '使用这条记忆';
+
+  @override
+  String get memoryAdd => '添加记忆';
+
+  @override
+  String get memoryEdit => '编辑记忆';
+
+  @override
+  String get memorySaveMessage => '存为记忆';
+
+  @override
+  String get memoryText => '需要记住什么？';
+
+  @override
+  String get memoryHint => '例如：优先用中文简洁回答。';
+
+  @override
+  String get memoryGlobal => '全局';
+
+  @override
+  String get memoryProject => '当前项目';
+
+  @override
+  String get memoryAll => '全部';
+
+  @override
+  String get memoryScope => '生效范围';
+
+  @override
+  String get memoryProjectUnknown => '暂时无法确认当前项目。仍可使用全局记忆；连接后重新打开此页以选择项目。';
+
+  @override
+  String get memoryEmpty => '还没有记忆';
+
+  @override
+  String get memoryEmptyDetail => '手动添加，或在对话里让 AI 总结记忆，再预览确认保存。';
+
+  @override
+  String get memorySearch => '搜索记忆';
+
+  @override
+  String get memoryManual => '手动添加';
+
+  @override
+  String get memoryExtracted => 'AI 总结后确认';
+
+  @override
+  String memoryCount(int count, int active) {
+    return '已保存 $count 条 · 适用 $active 条';
+  }
+
+  @override
+  String get memorySummarize => '总结本会话记忆';
+
+  @override
+  String get memorySummaryIntro =>
+      '向当前会话发送一次总结请求，使用本会话现有上下文和当前模型，可能产生 Token 费用；不会另行导出聊天记录或切换模型。需要当前智能体具备 oc-ui 的 memory_write 工具。AI 只提交候选，你预览、勾选并保存后才写入记忆。';
+
+  @override
+  String get memorySummaryPrompt =>
+      '请总结本会话现有上下文中适合长期保留的记忆：仅包含我明确说过或确认的稳定事实、偏好和项目约定，不要保存推测、你的建议、临时任务、密码或密钥。使用我的语言，最多 8 条，每条不超过 1024 UTF-8 字节。调用 oc-ui 的 memory_write 工具提交候选，scope 选 global（通用偏好）或 project（本项目约定），不同范围分开调用。工具只提交待确认内容，不代表已保存，提交后结束本轮，等我在应用中预览勾选后保存。若没有合适内容或当前工具不可用，请明确说明，不要声称已记住，也不要改写 AGENTS.md 或其他文件来代替记忆。';
+
+  @override
+  String get memoryToolHint =>
+      '也可以在对话里说“总结本会话并存为记忆”。AI 通过 memory_write 提交候选，你确认后保存到这里；不会自动提取或自动写入。';
+
+  @override
+  String get memoryPending => '待确认的记忆';
+
+  @override
+  String get memoryReview => '预览并确认记忆';
+
+  @override
+  String get memoryReviewIntro =>
+      '核对 AI 提交的内容；可编辑、选择生效范围。只有勾选并点击保存的条目才会写入。预览和保存不再请求模型。';
+
+  @override
+  String get memorySaveSelected => '保存所选记忆';
+
+  @override
+  String get memorySaving => '正在保存记忆…';
+
+  @override
+  String memoryCandidate(int index) {
+    return '候选 $index';
+  }
+
+  @override
+  String get memorySaved => '记忆已保存';
+
+  @override
+  String get memoryDelete => '删除记忆';
+
+  @override
+  String get memoryClear => '清空记忆';
+
+  @override
+  String get memoryDeleteBody => '从本机删除这条记忆？已发给服务器或模型的内容仍会保留在旧对话中。';
+
+  @override
+  String get memoryClearBody => '删除本机全部全局和项目记忆？无法撤销，也不会删除服务器中的旧对话。';
+
+  @override
+  String get memoryStorageFailed => '记忆存储无法读取或写入，修改未保存。请重试，现有数据没有被替换。';
+
+  @override
+  String get memoryInvalid => '记忆数据无法读取，或提取结果格式无效。未保存任何内容，请重试或手动添加。';
+
+  @override
+  String get memoryLimit =>
+      '记忆过长或上下文已满：每条 1 KB、最多 100 条，每个适用集合含格式约 7 KB。请精简或删除，不会静默丢弃记忆。';
+
+  @override
+  String get memoryDuplicate => '该范围内已存在相同记忆，请编辑原有条目。';
+
+  @override
+  String get memoryChanged => '记忆、对话或服务器已变化，请重新打开此页后继续。';
+
+  @override
+  String get memorySyncUnsupported =>
+      '当前服务器无法同步记忆，消息尚未发送，也未改写成普通提示词。请更新服务器或管理记忆后再试。';
+
+  @override
+  String get memoryDiscard => '放弃未保存的记忆修改？';
+
   @override
   String get statsHeatmap => '活动热力图';
 
@@ -34149,7 +34423,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get statsNotRecorded => '未记录';
 
   @override
-  String statsSince(String date) => '自 ${date} 开始记录';
+  String statsSince(String date) {
+    return '自 $date 开始记录';
+  }
 
   @override
   String get statsTokenUsage => 'Token 用量';
@@ -34179,10 +34455,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get statsMonthlyUsage => '每月用量';
 
   @override
-  String statsGroupedDays(int count) => '按 ${count} 个自然日汇总，避免大量读取';
+  String statsGroupedDays(int count) {
+    return '按 $count 个自然日汇总，避免大量读取';
+  }
 
   @override
-  String statsGroupedMonths(int count) => '按 ${count} 个自然月汇总';
+  String statsGroupedMonths(int count) {
+    return '按 $count 个自然月汇总';
+  }
 
   @override
   String get statsPeriodTotal => '本期总计';
@@ -34213,14 +34493,17 @@ class AppLocalizationsZh extends AppLocalizations {
   String get statsSummaryFailed => '活动总览读取失败，请下拉刷新重试。';
 
   @override
-  String statsRequests(int count) => '${count} 次模型请求';
+  String statsRequests(int count) {
+    return '$count 次模型请求';
+  }
 
   @override
   String get statsActivityDetails => '查看每日活动';
 
   @override
-  String statsLoadingBuckets(int done, int total) =>
-      '正在读取用量 · ${done}/${total}';
+  String statsLoadingBuckets(int done, int total) {
+    return '正在读取用量 · $done/$total';
+  }
 
   @override
   String get statsTrendUnavailable => '每日 Token 数据暂不可用，上方本期总计仍为服务器上报的用量。';
@@ -34232,342 +34515,207 @@ class AppLocalizationsZh extends AppLocalizations {
   String get statsTrendDetails => '选择日期并查看精确用量';
 
   @override
-  String statsExactTokens(String count) => '${count} Token';
+  String statsExactTokens(String count) {
+    return '$count Token';
+  }
 
   @override
   String get statsChartHint => '点柱子查看对应期间，或通过日期列表查看精确值；未记录期间以短横线标记。';
 
   @override
-  String get memoryTitle => '记忆';
-  @override
-  String get memoryIntro =>
-      '跨会话保留偏好和项目约定。内容加密保存在本机；发送消息时，适用记忆会发给当前 OpenCode 服务器和模型。不后台提取，不自动保存。';
-  @override
-  String get memoryHistoryNotice =>
-      '关闭或删除后，本应用不再用于后续发送；无法抹除已进入旧对话的内容。其他客户端、定时任务和外部智能体不会同步这个本机记忆库。';
-  @override
-  String get memoryUse => '使用已保存的记忆';
-  @override
-  String get memoryEntryUse => '使用这条记忆';
-  @override
-  String get memoryAdd => '添加记忆';
-  @override
-  String get memoryEdit => '编辑记忆';
-  @override
-  String get memorySaveMessage => '存为记忆';
-  @override
-  String get memoryText => '需要记住什么？';
-  @override
-  String get memoryHint => '例如：优先用中文简洁回答。';
-  @override
-  String get memoryGlobal => '全局';
-  @override
-  String get memoryProject => '当前项目';
-  @override
-  String get memoryAll => '全部';
-  @override
-  String get memoryScope => '生效范围';
-  @override
-  String get memoryProjectUnknown => '暂时无法确认当前项目。仍可使用全局记忆；连接后重新打开此页以选择项目。';
-  @override
-  String get memoryEmpty => '还没有记忆';
-  @override
-  String get memoryEmptyDetail => '手动添加，或在对话里让 AI 总结记忆，再预览确认保存。';
-  @override
-  String get memorySearch => '搜索记忆';
-  @override
-  String get memoryManual => '手动添加';
-  @override
-  String get memoryExtracted => 'AI 总结后确认';
-  @override
-  String memoryCount(int count, int active) => '已保存 $count 条 · 适用 $active 条';
-  @override
-  String get memorySummarize => '总结本会话记忆';
-  @override
-  String get memorySummaryIntro =>
-      '向当前会话发送一次总结请求，使用本会话现有上下文和当前模型，可能产生 Token 费用；不会另行导出聊天记录或切换模型。需要当前智能体具备 oc-ui 的 memory_write 工具。AI 只提交候选，你预览、勾选并保存后才写入记忆。';
-  @override
-  String get memorySummaryPrompt =>
-      '请总结本会话现有上下文中适合长期保留的记忆：仅包含我明确说过或确认的稳定事实、偏好和项目约定，不要保存推测、你的建议、临时任务、密码或密钥。使用我的语言，最多 8 条，每条不超过 1024 UTF-8 字节。调用 oc-ui 的 memory_write 工具提交候选，scope 选 global（通用偏好）或 project（本项目约定），不同范围分开调用。工具只提交待确认内容，不代表已保存，提交后结束本轮，等我在应用中预览勾选后保存。若没有合适内容或当前工具不可用，请明确说明，不要声称已记住，也不要改写 AGENTS.md 或其他文件来代替记忆。';
-  @override
-  String get memoryToolHint =>
-      '也可以在对话里说“总结本会话并存为记忆”。AI 通过 memory_write 提交候选，你确认后保存到这里；不会自动提取或自动写入。';
-  @override
-  String get memoryPending => '待确认的记忆';
-  @override
-  String get memoryReview => '预览并确认记忆';
-  @override
-  String get memoryReviewIntro =>
-      '核对 AI 提交的内容；可编辑、选择生效范围。只有勾选并点击保存的条目才会写入。预览和保存不再请求模型。';
-  @override
-  String get memorySaveSelected => '保存所选记忆';
-  @override
-  String get memorySaving => '正在保存记忆…';
-  @override
-  String memoryCandidate(int index) => '候选 $index';
-  @override
-  String get memorySaved => '记忆已保存';
-  @override
-  String get memoryDelete => '删除记忆';
-  @override
-  String get memoryClear => '清空记忆';
-  @override
-  String get memoryDeleteBody => '从本机删除这条记忆？已发给服务器或模型的内容仍会保留在旧对话中。';
-  @override
-  String get memoryClearBody => '删除本机全部全局和项目记忆？无法撤销，也不会删除服务器中的旧对话。';
-  @override
-  String get memoryStorageFailed => '记忆存储无法读取或写入，修改未保存。请重试，现有数据没有被替换。';
-  @override
-  String get memoryInvalid => '记忆数据无法读取，或提取结果格式无效。未保存任何内容，请重试或手动添加。';
-  @override
-  String get memoryLimit =>
-      '记忆过长或上下文已满：每条 1 KB、最多 100 条，每个适用集合含格式约 7 KB。请精简或删除，不会静默丢弃记忆。';
-  @override
-  String get memoryDuplicate => '该范围内已存在相同记忆，请编辑原有条目。';
-  @override
-  String get memoryChanged => '记忆、对话或服务器已变化，请重新打开此页后继续。';
-  @override
-  String get memorySyncUnsupported =>
-      '当前服务器无法同步记忆，消息尚未发送，也未改写成普通提示词。请更新服务器或管理记忆后再试。';
-  @override
-  String get memoryDiscard => '放弃未保存的记忆修改？';
-  @override
-  String chatStatsCacheRate(String rate) => '缓存命中 $rate';
-  @override
-  String get chatStatsCacheRateLabel => '缓存命中率';
-  @override
-  String get sessionElapsedTitle => '耗时统计';
-  @override
-  String get insightsTitle => 'AI 任务与使用统计';
-  @override
-  String get insightsTask => '用户任务';
-  @override
-  String get insightsSubagent => '子代理';
-  @override
-  String get insightsCalls => '模型请求步骤';
-  @override
-  String get insightsMessages => '消息轮次';
-  @override
-  String get insightsPending => '关联待确认';
-  @override
-  String get insightsPendingExplanation =>
-      '无法确认实际执行任务。此项已保留，暂不计入用户任务数，不按消息时间擅自归类。';
-  @override
-  String get insightsExplanation =>
-      '用户任务、消息轮次、模型请求分别计数。子代理结果不直接决定主任务结果。历史仅展示实际记录的事件。';
-  @override
-  String get insightsQueue => '排队中';
-  @override
-  String get insightsLive => '运行中';
-  @override
-  String get insightsSuccess => '成功';
-  @override
-  String get insightsFailed => '失败';
-  @override
-  String get insightsCancelled => '取消／中断';
-  @override
-  String get insightsState => '执行状态';
-  @override
-  String get insightsDetails => '任务详情';
-  @override
-  String get insightsModels => '模型使用统计';
-  @override
-  String get insightsSuccessRate => '成功率（已结束步骤）';
-  @override
-  String get insightsMissingUsage => 'Token 用量未知的步骤';
-  @override
-  String get insightsError => '已报告错误';
-  @override
-  String get insightsRetries => '已安排的重试';
-  @override
-  String get insightsRateLimit => '供应商拒绝 · HTTP 429';
-  @override
-  String get insightsPartial => '当前历史不完整。缺失事件不会被补成成功或零用量。';
-  @override
-  String get insightsPrevious => '更早';
-  @override
-  String get insightsNext => '更晚';
-  @override
-  String get insightsNow => '回到现在';
-  @override
-  String get insightsAll => '全部';
-  @override
-  String get insightsWaitingToken => '速度待数据回传';
-  @override
-  String get insightsUnavailable => '采集插件未加载或已断连。已有记录仍保留；请在当前任务结束后重启内置服务器加载插件。';
-  @override
-  String get insightsInstall => '安装搜索设置与任务采集插件';
-  @override
-  String get insightsReload => '已安装，尚未生效。请在当前任务结束后重启内置服务器。';
-  @override
-  String get insightsSearchTitle => '搜索供应商';
-  @override
-  String get insightsSearchDisclosure =>
-      '配置的是当前 OpenCode 服务器，不只是本条会话。密钥由服务器的集成凭据库安全保存。供应商出现在列表中不代表已经授权；固定选择后不会静默切换供应商。';
-  @override
-  String get insightsAuthorized => '已连接凭据';
-  @override
-  String get insightsNotAuthorized => '尚未授权 · 点击连接';
-  @override
-  String get insightsSelected => '已选择';
-  @override
-  String get insightsSearchOff => '关闭 AI 网页搜索';
-  @override
-  String get insightsSearchTest => '测试所选搜索供应商';
-  @override
-  String get insightsSearchTestOK => '所选供应商已返回真实网页来源。';
-  @override
-  String get sessionElapsedEmpty => '还没有已记录的时间';
-  @override
-  String get sessionElapsedExplanation => '只显示服务端记录的时间；阶段可能重叠，未记录的时间不会估算。';
-  @override
-  String get sessionElapsedTimeline => '逐条回答';
-  @override
-  String sessionElapsedTurn(int index) => '第 $index 条回答';
-  @override
-  String sessionElapsedRecorded(String seconds) => '已记录阶段 $seconds';
-  @override
-  String get sessionElapsedWait => '模型等待';
-  @override
-  String get sessionElapsedThinking => '思考';
-  @override
-  String get sessionElapsedOutput => '输出';
-  @override
-  String get sessionElapsedUnknown => '未分类生成（含未单独记录的工具参数）';
-  @override
-  String get sessionElapsedTool => '工具执行';
-  @override
-  String sessionElapsedSteps(int steps, String duration) =>
-      '$steps 次模型请求 · 记录 $duration';
-  @override
-  String get requestTimeline => '请求时间线';
-  @override
-  String get requestTimelineIntro =>
-      '会话内使用已记录的模型步骤时间；本机用量标出服务器已确认的消息发送时间，不冒充供应商逐次请求的耗时。未报告具体 API 密钥，不推测密钥泳道。';
-  @override
-  String get requestTimelineEmpty => '该时间窗内没有已记录的请求';
-  @override
-  String requestTimelineNote(int count) => '$count 条带时间戳的请求';
-  @override
-  String get requestTimelineUnknownModel => '模型未报告';
-  @override
-  String get requestTimelineWindow => '时间范围';
-  @override
-  String get requestTimeline15m => '15 分钟';
-  @override
-  String get requestTimeline1h => '1 小时';
-  @override
-  String get requestTimeline6h => '6 小时';
-  @override
-  String requestTimelineCount(int count) => '该时间窗内 $count 条请求';
-  @override
-  String get chatStatsTitle => '回答统计';
-  @override
-  String chatStatsSeconds(String seconds) => '$seconds 秒';
-  @override
-  String chatStatsDuration(String duration) => '耗时 $duration';
-  @override
-  String chatStatsSteps(int count) => '$count 步';
-  @override
-  String chatStatsSpeed(String speed) => '$speed tok/s';
-  @override
-  String chatStatsContext(String count) => '$count 上下文';
-  @override
-  String chatStatsCached(String count) => '（已缓存 $count）';
+  String chatStatsSeconds(String seconds) {
+    return '$seconds 秒';
+  }
+
+  @override
+  String chatStatsDuration(String duration) {
+    return '耗时 $duration';
+  }
+
+  @override
+  String chatStatsSteps(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count 步',
+      one: '1 步',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String chatStatsSpeed(String speed) {
+    return '$speed tok/s';
+  }
+
+  @override
+  String chatStatsContext(String count) {
+    return '$count 上下文';
+  }
+
+  @override
+  String chatStatsCached(String count) {
+    return '（已缓存 $count）';
+  }
+
   @override
   String get chatStatsDurationLabel => '回答耗时';
+
   @override
   String get chatStatsStepsLabel => '模型调用步数';
+
   @override
   String get chatStatsToolsLabel => '实际执行的工具调用';
+
   @override
   String get chatStatsSpeedLabel => '生成速度';
+
   @override
   String get chatStatsContextLabel => '最后一次请求的上下文';
+
   @override
   String get chatStatsCachedLabel => '最后一次请求的缓存命中';
+
   @override
   String get chatStatsInputLabel => '累计输入 Token（已上报）';
+
   @override
   String get chatStatsOutputLabel => '累计输出 Token（已上报）';
+
   @override
   String get chatStatsReasoningLabel => '累计思考 Token（已上报）';
+
   @override
   String get chatStatsCostLabel => '已上报费用';
+
   @override
   String get chatStatsNotReported => '服务器未提供';
+
   @override
   String get chatStatsExplanation =>
       '回答耗时包含工具执行。生成速度按输出及思考 Token 与实际流式生成时间计算，不含工具执行和步骤之间的等待。上下文取最后一次模型请求；累计用量汇总各步已上报的数据。缺失的统计不会估算。';
+
   @override
-  String chatProcessThinkingFor(String duration) => '正在思考 · $duration';
+  String chatProcessThinkingFor(String duration) {
+    return '正在思考 · $duration';
+  }
+
   @override
-  String chatProcessThoughtFor(String duration) => '思考了 $duration';
+  String chatProcessThoughtFor(String duration) {
+    return '思考了 $duration';
+  }
+
   @override
   String get providerKeySwitch => '切换密钥';
+
   @override
   String get providerKeyLoading => '正在读取已保存的密钥…';
+
   @override
   String get providerKeySwitching => '正在切换供应商密钥…';
+
   @override
   String get providerKeyConfigureFirst => '请先在此供应商的配置中添加命名密钥。';
+
   @override
-  String providerKeyProviderScope(String provider) => '$provider · 对其全部模型生效';
+  String providerKeyProviderScope(String provider) {
+    return '$provider · 对其全部模型生效';
+  }
+
   @override
-  String providerKeySwitched(String name) => '此供应商的模型已切换为密钥“$name”';
+  String providerKeySwitched(String name) {
+    return '此供应商的模型已切换为密钥“$name”';
+  }
+
   @override
   String get providerKeyMissing => '所选密钥文件不存在或为空，当前密钥未改变。';
+
   @override
   String get providerKeySelectionChanged => '菜单打开期间供应商密钥发生了变化，请重新打开菜单选择。';
+
   @override
   String get providerKeySwitchFailed => '切换密钥失败。请重新打开菜单检查已保存的选择；不会自动改用其他密钥。';
+
   @override
   String get providerKeyAdd => '添加密钥';
+
   @override
   String get providerKeyRename => '重命名密钥';
+
   @override
   String get providerKeyUse => '使用此密钥';
+
   @override
   String get providerKeyName => '密钥名称';
+
   @override
   String get providerKeyNameHint => '个人、工作、备用……';
+
   @override
   String get providerKeyDefaultName => '默认';
+
   @override
   String get providerKeyNameRequired => '请为密钥填写名称。';
+
   @override
   String get providerKeyNameExists => '请为每个密钥使用不同的名称。';
+
   @override
   String get providerKeySecret => 'API 密钥';
+
   @override
   String get providerKeySecretHint => '保存在服务端私有文件中，不会保存到应用偏好设置。';
+
   @override
   String get providerKeySecretRequired => '请输入 API 密钥。';
+
   @override
   String get providerKeyCurrent => '当前使用中';
+
   @override
   String get providerKeyAvailable => '已保存的密钥';
+
   @override
-  String providerKeyActions(String name) => '密钥“$name”的操作';
+  String providerKeyActions(String name) {
+    return '密钥“$name”的操作';
+  }
+
   @override
-  String providerKeyAdded(String name) => '已添加并选中密钥“$name”';
+  String providerKeyAdded(String name) {
+    return '已添加并选中密钥“$name”';
+  }
+
   @override
-  String providerKeyRenamed(String name) => '密钥已重命名为“$name”';
+  String providerKeyRenamed(String name) {
+    return '密钥已重命名为“$name”';
+  }
+
   @override
-  String providerKeyDeleted(String name) => '已从列表移除密钥“$name”';
+  String providerKeyDeleted(String name) {
+    return '已从列表移除密钥“$name”';
+  }
+
   @override
-  String providerKeyDeleteTitle(String name) => '移除密钥“$name”？';
+  String providerKeyDeleteTitle(String name) {
+    return '移除密钥“$name”？';
+  }
+
   @override
   String get providerKeyDeleteBody =>
       '移除此密钥。应用管理且未被其他已配置供应商引用的文件会被删除；外部或共享文件会保留。';
+
   @override
   String get providerKeyFileRetained => '已从列表移除；外部、共享或无法删除的密钥文件已保留。';
+
   @override
   String get providerKeyReloadNeeded => '配置已保存，但重载尚未完成；请在当前任务结束后重启内置服务器。';
+
   @override
   String get providerActions => '操作';
+
   @override
   String get providerKeyCannotDeleteLast => '请至少为此供应商保留一个命名密钥。';
+
   @override
   String get providerKeyCannotDeleteActive => '请先切换到其他密钥，再移除当前密钥。';
 
@@ -34972,14 +35120,23 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get providerManageSetup => '去配置';
+
   @override
   String get providerHide => '从此列表隐藏';
+
   @override
-  String providerHiddenDone(String name) => '已隐藏“$name”';
+  String providerHiddenDone(String name) {
+    return '已隐藏“$name”';
+  }
+
   @override
-  String providerShowHidden(int count) => '显示 $count 个已隐藏的供应商';
+  String providerShowHidden(int count) {
+    return '显示 $count 个已隐藏的供应商';
+  }
+
   @override
   String get providerShowHiddenHint => '隐藏只影响此列表，不会改动服务器配置。';
+
   @override
   String get providerShowHiddenDone => '已重新显示隐藏的供应商';
 
@@ -35244,4 +35401,89 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get appLogBrowseKeys => '服务器密钥、API key 和登录令牌';
+
+  @override
+  String chatStatsCacheRate(String rate) {
+    return '缓存命中 $rate';
+  }
+
+  @override
+  String get chatStatsCacheRateLabel => '缓存命中率';
+
+  @override
+  String get sessionElapsedTitle => '耗时统计';
+
+  @override
+  String get sessionElapsedEmpty => '还没有已记录的时间';
+
+  @override
+  String get sessionElapsedExplanation => '只显示服务端记录的时间；阶段可能重叠，未记录的时间不会估算。';
+
+  @override
+  String get sessionElapsedTimeline => '逐条回答';
+
+  @override
+  String sessionElapsedTurn(int index) {
+    return '第 $index 条回答';
+  }
+
+  @override
+  String sessionElapsedRecorded(String seconds) {
+    return '已记录阶段 $seconds';
+  }
+
+  @override
+  String get sessionElapsedWait => '模型等待';
+
+  @override
+  String get sessionElapsedThinking => '思考';
+
+  @override
+  String get sessionElapsedOutput => '输出';
+
+  @override
+  String get sessionElapsedUnknown => '未分类生成（含未单独记录的工具参数）';
+
+  @override
+  String get sessionElapsedTool => '工具执行';
+
+  @override
+  String sessionElapsedSteps(int steps, String duration) {
+    return '$steps 次模型请求 · 记录 $duration';
+  }
+
+  @override
+  String get requestTimeline => '请求时间线';
+
+  @override
+  String get requestTimelineIntro =>
+      '会话内使用已记录的模型步骤时间；本机用量标出服务器已确认的消息发送时间，不冒充供应商逐次请求的耗时。未报告具体 API 密钥，不推测密钥泳道。';
+
+  @override
+  String get requestTimelineEmpty => '该时间窗内没有已记录的请求';
+
+  @override
+  String requestTimelineNote(int count) {
+    return '$count 条带时间戳的请求';
+  }
+
+  @override
+  String get requestTimelineUnknownModel => '模型未报告';
+
+  @override
+  String get requestTimelineWindow => '时间范围';
+
+  @override
+  String get requestTimeline15m => '15 分钟';
+
+  @override
+  String get requestTimeline1h => '1 小时';
+
+  @override
+  String get requestTimeline6h => '6 小时';
+
+  @override
+  String requestTimelineCount(int count) {
+    return '该时间窗内 $count 条请求';
+  }
 }

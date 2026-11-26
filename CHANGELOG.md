@@ -2,6 +2,61 @@
 
 This project is in public alpha. Only the newest preview is supported.
 
+## 0.3.31+39 — 2026-11-26
+
+  * **Three message channels, one engine.** Settings → Conversations → Message
+    channels lists Telegram, an official QQ bot and a personal QQ account, each
+    on its own page: state, a real connection test, removal, and a table of what
+    the platform will refuse before it refuses it. All three share the
+    allowlists, the "one conversation per chat" rule and the delivery ledger, so
+    what is true of one channel is true of the others.
+  * **Official QQ bot** (Tencent Open Platform, v2 API). AppID and client
+    secret; a gateway WebSocket with heartbeat, seq and resume; passive replies
+    that respect the platform's 5-minute, five-reply window — the fifth slot is
+    held for the final answer, so a progress note cannot spend it. Private
+    chat, group and channel messages arrive as ordinary prompts. A permission
+    the console never granted is reported in words instead of being retried.
+  * **Personal QQ account through an implementation you run yourself** —
+    LLBot, NapCat or SnowLuma, all over OneBot 11. The access token travels in
+    the Authorization header and never in the URL, a self_id mismatch
+    disconnects rather than guesses, and every segment array is checked for
+    status and retcode. None of the three is bundled with this app, and hosting
+    any of them under Android/PRoot is not supported.
+  * **Delivery is recorded, not hoped for.** Each outbound message is planned,
+    sending, delivered, deferred, failed or unknown, with bounded retries. A
+    retry never re-runs the agent, and a message whose fate is unknown is
+    labelled unknown instead of being sent a second time.
+  * **The privacy policy now names the QQ routes.** It says what stays on the
+    phone (credentials in secure storage, allowlists and delivery records in
+    preferences), what leaves it (the words you send and the agent's answers),
+    who receives them (Telegram, Tencent, or the LLBot you run), and that
+    deleting a configuration removes local records only.
+  * **NapCat and SnowLuma are offered next to LLBot.** All three speak OneBot
+    11, so the page asks which one you run and then names the right ports: 3001
+    for a forward socket, 6099 for NapCat's console, 5099 for SnowLuma's. The
+    choice is stored, and a configuration written before it existed reads as
+    LLBot forward.
+  * **The bot can dial the phone.** Reverse WebSocket: this app listens on
+    8082 and the protocol implementation connects in, which is the direction
+    that works when the PC has no inbound port. The listener refuses to start
+    without an access token, compares it in constant time, accepts the bearer
+    header or `access_token` query parameter, and keeps listening after a peer
+    drops instead of tearing the port down.
+  * **Groups are chosen, not typed.** "Choose from the bot's groups" calls
+    `get_group_list` and writes the selection into the allowlist; a failure is
+    reported in words rather than shown as an empty list.
+  * **What was learned from them is written down**, including where the sources
+    live now that both official repositories are gone:
+    `docs/CHANNELS_PRIOR_ART.md`. Nothing from NapCat, SnowLuma or AstrBot is
+    bundled; their licences are recorded in the third-party notices.
+  * **Telegram moved onto the same engine without changing behaviour**: same
+    preferences, same allowlist, same `/status`, `/stop` and `/new`, and the
+    nine existing relay tests pass untouched.
+  * **Covered by tests.** 109 channel tests — the engine, policy, inbox and
+    outbox, all three providers against local mock servers, the reverse socket
+    with its token refusals and reconnects, and the settings pages driven in
+    both languages.
+
 ## 0.3.29+37 — 2026-11-24
 
   * **Import: the other half of the backup.** Settings → This app → Backup and

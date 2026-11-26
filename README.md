@@ -26,6 +26,15 @@ of losing its servers and its Ubuntu.
   instructions from one allowlisted private account and receive agent replies
   plus brief progress notices. The bot token stays in Android secure storage.
   See [docs/TELEGRAM_BOT.md](docs/TELEGRAM_BOT.md) for setup and limits.
+- **Three message channels on one engine**: Telegram, an official QQ bot from
+  the Tencent Open Platform, and a personal QQ account through LLBot, NapCat or
+  SnowLuma — a OneBot 11 implementation you run yourself, connected in either
+  direction. Same commands, same allowlists, same session isolation, same
+  delivery rules; each channel keeps its own configuration, capabilities and
+  limits. See [docs/CHANNELS.md](docs/CHANNELS.md),
+  [docs/QQ_CHANNELS.md](docs/QQ_CHANNELS.md),
+  [docs/CHANNELS_LIMITATIONS.md](docs/CHANNELS_LIMITATIONS.md) and
+  [docs/CHANNELS_PRIOR_ART.md](docs/CHANNELS_PRIOR_ART.md).
 - **Backup and restore**: one zip with the settings, the credentials and the
   conversations of the last 7, 30 or 90 days — or all of them — because
   "Clear storage" and a reinstall take all three at once, and the way back in.
@@ -276,6 +285,12 @@ iOS 与桌面工程、多语言（仅中英）、Shorebird 热更新、文档站
 想详细了解仓库，读 [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md)：
 逐目录职责、Kotlin 169 个文件的分组、Rust 引擎模块与测试、依赖与测试清单、
 常见改动步骤和故障排查表。
+
+消息渠道在「设置 → 对话 → 消息渠道」统一管理：Telegram、QQ 官方机器人、
+QQ 普通账号（LLBot + OneBot 11）共用同一套指令、白名单、会话隔离与投递规则，
+各自保留独立配置、能力声明和平台限制。详见
+[docs/CHANNELS.md](docs/CHANNELS.md)、[docs/QQ_CHANNELS.md](docs/QQ_CHANNELS.md)
+与 [docs/CHANNELS_LIMITATIONS.md](docs/CHANNELS_LIMITATIONS.md)。
 
 可选 Telegram 机器人在「设置 → 对话 → Telegram 机器人」配置：使用
 @BotFather 创建 bot，并填写自己的 Telegram 数字用户 ID。机器人只处理该 ID

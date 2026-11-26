@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -8,6 +7,127 @@ import 'app_localizations.dart';
 /// The translations for English (`en`).
 class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
+
+  @override
+  String get insightsTitle => 'AI tasks and usage';
+
+  @override
+  String get insightsTask => 'User tasks';
+
+  @override
+  String get insightsSubagent => 'Subagents';
+
+  @override
+  String get insightsCalls => 'Model steps';
+
+  @override
+  String get insightsMessages => 'Message turns';
+
+  @override
+  String get insightsPending => 'Association pending';
+
+  @override
+  String get insightsPendingExplanation =>
+      'The executing task could not be identified. This item is retained without being counted as a user task.';
+
+  @override
+  String get insightsExplanation =>
+      'Tasks, message turns and model requests are counted separately. Subagent outcomes do not determine the parent outcome. History contains recorded events only.';
+
+  @override
+  String get insightsQueue => 'Queued';
+
+  @override
+  String get insightsLive => 'Running';
+
+  @override
+  String get insightsSuccess => 'Succeeded';
+
+  @override
+  String get insightsFailed => 'Failed';
+
+  @override
+  String get insightsCancelled => 'Cancelled / interrupted';
+
+  @override
+  String get insightsState => 'Execution state';
+
+  @override
+  String get insightsDetails => 'Task details';
+
+  @override
+  String get insightsModels => 'Model usage';
+
+  @override
+  String get insightsSuccessRate => 'Success rate (settled steps)';
+
+  @override
+  String get insightsMissingUsage => 'Steps with unknown token usage';
+
+  @override
+  String get insightsError => 'Reported error';
+
+  @override
+  String get insightsRetries => 'Scheduled retries';
+
+  @override
+  String get insightsRateLimit => 'Provider refusal · HTTP 429';
+
+  @override
+  String get insightsPartial =>
+      'This is partial history. Missing events are not reconstructed as success or zero usage.';
+
+  @override
+  String get insightsPrevious => 'Earlier';
+
+  @override
+  String get insightsNext => 'Later';
+
+  @override
+  String get insightsNow => 'Now';
+
+  @override
+  String get insightsAll => 'All';
+
+  @override
+  String get insightsWaitingToken => 'Speed not yet reported';
+
+  @override
+  String get insightsUnavailable =>
+      'The recording plugin is unavailable or disconnected. Existing records are retained; restart the managed server after its current task ends to load the plugin.';
+
+  @override
+  String get insightsInstall => 'Install search and task recording';
+
+  @override
+  String get insightsReload =>
+      'Installed, not yet active. Restart the in-app server after the current task ends.';
+
+  @override
+  String get insightsSearchTitle => 'Search provider';
+
+  @override
+  String get insightsSearchDisclosure =>
+      'Configure the connected OpenCode server, not only this conversation. Credentials use the server\'s secure integration store. A listed provider is not proof of authorization. A fixed selection never switches providers silently.';
+
+  @override
+  String get insightsAuthorized => 'Credential connected';
+
+  @override
+  String get insightsNotAuthorized => 'Not authorized · tap to connect';
+
+  @override
+  String get insightsSelected => 'Selected';
+
+  @override
+  String get insightsSearchOff => 'Disable AI web search';
+
+  @override
+  String get insightsSearchTest => 'Test the selected search provider';
+
+  @override
+  String get insightsSearchTestOK =>
+      'The selected provider returned real web sources.';
 
   @override
   String get servicesTitle => 'Development services';
@@ -4074,7 +4194,8 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           'This deletes $count unsent prompts and their attachments, for every server. They will never be sent. Nothing on the server is affected.',
-      one: 'This deletes the unsent prompt and its attachments, for every server. It will never be sent. Nothing on the server is affected.',
+      one:
+          'This deletes the unsent prompt and its attachments, for every server. It will never be sent. Nothing on the server is affected.',
     );
     return '$_temp0';
   }
@@ -4097,7 +4218,8 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           'This deletes the composer text saved for $count conversations. Nothing on the server is affected.',
-      one: 'This deletes the composer text saved for 1 conversation. Nothing on the server is affected.',
+      one:
+          'This deletes the composer text saved for 1 conversation. Nothing on the server is affected.',
     );
     return '$_temp0';
   }
@@ -5585,7 +5707,8 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           '$count references are added as text when you send. Not saved with your draft.',
-      one: '1 reference is added as text when you send. Not saved with your draft.',
+      one:
+          '1 reference is added as text when you send. Not saved with your draft.',
     );
     return '$_temp0';
   }
@@ -14348,7 +14471,8 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           '$count messages waiting to send stay on this phone until you connect again.',
-      one: '1 message waiting to send stays on this phone until you connect again.',
+      one:
+          '1 message waiting to send stays on this phone until you connect again.',
     );
     return '$_temp0';
   }
@@ -17130,7 +17254,8 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           'The $count errors kept on this phone are removed, also from the saved report. This can\'t be undone.',
-      one: 'The error kept on this phone is removed, also from the saved report. This can\'t be undone.',
+      one:
+          'The error kept on this phone is removed, also from the saved report. This can\'t be undone.',
     );
     return '$_temp0';
   }
@@ -19108,8 +19233,10 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           'This prompt and the $count messages after it are removed, and files go back to how they were before it. You can put them back until you send another prompt.',
-      one: 'This prompt and the message after it are removed, and files go back to how they were before it. You can put them back until you send another prompt.',
-      zero: 'This prompt is removed, and files go back to how they were before it. You can put it back until you send another prompt.',
+      one:
+          'This prompt and the message after it are removed, and files go back to how they were before it. You can put them back until you send another prompt.',
+      zero:
+          'This prompt is removed, and files go back to how they were before it. You can put it back until you send another prompt.',
     );
     return '$_temp0';
   }
@@ -19138,8 +19265,10 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           'This prompt and the $count messages after it are hidden. Nothing is final until you choose below.',
-      one: 'This prompt and the message after it are hidden. Nothing is final until you choose below.',
-      zero: 'This prompt is hidden; nothing came after it. Nothing is final until you choose below.',
+      one:
+          'This prompt and the message after it are hidden. Nothing is final until you choose below.',
+      zero:
+          'This prompt is hidden; nothing came after it. Nothing is final until you choose below.',
     );
     return '$_temp0';
   }
@@ -19415,11 +19544,16 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get modelEffortCustomHint =>
       'This extra level will be saved to the server. Your provider may not support it.';
+
   @override
-  String modelEffortUnavailable(String level) => '$level · unavailable';
+  String modelEffortUnavailable(String level) {
+    return '$level · unavailable';
+  }
+
   @override
   String get modelEffortSaveFailed =>
       'Could not save the reasoning level. Your selection has not changed.';
+
   @override
   String get modelEffortSavedNotLoaded =>
       'Saved, but the server has not loaded this reasoning level. Refresh models or restart the built-in server after its current work finishes.';
@@ -22632,7 +22766,8 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           'The reload waits for $count running replies to finish, because reloading would stop them.',
-      one: 'The reload waits for 1 running reply to finish, because reloading would stop it.',
+      one:
+          'The reload waits for 1 running reply to finish, because reloading would stop it.',
     );
     return '$_temp0';
   }
@@ -26568,7 +26703,8 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           'Turning this off deletes the saved crash reports and clears the $count saved errors above.',
-      one: 'Turning this off deletes the saved crash reports and clears the saved error above.',
+      one:
+          'Turning this off deletes the saved crash reports and clears the saved error above.',
     );
     return '$_temp0';
   }
@@ -26591,7 +26727,8 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           'Deletes the crash reports and clears the $count saved errors above. Saving crash reports stays on.',
-      one: 'Deletes the crash reports and clears the saved error above. Saving crash reports stays on.',
+      one:
+          'Deletes the crash reports and clears the saved error above. Saving crash reports stays on.',
     );
     return '$_temp0';
   }
@@ -30118,6 +30255,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsV3VoiceTyping => 'Voice typing';
 
   @override
+  String get channelsSettingsTitle => 'Message channels';
+
+  @override
+  String get channelsSettingsKeywords =>
+      'channels messaging Telegram QQ official bot OneBot LLBot personal account remote agent';
+
+  @override
   String get telegramBotSettingsTitle => 'Telegram bot';
 
   @override
@@ -33111,7 +33255,8 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           '$count Git files aren\'t on this phone any more. Clone the project again from where it\'s hosted, or restore a copy.',
-      one: '1 Git file isn\'t on this phone any more. Clone the project again from where it\'s hosted, or restore a copy.',
+      one:
+          '1 Git file isn\'t on this phone any more. Clone the project again from where it\'s hosted, or restore a copy.',
     );
     return '$_temp0';
   }
@@ -35898,7 +36043,8 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String runningPhoneAbout(String kind) {
     String _temp0 = intl.Intl.selectLogic(kind, {
-      'leftBehind': 'Left running after its Linux ended. Nothing is waiting on it, so stopping it is safe.',
+      'leftBehind':
+          'Left running after its Linux ended. Nothing is waiting on it, so stopping it is safe.',
       'openCode': 'Part of the OpenCode server on this phone.',
       'claudeCode': 'Part of a Claude Code conversation.',
       'agentHelper': 'Runs Claude Code and other agents on this phone.',
@@ -36113,9 +36259,163 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get providerKeysTitle => 'Named API keys';
+
   @override
   String get providerKeysHint =>
       'Use the last selected key by default. A newly added key is selected automatically; keys are never rotated.';
+
+  @override
+  String get chatStatsTitle => 'Reply statistics';
+
+  @override
+  String get memoryTitle => 'Memory';
+
+  @override
+  String get memoryIntro =>
+      'Keep preferences and project conventions across conversations. Saved in encrypted storage on this device; applicable entries are sent to the current OpenCode server and model when you send a message. No background extraction or automatic saving.';
+
+  @override
+  String get memoryHistoryNotice =>
+      'Turning off or deleting memory stops future use from this app. It cannot erase content already sent to old conversations. Other clients, scheduled work and external agents do not synchronize this local vault.';
+
+  @override
+  String get memoryUse => 'Use saved memory';
+
+  @override
+  String get memoryEntryUse => 'Use this memory';
+
+  @override
+  String get memoryAdd => 'Add memory';
+
+  @override
+  String get memoryEdit => 'Edit memory';
+
+  @override
+  String get memorySaveMessage => 'Save to memory';
+
+  @override
+  String get memoryText => 'What should be remembered?';
+
+  @override
+  String get memoryHint => 'For example: Prefer concise replies in Chinese.';
+
+  @override
+  String get memoryGlobal => 'Global';
+
+  @override
+  String get memoryProject => 'This project';
+
+  @override
+  String get memoryAll => 'All';
+
+  @override
+  String get memoryScope => 'Use in';
+
+  @override
+  String get memoryProjectUnknown =>
+      'The current project could not be verified. Global memories still work; reopen this page after connecting to select a project.';
+
+  @override
+  String get memoryEmpty => 'No saved memories';
+
+  @override
+  String get memoryEmptyDetail =>
+      'Add a memory yourself, or ask AI in your conversation to summarize memories, then review and save.';
+
+  @override
+  String get memorySearch => 'Search memory';
+
+  @override
+  String get memoryManual => 'Added manually';
+
+  @override
+  String get memoryExtracted => 'AI summary, confirmed';
+
+  @override
+  String memoryCount(int count, int active) {
+    return '$count saved · $active applicable';
+  }
+
+  @override
+  String get memorySummarize => 'Summarize this chat into memory';
+
+  @override
+  String get memorySummaryIntro =>
+      'Send a summary request in this conversation using its existing context and current model. This may cost tokens; no separate transcript export or model switch occurs. The agent needs the oc-ui memory_write tool. AI only proposes entries; they are written after you review, select and save.';
+
+  @override
+  String get memorySummaryPrompt =>
+      'Summarize durable memories from this conversation\'s existing context: only stable facts, preferences and project conventions I explicitly stated or confirmed. Exclude speculation, your suggestions, temporary tasks, passwords and keys. Use my language, at most 8 entries of at most 1024 UTF-8 bytes each. Call the oc-ui memory_write tool to propose them, with scope global for general preferences or project for this project\'s conventions; use separate calls for different scopes. The tool only proposes, not saves. End your turn after submitting and let me review, select and save in the app. If nothing qualifies or the tool is unavailable, say so honestly. Never claim it was saved or write AGENTS.md or other files as a substitute.';
+
+  @override
+  String get memoryToolHint =>
+      'You can also ask in chat: summarize this conversation into memory. AI proposes entries through memory_write; you confirm before they appear here. No automatic extraction or writing.';
+
+  @override
+  String get memoryPending => 'Memories awaiting review';
+
+  @override
+  String get memoryReview => 'Review and confirm memories';
+
+  @override
+  String get memoryReviewIntro =>
+      'Check AI\'s proposals, edit them and choose their scope. Only selected entries are written when you tap Save. Reviewing and saving do not make another model request.';
+
+  @override
+  String get memorySaveSelected => 'Save selected memories';
+
+  @override
+  String get memorySaving => 'Saving memories…';
+
+  @override
+  String memoryCandidate(int index) {
+    return 'Candidate $index';
+  }
+
+  @override
+  String get memorySaved => 'Memory saved';
+
+  @override
+  String get memoryDelete => 'Delete memory';
+
+  @override
+  String get memoryClear => 'Delete all memories';
+
+  @override
+  String get memoryDeleteBody =>
+      'Remove this saved memory from this device? Content already sent to a server or model stays in its conversation history.';
+
+  @override
+  String get memoryClearBody =>
+      'Delete every global and project memory on this device? This cannot be undone and does not erase old server conversations.';
+
+  @override
+  String get memoryStorageFailed =>
+      'Memory storage could not be read or written. Your change was not saved. Retry; existing data has not been replaced.';
+
+  @override
+  String get memoryInvalid =>
+      'Memory data is unreadable or the suggestion format is invalid. Nothing was saved. Retry or add a memory manually.';
+
+  @override
+  String get memoryLimit =>
+      'Memory is too long or the context is full (1 KB per entry, 100 entries, about 7 KB per applicable set including formatting). Shorten or delete entries; none will be silently dropped.';
+
+  @override
+  String get memoryDuplicate =>
+      'This memory already exists in that scope. Edit the existing entry instead.';
+
+  @override
+  String get memoryChanged =>
+      'The memory, conversation or server changed. Reopen this page before continuing.';
+
+  @override
+  String get memorySyncUnsupported =>
+      'This server cannot synchronize memory. The message was not sent; no prompt text fallback was used. Update the server or manage memory before trying again.';
+
+  @override
+  String get memoryDiscard => 'Discard unsaved memory changes?';
+
   @override
   String get statsHeatmap => 'Activity heatmap';
 
@@ -36148,7 +36448,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get statsNotRecorded => 'Not recorded';
 
   @override
-  String statsSince(String date) => 'Counted since ${date}';
+  String statsSince(String date) {
+    return 'Counted since $date';
+  }
 
   @override
   String get statsTokenUsage => 'Token usage';
@@ -36178,11 +36480,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get statsMonthlyUsage => 'Monthly usage';
 
   @override
-  String statsGroupedDays(int count) =>
-      'Grouped by ${count} calendar days to keep reads bounded';
+  String statsGroupedDays(int count) {
+    return 'Grouped by $count calendar days to keep reads bounded';
+  }
 
   @override
-  String statsGroupedMonths(int count) => 'Grouped by ${count} calendar months';
+  String statsGroupedMonths(int count) {
+    return 'Grouped by $count calendar months';
+  }
 
   @override
   String get statsPeriodTotal => 'Period total';
@@ -36215,14 +36520,17 @@ class AppLocalizationsEn extends AppLocalizations {
       'Could not read the activity overview. Pull down to retry.';
 
   @override
-  String statsRequests(int count) => '${count} model requests';
+  String statsRequests(int count) {
+    return '$count model requests';
+  }
 
   @override
   String get statsActivityDetails => 'View daily activity';
 
   @override
-  String statsLoadingBuckets(int done, int total) =>
-      'Loading usage · ${done}/${total}';
+  String statsLoadingBuckets(int done, int total) {
+    return 'Loading usage · $done/$total';
+  }
 
   @override
   String get statsTrendUnavailable =>
@@ -36236,369 +36544,216 @@ class AppLocalizationsEn extends AppLocalizations {
   String get statsTrendDetails => 'Select a date and view exact tokens';
 
   @override
-  String statsExactTokens(String count) => '${count} tokens';
+  String statsExactTokens(String count) {
+    return '$count tokens';
+  }
 
   @override
   String get statsChartHint =>
       'Tap a bar for its period. Use the date list for exact values; unrecorded periods are marked with a dash.';
 
   @override
-  String get memoryTitle => 'Memory';
-  @override
-  String get memoryIntro =>
-      'Keep preferences and project conventions across conversations. Saved in encrypted storage on this device; applicable entries are sent to the current OpenCode server and model when you send a message. No background extraction or automatic saving.';
-  @override
-  String get memoryHistoryNotice =>
-      'Turning off or deleting memory stops future use from this app. It cannot erase content already sent to old conversations. Other clients, scheduled work and external agents do not synchronize this local vault.';
-  @override
-  String get memoryUse => 'Use saved memory';
-  @override
-  String get memoryEntryUse => 'Use this memory';
-  @override
-  String get memoryAdd => 'Add memory';
-  @override
-  String get memoryEdit => 'Edit memory';
-  @override
-  String get memorySaveMessage => 'Save to memory';
-  @override
-  String get memoryText => 'What should be remembered?';
-  @override
-  String get memoryHint => 'For example: Prefer concise replies in Chinese.';
-  @override
-  String get memoryGlobal => 'Global';
-  @override
-  String get memoryProject => 'This project';
-  @override
-  String get memoryAll => 'All';
-  @override
-  String get memoryScope => 'Use in';
-  @override
-  String get memoryProjectUnknown =>
-      'The current project could not be verified. Global memories still work; reopen this page after connecting to select a project.';
-  @override
-  String get memoryEmpty => 'No saved memories';
-  @override
-  String get memoryEmptyDetail =>
-      'Add a memory yourself, or ask AI in your conversation to summarize memories, then review and save.';
-  @override
-  String get memorySearch => 'Search memory';
-  @override
-  String get memoryManual => 'Added manually';
-  @override
-  String get memoryExtracted => 'AI summary, confirmed';
-  @override
-  String memoryCount(int count, int active) =>
-      '$count saved · $active applicable';
-  @override
-  String get memorySummarize => 'Summarize this chat into memory';
-  @override
-  String get memorySummaryIntro =>
-      'Send a summary request in this conversation using its existing context and current model. This may cost tokens; no separate transcript export or model switch occurs. The agent needs the oc-ui memory_write tool. AI only proposes entries; they are written after you review, select and save.';
-  @override
-  String get memorySummaryPrompt =>
-      'Summarize durable memories from this conversation\'s existing context: only stable facts, preferences and project conventions I explicitly stated or confirmed. Exclude speculation, your suggestions, temporary tasks, passwords and keys. Use my language, at most 8 entries of at most 1024 UTF-8 bytes each. Call the oc-ui memory_write tool to propose them, with scope global for general preferences or project for this project\'s conventions; use separate calls for different scopes. The tool only proposes, not saves. End your turn after submitting and let me review, select and save in the app. If nothing qualifies or the tool is unavailable, say so honestly. Never claim it was saved or write AGENTS.md or other files as a substitute.';
-  @override
-  String get memoryToolHint =>
-      'You can also ask in chat: summarize this conversation into memory. AI proposes entries through memory_write; you confirm before they appear here. No automatic extraction or writing.';
-  @override
-  String get memoryPending => 'Memories awaiting review';
-  @override
-  String get memoryReview => 'Review and confirm memories';
-  @override
-  String get memoryReviewIntro =>
-      'Check AI\'s proposals, edit them and choose their scope. Only selected entries are written when you tap Save. Reviewing and saving do not make another model request.';
-  @override
-  String get memorySaveSelected => 'Save selected memories';
-  @override
-  String get memorySaving => 'Saving memories…';
-  @override
-  String memoryCandidate(int index) => 'Candidate $index';
-  @override
-  String get memorySaved => 'Memory saved';
-  @override
-  String get memoryDelete => 'Delete memory';
-  @override
-  String get memoryClear => 'Delete all memories';
-  @override
-  String get memoryDeleteBody =>
-      'Remove this saved memory from this device? Content already sent to a server or model stays in its conversation history.';
-  @override
-  String get memoryClearBody =>
-      'Delete every global and project memory on this device? This cannot be undone and does not erase old server conversations.';
-  @override
-  String get memoryStorageFailed =>
-      'Memory storage could not be read or written. Your change was not saved. Retry; existing data has not been replaced.';
-  @override
-  String get memoryInvalid =>
-      'Memory data is unreadable or the suggestion format is invalid. Nothing was saved. Retry or add a memory manually.';
-  @override
-  String get memoryLimit =>
-      'Memory is too long or the context is full (1 KB per entry, 100 entries, about 7 KB per applicable set including formatting). Shorten or delete entries; none will be silently dropped.';
-  @override
-  String get memoryDuplicate =>
-      'This memory already exists in that scope. Edit the existing entry instead.';
-  @override
-  String get memoryChanged =>
-      'The memory, conversation or server changed. Reopen this page before continuing.';
-  @override
-  String get memorySyncUnsupported =>
-      'This server cannot synchronize memory. The message was not sent; no prompt text fallback was used. Update the server or manage memory before trying again.';
-  @override
-  String get memoryDiscard => 'Discard unsaved memory changes?';
-  @override
-  String chatStatsCacheRate(String rate) => '$rate cache hit';
-  @override
-  String get chatStatsCacheRateLabel => 'Cache hit rate';
-  @override
-  String get sessionElapsedTitle => 'Elapsed time';
-  @override
-  String get insightsTitle => 'AI tasks and usage';
-  @override
-  String get insightsTask => 'User tasks';
-  @override
-  String get insightsSubagent => 'Subagents';
-  @override
-  String get insightsCalls => 'Model steps';
-  @override
-  String get insightsMessages => 'Message turns';
-  @override
-  String get insightsPending => 'Association pending';
-  @override
-  String get insightsPendingExplanation =>
-      'The executing task could not be identified. This item is retained without being counted as a user task.';
-  @override
-  String get insightsExplanation =>
-      'Tasks, message turns and model requests are counted separately. Subagent outcomes do not determine the parent outcome. History contains recorded events only.';
-  @override
-  String get insightsQueue => 'Queued';
-  @override
-  String get insightsLive => 'Running';
-  @override
-  String get insightsSuccess => 'Succeeded';
-  @override
-  String get insightsFailed => 'Failed';
-  @override
-  String get insightsCancelled => 'Cancelled / interrupted';
-  @override
-  String get insightsState => 'Execution state';
-  @override
-  String get insightsDetails => 'Task details';
-  @override
-  String get insightsModels => 'Model usage';
-  @override
-  String get insightsSuccessRate => 'Success rate (settled steps)';
-  @override
-  String get insightsMissingUsage => 'Steps with unknown token usage';
-  @override
-  String get insightsError => 'Reported error';
-  @override
-  String get insightsRetries => 'Scheduled retries';
-  @override
-  String get insightsRateLimit => 'Provider refusal · HTTP 429';
-  @override
-  String get insightsPartial =>
-      'This is partial history. Missing events are not reconstructed as success or zero usage.';
-  @override
-  String get insightsPrevious => 'Earlier';
-  @override
-  String get insightsNext => 'Later';
-  @override
-  String get insightsNow => 'Now';
-  @override
-  String get insightsAll => 'All';
-  @override
-  String get insightsWaitingToken => 'Speed not yet reported';
-  @override
-  String get insightsUnavailable =>
-      'The recording plugin is unavailable or disconnected. Existing records are retained; restart the managed server after its current task ends to load the plugin.';
-  @override
-  String get insightsInstall => 'Install search and task recording';
-  @override
-  String get insightsReload =>
-      'Installed, not yet active. Restart the in-app server after the current task ends.';
-  @override
-  String get insightsSearchTitle => 'Search provider';
-  @override
-  String get insightsSearchDisclosure =>
-      'Configure the connected OpenCode server, not only this conversation. Credentials use the server\'s secure integration store. A listed provider is not proof of authorization. A fixed selection never switches providers silently.';
-  @override
-  String get insightsAuthorized => 'Credential connected';
-  @override
-  String get insightsNotAuthorized => 'Not authorized · tap to connect';
-  @override
-  String get insightsSelected => 'Selected';
-  @override
-  String get insightsSearchOff => 'Disable AI web search';
-  @override
-  String get insightsSearchTest => 'Test the selected search provider';
-  @override
-  String get insightsSearchTestOK =>
-      'The selected provider returned real web sources.';
-  @override
-  String get sessionElapsedEmpty => 'No recorded timing yet';
-  @override
-  String get sessionElapsedExplanation =>
-      'Only server-recorded timestamps are shown. Phases may overlap; missing timing stays unreported.';
-  @override
-  String get sessionElapsedTimeline => 'Replies';
-  @override
-  String sessionElapsedTurn(int index) => 'Reply $index';
-  @override
-  String sessionElapsedRecorded(String seconds) => 'Recorded phases $seconds';
-  @override
-  String get sessionElapsedWait => 'Waiting for model';
-  @override
-  String get sessionElapsedThinking => 'Thinking';
-  @override
-  String get sessionElapsedOutput => 'Output';
-  @override
-  String get sessionElapsedUnknown =>
-      'Unclassified streaming (including unreported tool arguments)';
-  @override
-  String get sessionElapsedTool => 'Tool execution';
-  @override
-  String sessionElapsedSteps(int steps, String duration) =>
-      '$steps model requests · $duration recorded';
-  @override
-  String get requestTimeline => 'Request timeline';
-  @override
-  String get requestTimelineIntro =>
-      'Chat lanes use recorded model-step times. Local usage marks acknowledged prompt sends, not provider-request durations. API-key identity is not reported; no key lanes are inferred.';
-  @override
-  String get requestTimelineEmpty => 'No requests recorded in this window';
-  @override
-  String requestTimelineNote(int count) =>
-      '$count requests with recorded timestamps';
-  @override
-  String get requestTimelineUnknownModel => 'Model not reported';
-  @override
-  String get requestTimelineWindow => 'Time window';
-  @override
-  String get requestTimeline15m => '15 min';
-  @override
-  String get requestTimeline1h => '1 hour';
-  @override
-  String get requestTimeline6h => '6 hours';
-  @override
-  String requestTimelineCount(int count) => '$count requests in this window';
-  @override
-  String get chatStatsTitle => 'Reply statistics';
-  @override
-  String chatStatsSeconds(String seconds) => '$seconds s';
-  @override
-  String chatStatsDuration(String duration) => 'Elapsed $duration';
-  @override
-  String chatStatsSteps(int count) => count == 1 ? '1 step' : '$count steps';
-  @override
-  String chatStatsSpeed(String speed) => '$speed tok/s';
-  @override
-  String chatStatsContext(String count) => '$count context';
-  @override
-  String chatStatsCached(String count) => '(cached $count)';
+  String chatStatsSeconds(String seconds) {
+    return '$seconds s';
+  }
+
+  @override
+  String chatStatsDuration(String duration) {
+    return 'Elapsed $duration';
+  }
+
+  @override
+  String chatStatsSteps(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count steps',
+      one: '1 step',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String chatStatsSpeed(String speed) {
+    return '$speed tok/s';
+  }
+
+  @override
+  String chatStatsContext(String count) {
+    return '$count context';
+  }
+
+  @override
+  String chatStatsCached(String count) {
+    return '(cached $count)';
+  }
+
   @override
   String get chatStatsDurationLabel => 'Reply elapsed time';
+
   @override
   String get chatStatsStepsLabel => 'Model steps';
+
   @override
   String get chatStatsToolsLabel => 'Executed tool calls';
+
   @override
   String get chatStatsSpeedLabel => 'Generation speed';
+
   @override
   String get chatStatsContextLabel => 'Final request context tokens';
+
   @override
   String get chatStatsCachedLabel => 'Final request cache hits';
+
   @override
   String get chatStatsInputLabel => 'Reported input tokens, all steps';
+
   @override
   String get chatStatsOutputLabel => 'Reported output tokens, all steps';
+
   @override
   String get chatStatsReasoningLabel => 'Reported reasoning tokens, all steps';
+
   @override
   String get chatStatsCostLabel => 'Reported cost';
+
   @override
   String get chatStatsNotReported => 'Not reported by the server';
+
   @override
   String get chatStatsExplanation =>
       'Elapsed time includes tool work. Speed uses output and reasoning tokens over recorded streaming time, excluding tools and pauses between steps. Context is the final model request; totals include the usage reported across all steps. Missing measurements are not estimated.';
+
   @override
-  String chatProcessThinkingFor(String duration) => 'Thinking · $duration';
+  String chatProcessThinkingFor(String duration) {
+    return 'Thinking · $duration';
+  }
+
   @override
-  String chatProcessThoughtFor(String duration) => 'Thought for $duration';
+  String chatProcessThoughtFor(String duration) {
+    return 'Thought for $duration';
+  }
+
   @override
   String get providerKeySwitch => 'Switch API key';
+
   @override
   String get providerKeyLoading => 'Reading saved keys…';
+
   @override
   String get providerKeySwitching => 'Switching the provider key…';
+
   @override
   String get providerKeyConfigureFirst =>
       'Add named keys in this provider’s configuration first.';
+
   @override
-  String providerKeyProviderScope(String provider) =>
-      '$provider · applies to all its models';
+  String providerKeyProviderScope(String provider) {
+    return '$provider · applies to all its models';
+  }
+
   @override
-  String providerKeySwitched(String name) =>
-      'Now using key “$name” for this provider’s models';
+  String providerKeySwitched(String name) {
+    return 'Now using key “$name” for this provider’s models';
+  }
+
   @override
   String get providerKeyMissing =>
       'The selected key file is missing or empty. The current key was not changed.';
+
   @override
   String get providerKeySelectionChanged =>
       'The provider’s keys changed while the menu was open. Open the menu again to select a key.';
+
   @override
   String get providerKeySwitchFailed =>
       'Could not switch the key. Open the menu again to check the saved selection; no fallback key was chosen.';
+
   @override
   String get providerKeyAdd => 'Add key';
+
   @override
   String get providerKeyRename => 'Rename key';
+
   @override
   String get providerKeyUse => 'Use this key';
+
   @override
   String get providerKeyName => 'Key name';
+
   @override
   String get providerKeyNameHint => 'Personal, work, backup…';
+
   @override
   String get providerKeyDefaultName => 'Default';
+
   @override
   String get providerKeyNameRequired => 'Give this key a name.';
+
   @override
   String get providerKeyNameExists => 'Use a different name for each key.';
+
   @override
   String get providerKeySecret => 'API key';
+
   @override
   String get providerKeySecretHint =>
       'Stored in a private server-side file. It is not kept in app preferences.';
+
   @override
   String get providerKeySecretRequired => 'Enter an API key.';
+
   @override
   String get providerKeyCurrent => 'Currently in use';
+
   @override
   String get providerKeyAvailable => 'Saved key';
+
   @override
-  String providerKeyActions(String name) => 'Actions for key “$name”';
+  String providerKeyActions(String name) {
+    return 'Actions for key “$name”';
+  }
+
   @override
-  String providerKeyAdded(String name) => 'Key “$name” added and selected';
+  String providerKeyAdded(String name) {
+    return 'Key “$name” added and selected';
+  }
+
   @override
-  String providerKeyRenamed(String name) => 'Key renamed to “$name”';
+  String providerKeyRenamed(String name) {
+    return 'Key renamed to “$name”';
+  }
+
   @override
-  String providerKeyDeleted(String name) => 'Key “$name” removed from the list';
+  String providerKeyDeleted(String name) {
+    return 'Key “$name” removed from the list';
+  }
+
   @override
-  String providerKeyDeleteTitle(String name) => 'Remove key “$name”?';
+  String providerKeyDeleteTitle(String name) {
+    return 'Remove key “$name”?';
+  }
+
   @override
   String get providerKeyDeleteBody =>
       'Remove this saved key. App-managed files are deleted when not referenced by another configured provider. External or shared files are kept.';
+
   @override
   String get providerKeyFileRetained =>
       'Removed from the list. The external, shared or undeletable key file was kept.';
+
   @override
   String get providerKeyReloadNeeded =>
       'Configuration saved. Reload did not complete; restart the built-in server after its current work finishes.';
+
   @override
   String get providerActions => 'Actions';
+
   @override
   String get providerKeyCannotDeleteLast =>
       'Keep at least one named key for this provider.';
+
   @override
   String get providerKeyCannotDeleteActive =>
       'Choose another key before removing the active one.';
@@ -37027,15 +37182,24 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get providerManageSetup => 'Set up';
+
   @override
   String get providerHide => 'Hide from this list';
+
   @override
-  String providerHiddenDone(String name) => '“$name” hidden';
+  String providerHiddenDone(String name) {
+    return '“$name” hidden';
+  }
+
   @override
-  String providerShowHidden(int count) => 'Show $count hidden providers';
+  String providerShowHidden(int count) {
+    return 'Show $count hidden providers';
+  }
+
   @override
   String get providerShowHiddenHint =>
       'Hiding only affects this list. Nothing in the server configuration changes.';
+
   @override
   String get providerShowHiddenDone => 'Hidden providers shown again';
 
@@ -37327,4 +37491,91 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get appLogBrowseKeys => 'server keys, API keys and sign-in tokens';
+
+  @override
+  String chatStatsCacheRate(String rate) {
+    return '$rate cache hit';
+  }
+
+  @override
+  String get chatStatsCacheRateLabel => 'Cache hit rate';
+
+  @override
+  String get sessionElapsedTitle => 'Elapsed time';
+
+  @override
+  String get sessionElapsedEmpty => 'No recorded timing yet';
+
+  @override
+  String get sessionElapsedExplanation =>
+      'Only server-recorded timestamps are shown. Phases may overlap; missing timing stays unreported.';
+
+  @override
+  String get sessionElapsedTimeline => 'Replies';
+
+  @override
+  String sessionElapsedTurn(int index) {
+    return 'Reply $index';
+  }
+
+  @override
+  String sessionElapsedRecorded(String seconds) {
+    return 'Recorded phases $seconds';
+  }
+
+  @override
+  String get sessionElapsedWait => 'Waiting for model';
+
+  @override
+  String get sessionElapsedThinking => 'Thinking';
+
+  @override
+  String get sessionElapsedOutput => 'Output';
+
+  @override
+  String get sessionElapsedUnknown =>
+      'Unclassified streaming (including unreported tool arguments)';
+
+  @override
+  String get sessionElapsedTool => 'Tool execution';
+
+  @override
+  String sessionElapsedSteps(int steps, String duration) {
+    return '$steps model requests · $duration recorded';
+  }
+
+  @override
+  String get requestTimeline => 'Request timeline';
+
+  @override
+  String get requestTimelineIntro =>
+      'Chat lanes use recorded model-step times. Local usage marks acknowledged prompt sends, not provider-request durations. API-key identity is not reported; no key lanes are inferred.';
+
+  @override
+  String get requestTimelineEmpty => 'No requests recorded in this window';
+
+  @override
+  String requestTimelineNote(int count) {
+    return '$count requests with recorded timestamps';
+  }
+
+  @override
+  String get requestTimelineUnknownModel => 'Model not reported';
+
+  @override
+  String get requestTimelineWindow => 'Time window';
+
+  @override
+  String get requestTimeline15m => '15 min';
+
+  @override
+  String get requestTimeline1h => '1 hour';
+
+  @override
+  String get requestTimeline6h => '6 hours';
+
+  @override
+  String requestTimelineCount(int count) {
+    return '$count requests in this window';
+  }
 }
