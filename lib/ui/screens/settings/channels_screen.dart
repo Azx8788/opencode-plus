@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'manager_agent_screen.dart';
+
 import '../../../builtin/builtin_server.dart' show looksLikeInAppServer;
 import '../../../channels/channel_capabilities.dart';
 import '../../../channels/channel_config.dart';
@@ -141,6 +143,26 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
               tone: _stateTone(oneBot.state),
             ),
             onTap: () => _open(OneBot11Screen(controller: widget.controller)),
+          ),
+          KitRow(
+            key: const ValueKey('channel-row-manager'),
+            title: _text('Manager agent', '管理代理'),
+            supporting: TextSpan(
+              text: _text(
+                'A separate model decides what the person reads',
+                '独立模型决定用户看到什么',
+              ),
+            ),
+            leading: KitRow.icon(context, AppIconography.sparkle),
+            trailing: KitStatusTag(
+              label: _channels.managerReady
+                  ? _text('on', '已启用')
+                  : _text('off', '未启用'),
+              tone: _channels.managerReady
+                  ? KitStatusTagTone.done
+                  : KitStatusTagTone.failed,
+            ),
+            onTap: () => _open(ManagerAgentScreen(controller: widget.controller)),
           ),
           SizedBox(height: tokens.space4),
           KitGroupNote(

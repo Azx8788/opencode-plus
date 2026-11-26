@@ -5,6 +5,7 @@ import 'package:opencode_mobile/background/live_background.dart';
 import 'package:opencode_mobile/state/connection.dart';
 import 'package:opencode_mobile/state/profiles.dart';
 import 'package:opencode_mobile/ui/screens/settings/channels_screen.dart';
+import 'package:opencode_mobile/ui/screens/settings/manager_agent_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Future<ConnectionController> _controller() async {
@@ -133,5 +134,41 @@ void main() {
     expect(find.byKey(const ValueKey('onebot-url')), findsNothing);
     // A listener without a token is refused, and the page says so.
     expect(find.textContaining('token'), findsWidgets);
+  });
+
+  testWidgets('the hub offers the manager agent', (tester) async {
+    final controller = await _controller();
+    addTearDown(controller.dispose);
+    await _pump(tester, ChannelsScreen(controller: controller));
+
+    expect(find.text('Manager agent'), findsOneWidget);
+
+    await tester.tap(find.text('Manager agent'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('manager-enabled')), findsOneWidget);
+    expect(find.byKey(const ValueKey('manager-url')), findsOneWidget);
+    expect(find.byKey(const ValueKey('manager-model')), findsOneWidget);
+    expect(find.byKey(const ValueKey('manager-key')), findsOneWidget);
+  });
+
+  testWidgets('enabling the manager without a model is refused, not saved', (
+    tester,
+  ) async {
+    final controller = await _controller();
+    addTearDown(controller.dispose);
+    await _pump(tester, ManagerAgentScreen(controller: controller));
+
+    await tester.tap(find.byKey(const ValueKey('manager-enabled')));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('manager-save')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byKey(const ValueKey('manager-save')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('启用管理代理前需要填写地址和模型名'), findsOneWidget);
   });
 }

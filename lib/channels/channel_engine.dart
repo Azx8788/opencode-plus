@@ -8,8 +8,10 @@ import 'channel_message.dart';
 import 'channel_outbox.dart';
 import 'channel_provider.dart';
 import 'channel_sessions.dart';
+import 'channel_tasks.dart';
 import 'channel_text.dart';
 import 'channel_turn.dart';
+import 'manager/manager_agent.dart';
 
 /// Every sentence the shared pipeline says back into a chat.
 ///
@@ -147,6 +149,8 @@ class ChannelConversationEngine {
     this.adoptViewedSession = false,
     this.stateLabel,
     this.onChanged,
+    this.ledger = const NoopTaskLedger(),
+    this.manager,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
 
@@ -183,6 +187,16 @@ class ChannelConversationEngine {
   final String Function(ProviderState state)? stateLabel;
 
   final void Function()? onChanged;
+
+  /// Where the task's life is recorded. The default keeps a channel that has
+  /// no store — and every test — working unchanged.
+  final ChannelTaskLedger ledger;
+
+  /// The manager model, when the person turned it on. Null means the engine
+  /// keeps deciding by itself, exactly as before. Mutable so turning the
+  /// manager on does not need every channel to reconnect.
+  ChannelManagerAgent? manager;
+
   final DateTime Function() _clock;
 
   StreamSubscription<ProviderEvent>? _subscription;
@@ -404,12 +418,20 @@ class ChannelConversationEngine {
         event.type == 'question.v2.asked') {
       runtime.waitingPermission = true;
       runtime.turn?.waitingPermission = true;
+      final waiting = runtime.turn;
+      if (waiting != null) {
+        ledger.update(waiting.id, status: ChannelTaskStatus.waitingPermission);
+      }
       unawaited(_notifyChat(runtime, copy.permission, DeliveryPurpose.notice));
     } else if (event.type == 'permission.replied' ||
         event.type == 'question.replied' ||
         event.type == 'question.v2.replied') {
       runtime.waitingPermission = false;
       runtime.turn?.waitingPermission = false;
+      final resumed = runtime.turn;
+      if (resumed != null) {
+        ledger.update(resumed.id, status: ChannelTaskStatus.running);
+      }
     }
   }
 
@@ -424,6 +446,10 @@ class ChannelConversationEngine {
       // needs it to fetch its answer.
       runtime.turn = _newTurn(runtime, '（在 App 中开始的会话）')
         ..sessionID = runtime.sessionID;
+    }
+    final turn = runtime.turn;
+    if (turn != null) {
+      ledger.update(turn.id, status: ChannelTaskStatus.running);
     }
     if (runtime.announcedStart) return;
     runtime.announcedStart = true;
@@ -538,36 +564,74 @@ class ChannelConversationEngine {
     runtime.running = false;
 
     if (turn.isCancelled) {
+      ledger.update(turn.id, status: ChannelTaskStatus.cancelled);
       _closeTurn(runtime, turn);
       return;
     }
 
     final reply = await _awaitAnswer(turn);
     if (turn.isCancelled) {
+      ledger.update(turn.id, status: ChannelTaskStatus.cancelled);
       _closeTurn(runtime, turn);
       return;
     }
-    if (reply == null || reply.isEmpty) {
-      turn.markDelivered(null);
+
+    final text = reply?.text.trim() ?? '';
+    ledger.update(
+      turn.id,
+      status: ChannelTaskStatus.completed,
+      result: text,
+    );
+
+    // The turn is closed before anything speaks, so a manager that submits a
+    // follow-up cannot have it overwritten by this turn's bookkeeping.
+    final alreadySent = turn.hasDelivered(reply?.messageId);
+    if (!alreadySent) turn.markDelivered(reply?.messageId);
+    _closeTurn(runtime, turn);
+
+    final activeManager = manager;
+    if (activeManager != null) {
+      final outcome = await activeManager.handleTaskFinished(
+        conversationKey: turn.conversationKey,
+        task: ChannelTaskRecord(
+          id: turn.id,
+          providerId: provider.providerId,
+          accountId: provider.accountId,
+          conversationId: runtime.key.conversationId,
+          userId: runtime.key.ownerActorId,
+          workspaceId: workspaceId,
+          prompt: turn.prompt,
+          createdAt: turn.startedAt,
+          sessionId: turn.sessionID,
+          status: ChannelTaskStatus.completed,
+          result: text,
+        ),
+        host: _ManagerHost(this, runtime),
+      );
+      if (outcome.spoke || outcome.silentByChoice) {
+        await _drainQueue(runtime);
+        return;
+      }
+      // Falling through: the manager did not deliver, so the engine does.
+    }
+
+    if (alreadySent) {
+      // Already in the chat as an update; the words arrived once.
+    } else if (text.isEmpty) {
       await _notifyChat(
         runtime,
         copy.finishedEmpty,
         DeliveryPurpose.finalAnswer,
         turn: turn,
       );
-    } else if (turn.hasDelivered(reply.messageId)) {
-      // Already in the chat as an update; the words arrived once.
-      turn.phase = TurnPhase.delivered;
     } else {
-      turn.markDelivered(reply.messageId);
       await _notifyChat(
         runtime,
-        reply.text.trim(),
+        text,
         DeliveryPurpose.finalAnswer,
         turn: turn,
       );
     }
-    _closeTurn(runtime, turn);
     await _drainQueue(runtime);
   }
 
@@ -647,6 +711,21 @@ class ChannelConversationEngine {
       final handled = await _handleCommand(runtime, message, command);
       if (handled) return;
     }
+    final activeManager = manager;
+    if (activeManager != null) {
+      final host = _ManagerHost(this, runtime);
+      final outcome = await activeManager.handleUserMessage(
+        conversationKey: runtime.key.value,
+        text: text,
+        host: host,
+      );
+      if (outcome.spoke || outcome.silentByChoice || host.submitted.isNotEmpty) {
+        return;
+      }
+      // The manager could not speak (no key, network, a model that ignored
+      // the rules). The message still reaches the agent: a broken manager must
+      // not become a broken channel.
+    }
     await _dispatchPrompt(runtime, message, text);
   }
 
@@ -708,6 +787,7 @@ class ChannelConversationEngine {
         turn.phase = TurnPhase.cancelled;
         runtime.turn = null;
         runtime.announcedStart = false;
+        ledger.update(turn.id, status: ChannelTaskStatus.cancelled);
       }
       await _replyTo(runtime, message, copy.stopRequested);
     } on Object {
@@ -715,14 +795,15 @@ class ChannelConversationEngine {
     }
   }
 
-  Future<void> _dispatchPrompt(
+  Future<String?> _dispatchPrompt(
     _ConversationRuntime runtime,
     ChannelMessage message,
-    String text,
-  ) async {
+    String text, {
+    bool receipt = true,
+  }) async {
     if (!agentReady()) {
-      await _replyTo(runtime, message, copy.agentOffline);
-      return;
+      if (receipt) await _replyTo(runtime, message, copy.agentOffline);
+      return null;
     }
     final open = runtime.turn;
     final isSupplement = open != null && open.isOpen;
@@ -748,25 +829,53 @@ class ChannelConversationEngine {
       }
       turn.sessionID = sessionID;
       runtime.turn = turn;
+      if (!isSupplement) {
+        ledger.record(
+          ChannelTaskRecord(
+            id: turn.id,
+            providerId: provider.providerId,
+            accountId: provider.accountId,
+            conversationId: runtime.key.conversationId,
+            userId: runtime.key.ownerActorId,
+            workspaceId: workspaceId,
+            prompt: text,
+            createdAt: turn.startedAt,
+            sessionId: sessionID,
+            status: ChannelTaskStatus.submitted,
+          ),
+        );
+      }
+      ledger.update(
+        turn.id,
+        status: ChannelTaskStatus.running,
+        sessionId: sessionID,
+      );
       runtime.running = true;
       if (!isSupplement) runtime.announcedStart = false;
       if (isSupplement) turn.supplements++;
-      await _replyTo(
-        runtime,
-        message,
-        isSupplement ? copy.supplemented : copy.forwarded,
-        taskId: turn.id,
-      );
+      if (receipt) {
+        await _replyTo(
+          runtime,
+          message,
+          isSupplement ? copy.supplemented : copy.forwarded,
+          taskId: turn.id,
+        );
+      }
+      _notify();
+      return turn.id;
     } on Object {
       if (!isSupplement) runtime.turn = null;
-      await _replyTo(
-        runtime,
-        message,
-        copy.forwardFailed,
-        purpose: DeliveryPurpose.notice,
-      );
+      if (receipt) {
+        await _replyTo(
+          runtime,
+          message,
+          copy.forwardFailed,
+          purpose: DeliveryPurpose.notice,
+        );
+      }
+      _notify();
+      return null;
     }
-    _notify();
   }
 
   ChannelTurn _newTurn(_ConversationRuntime runtime, String prompt) {
@@ -868,6 +977,13 @@ class ChannelConversationEngine {
       receipt = DeliveryReceipt.failed(_describe(error), retryable: true);
     }
     await outbox.settle(entry.id, receipt);
+    if (entry.taskId != null) {
+      ledger.update(
+        entry.taskId!,
+        delivery: _deliveryOf(receipt.status),
+        deliveryAttempts: entry.attempts + 1,
+      );
+    }
     return receipt;
   }
 
@@ -944,8 +1060,117 @@ class ChannelConversationEngine {
     if (!_disposed) onChanged?.call();
   }
 
+  static ChannelDeliveryStatus _deliveryOf(DeliveryStatus status) =>
+      switch (status) {
+        DeliveryStatus.delivered ||
+        DeliveryStatus.accepted => ChannelDeliveryStatus.delivered,
+        DeliveryStatus.deferred => ChannelDeliveryStatus.deferred,
+        DeliveryStatus.failed => ChannelDeliveryStatus.failed,
+        DeliveryStatus.unknown => ChannelDeliveryStatus.unknown,
+      };
+
   static String _describe(Object error) {
     final text = error.toString();
     return text.length > 200 ? text.substring(0, 200) : text;
+  }
+}
+
+/// The manager's hands, scoped to one conversation.
+///
+/// Every tool the model can call lands here, and none of them takes a
+/// recipient: the conversation is fixed when the host is built, so a confused
+/// model cannot address somebody else's chat.
+class _ManagerHost implements ManagerHost {
+  _ManagerHost(this._engine, this._runtime);
+
+  final ChannelConversationEngine _engine;
+  final _ConversationRuntime _runtime;
+
+  /// Tasks this run submitted, in order. The last one is where delivery is
+  /// recorded.
+  final List<String> submitted = [];
+
+  @override
+  String get channelLabel {
+    final label = ChannelProviderIds.label(_engine.provider.providerId);
+    final kind =
+        _runtime.key.conversationType == ChannelConversationKind.group
+        ? '群聊'
+        : '私聊';
+    return '$label $kind ${_runtime.key.conversationId}';
+  }
+
+  @override
+  String get projectLabel {
+    final workspace = _engine.workspace();
+    if (workspace.isNotEmpty) return workspace;
+    final directory = _engine.directory();
+    if (directory.isEmpty) return '未打开项目';
+    final parts = directory
+        .split(RegExp(r'[\\/]'))
+        .where((part) => part.isNotEmpty)
+        .toList();
+    return parts.isEmpty ? directory : parts.last;
+  }
+
+  @override
+  Future<String?> submitTask(String text) async {
+    final message = _runtime.lastMessage;
+    if (message == null) return null;
+    final id = await _engine._dispatchPrompt(
+      _runtime,
+      message,
+      text,
+      receipt: false,
+    );
+    if (id != null) submitted.add(id);
+    return id;
+  }
+
+  @override
+  Future<bool> sendMessage(String text) async {
+    final address = _engine._addressFor(_runtime);
+    if (address == null) return false;
+    final receipt = await _engine._send(
+      address,
+      text,
+      purpose: DeliveryPurpose.finalAnswer,
+      taskId: submitted.isEmpty ? null : submitted.last,
+    );
+    return receipt != null &&
+        (receipt.status == DeliveryStatus.delivered ||
+            receipt.status == DeliveryStatus.accepted);
+  }
+
+  @override
+  ChannelTaskRecord? taskById(String id) {
+    for (final record in _engine.ledger.recent(limit: 200)) {
+      if (record.id == id) return record;
+    }
+    return null;
+  }
+
+  @override
+  List<ChannelTaskRecord> recentTasks({int limit = 10}) => _engine.ledger
+      .recent(limit: 200)
+      .where(
+        (record) =>
+            record.providerId == _engine.provider.providerId &&
+            record.conversationId == _runtime.key.conversationId,
+      )
+      .take(limit)
+      .toList();
+
+  @override
+  Future<bool> cancelTask(String id) async {
+    final record = taskById(id);
+    final session = record?.sessionId ?? _runtime.sessionID;
+    try {
+      await _engine.agent.stopTask(session);
+      _engine.ledger.update(id, status: ChannelTaskStatus.cancelled);
+      return true;
+    } on Object {
+      return false;
+    }
   }
 }

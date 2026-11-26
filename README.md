@@ -26,6 +26,14 @@ of losing its servers and its Ubuntu.
   instructions from one allowlisted private account and receive agent replies
   plus brief progress notices. The bot token stays in Android secure storage.
   See [docs/TELEGRAM_BOT.md](docs/TELEGRAM_BOT.md) for setup and limits.
+- **A manager agent for the chat side (optional)**: a separate model reads each
+  channel message, decides whether to hand it to the executor, and writes what
+  the person sees — with `submit_task` / `send_message` / `get_task_status`
+  tools that cannot address another chat or approve a permission. Off by
+  default; when it is on but unreachable, the plain relay runs as a fallback.
+  Tasks and their delivery are recorded separately, so "the agent finished" and
+  "the person was told" are two different facts. See
+  [docs/CHANNELS_MANAGER.md](docs/CHANNELS_MANAGER.md).
 - **Three message channels on one engine**: Telegram, an official QQ bot from
   the Tencent Open Platform, and a personal QQ account through LLBot, NapCat or
   SnowLuma — a OneBot 11 implementation you run yourself, connected in either

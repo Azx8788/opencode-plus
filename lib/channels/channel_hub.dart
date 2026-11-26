@@ -12,6 +12,10 @@ import 'channel_engine.dart';
 import 'channel_identity.dart';
 import 'channel_inbox.dart';
 import 'channel_message.dart';
+import 'channel_tasks.dart';
+import 'manager/manager_agent.dart';
+import 'manager/manager_client.dart';
+import 'manager/manager_config.dart';
 import 'channel_outbox.dart';
 import 'channel_provider.dart';
 import 'channel_sessions.dart';
@@ -86,6 +90,11 @@ class ChannelHub extends ChangeNotifier {
     );
     inbox = ChannelInbox(preferences: preferences);
     outbox = ChannelOutbox(preferences: preferences);
+    tasks = ChannelTaskStore(preferences: preferences);
+    managerConfig = ManagerConfigStore(
+      preferences: preferences,
+      secureStorage: secureStorage,
+    );
   }
 
   final SharedPreferences _preferences;
@@ -102,7 +111,15 @@ class ChannelHub extends ChangeNotifier {
   late final ChannelInbox inbox;
   late final ChannelOutbox outbox;
 
+  /// What every channel was asked to do and how it ended. Read by the channel
+  /// pages and by the manager agent; written by the engine.
+  late final ChannelTaskStore tasks;
+
+  late final ManagerConfigStore managerConfig;
+
   StreamSubscription<EventEnvelope>? _eventSubscription;
+  ManagerAgentConfig _manager = const ManagerAgentConfig();
+  ChannelManagerAgent? _managerAgent;
   OfficialQqConfig _officialConfig = const OfficialQqConfig();
   OneBot11Config _oneBotConfig = const OneBot11Config();
   OfficialQqProvider? _officialProvider;
@@ -115,6 +132,11 @@ class ChannelHub extends ChangeNotifier {
   Future<void>? _initializing;
 
   OfficialQqConfig get officialConfig => _officialConfig;
+
+  ManagerAgentConfig get managerAgentConfig => _manager;
+
+  /// True when the manager is on and has everything it needs to run.
+  bool get managerReady => _managerAgent != null;
 
   OneBot11Config get oneBotConfig => _oneBotConfig;
 
@@ -140,6 +162,8 @@ class ChannelHub extends ChangeNotifier {
     _addHostListener(_hostChanged);
     _officialConfig = config.loadOfficialQq();
     _oneBotConfig = config.loadOneBot11();
+    _manager = managerConfig.load();
+    _managerAgent = await _buildManagerAgent(_manager);
     _ownerProfile = _profileID();
     _initialized = true;
     await _applyOfficial();
@@ -163,6 +187,8 @@ class ChannelHub extends ChangeNotifier {
   Future<void> _reloadAll() async {
     _officialConfig = config.loadOfficialQq();
     _oneBotConfig = config.loadOneBot11();
+    _manager = managerConfig.load();
+    _managerAgent = await _buildManagerAgent(_manager);
     await _applyOfficial();
     await _applyOneBot();
     _notify();
@@ -342,6 +368,8 @@ class ChannelHub extends ChangeNotifier {
       agentReady: _supported,
       copy: const ChannelEngineCopy(),
       onChanged: _notify,
+      ledger: tasks,
+      manager: _managerAgent,
     );
     engine.useSessionStores(
       (key) => PrefsChannelSessionStore(
@@ -350,6 +378,36 @@ class ChannelHub extends ChangeNotifier {
       ),
     );
     return engine;
+  }
+
+  Future<ChannelManagerAgent?> _buildManagerAgent(
+    ManagerAgentConfig config,
+  ) async {
+    if (!config.ready) return null;
+    final key = await managerConfig.loadApiKey();
+    if (key.trim().isEmpty) return null;
+    return ChannelManagerAgent(
+      client: ManagerModelClient(
+        baseUrl: config.baseUrl,
+        apiKey: key,
+        model: config.model,
+      ),
+      maxSteps: config.maxSteps,
+    );
+  }
+
+  /// Saves the manager configuration and applies it to the running channels.
+  Future<void> saveManagerAgent(
+    ManagerAgentConfig config, {
+    String? apiKey,
+  }) async {
+    if (apiKey != null) await managerConfig.saveApiKey(apiKey);
+    await managerConfig.save(config);
+    _manager = config;
+    _managerAgent = await _buildManagerAgent(config);
+    _officialEngine?.manager = _managerAgent;
+    _oneBotEngine?.manager = _managerAgent;
+    _notify();
   }
 
   ConversationKey _conversationKey(
@@ -407,6 +465,7 @@ class ChannelHub extends ChangeNotifier {
     await config.clearOfficialQq();
     await inbox.clear(ChannelProviderIds.officialQq, _officialConfig.appId);
     await outbox.clear(ChannelProviderIds.officialQq, _officialConfig.appId);
+    await tasks.clear(ChannelProviderIds.officialQq, _officialConfig.appId);
     _officialConfig = const OfficialQqConfig();
     _notify();
   }
@@ -424,6 +483,10 @@ class ChannelHub extends ChangeNotifier {
       _oneBotConfig.expectedSelfId,
     );
     await outbox.clear(
+      ChannelProviderIds.oneBot11,
+      _oneBotConfig.expectedSelfId,
+    );
+    await tasks.clear(
       ChannelProviderIds.oneBot11,
       _oneBotConfig.expectedSelfId,
     );

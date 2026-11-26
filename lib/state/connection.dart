@@ -1352,7 +1352,12 @@ class ConnectionController extends ChangeNotifier
     }
   }
 
-  Future<String?> _readLatestReplyFor(String sessionID) async {
+  Future<String?> _readLatestReplyFor(String sessionID) async =>
+      (await _readLatestReplyInfo(sessionID))?.text;
+
+  /// The same reply with the server's message id, so a turn can deliver each
+  /// assistant message exactly once even when two turns run back to back.
+  Future<ChannelAgentReply?> _readLatestReplyInfo(String sessionID) async {
     final gateway = api;
     if (gateway == null) return null;
     final messages = await gateway.messages(sessionID);
@@ -1365,7 +1370,9 @@ class ConnectionController extends ChangeNotifier
           .where((part) => part.trim().isNotEmpty)
           .join('\n')
           .trim();
-      if (text.isNotEmpty) return text;
+      if (text.isNotEmpty) {
+        return ChannelAgentReply(text: text, messageId: message.info.id);
+      }
     }
     return null;
   }
@@ -1402,6 +1409,10 @@ class _ConnectionChannelAgentPort extends ChannelAgentPort {
   @override
   Future<String?> latestReply(String sessionID) =>
       _controller._readLatestReplyFor(sessionID);
+
+  @override
+  Future<ChannelAgentReply?> latestReplyInfo(String sessionID) =>
+      _controller._readLatestReplyInfo(sessionID);
 
   @override
   String statusText() => _controller._channelAgentStatus();

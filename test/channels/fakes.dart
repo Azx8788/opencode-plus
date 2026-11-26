@@ -9,6 +9,8 @@ import 'package:opencode_mobile/channels/channel_message.dart';
 import 'package:opencode_mobile/channels/channel_outbox.dart';
 import 'package:opencode_mobile/channels/channel_provider.dart';
 import 'package:opencode_mobile/channels/channel_sessions.dart';
+import 'package:opencode_mobile/channels/channel_tasks.dart';
+import 'package:opencode_mobile/channels/manager/manager_agent.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// A provider that records what it was asked to send and lets a test push
@@ -153,6 +155,8 @@ class EngineHarness {
     SharedPreferences? sharedPreferences,
     ChannelInbox? sharedInbox,
     ChannelOutbox? sharedOutbox,
+    ChannelTaskLedger? ledger,
+    ChannelManagerAgent? manager,
   }) async {
     if (sharedPreferences == null) {
       SharedPreferences.setMockInitialValues({});
@@ -200,6 +204,8 @@ class EngineHarness {
       copy: copy,
       progressInterval: progressInterval,
       adoptViewedSession: singleConversation,
+      ledger: ledger ?? const NoopTaskLedger(),
+      manager: manager,
     );
     engine.useSessionStores(
       (conversation) => PrefsChannelSessionStore(
