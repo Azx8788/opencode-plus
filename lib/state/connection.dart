@@ -79,7 +79,9 @@ import '../api2/channel_replies.dart';
 import '../api2/gateway.dart';
 import '../api2/gateway_mappers.dart' show api2ServerCapabilities;
 import '../api2/gateway_operations.dart';
+import '../api2/subagent_settings_catalog.dart';
 import '../api2/transport.dart' show Api2AuthRequired;
+import '../domain/subagent_settings.dart';
 import '../background/attention_tile_snapshot.dart';
 import '../background/live_background.dart';
 import '../background/notification_status.dart';
@@ -126,6 +128,7 @@ import 'team_glance.dart';
 import 'orchestration_store.dart';
 import 'elsewhere_attention.dart';
 import 'profiles.dart';
+import 'subagent_settings_store.dart' show subagentSettingsBinding;
 import '../telegram/telegram_bot.dart';
 import '../channels/channel_agent_port.dart';
 import '../channels/channel_hub.dart';
@@ -1327,6 +1330,47 @@ class ConnectionController extends ChangeNotifier
       return '本机 OpenCode 当前未连接。';
     }
     return '本机 OpenCode 已连接。';
+  }
+
+  /// Reads the catalogue for a local subagent draft, never an execution rule.
+  /// Match the owner of the live transport, not a retained settings page's
+  /// selected profile: those can differ briefly during a switch or reconnect.
+  Future<SubagentSettingsCatalog> readSubagentDraftCatalog(
+    SubagentSettingsServer target,
+  ) async {
+    final owner = _connectedProfile;
+    final gateway = api;
+    final generation = _generation;
+    final location = locationRevision;
+    if (owner == null ||
+        gateway is! Api2Gateway ||
+        owner.transientTransport ||
+        owner.id != target.profileID ||
+        subagentSettingsBinding(owner.toJson()) != target.binding) {
+      throw const SubagentSettingsException(
+        SubagentSettingsFailure.unavailable,
+      );
+    }
+    bool current() =>
+        isConnected &&
+        isProfileReadable(owner.id) &&
+        identical(_connectedProfile, owner) &&
+        identical(api, gateway) &&
+        _generation == generation &&
+        locationRevision == location &&
+        subagentSettingsBinding(owner.toJson()) == target.binding;
+    if (!current()) {
+      throw const SubagentSettingsException(
+        SubagentSettingsFailure.unavailable,
+      );
+    }
+    final catalog = await Api2SubagentSettingsCatalog(gateway.client).load();
+    if (!current()) {
+      throw const SubagentSettingsException(
+        SubagentSettingsFailure.staleTarget,
+      );
+    }
+    return catalog;
   }
 
   /// Announces [profileDataChanges] for the deletion sweep in its part.

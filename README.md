@@ -22,6 +22,9 @@ of losing its servers and its Ubuntu.
 - **Approve from anywhere**: notification, home-screen widget or the chat.
 - **See the result**: built-in terminal, in-app preview, phone-sized diffs.
 - **Scheduled prompts**, widgets, voice input, and multi-agent teams are kept.
+- **Subagent model pool drafts** in Settings → Agent → Subagents: choose exact
+  models and variants, with server defaults and project overrides. Drafts are
+  stored on this device and do not change how OpenCode launches subagents.
 - **Optional Telegram relay** for the on-phone OpenCode server: send text
   instructions from one allowlisted private account and receive agent replies
   plus brief progress notices. Pair from a Telegram link or by username;

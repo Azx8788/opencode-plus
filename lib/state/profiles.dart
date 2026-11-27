@@ -36,6 +36,7 @@ import 'setup_audit_store.dart';
 import 'session_link_bindings.dart';
 import 'agent_handoff_links.dart';
 import 'pending_command_journal.dart';
+import 'subagent_settings_store.dart';
 import '../telegram/telegram_bot.dart' show TelegramBotBridge;
 import '../channels/channel_config.dart' show ChannelConfigStore;
 
@@ -657,6 +658,7 @@ class ProfileStore {
       SessionLinkBindings.closeProfile(prefs, profileId),
       ContextUsageMemory.closeProfile(prefs, profileId),
       PhraseChipStore.closeProfile(prefs, profileId),
+      SubagentSettingsStore.closeProfile(prefs, profileId),
     ]);
     final failed = <String>{};
     try {

@@ -161,6 +161,19 @@ extension _IndexHubRows on _IndexBuild {
         pages: const ['shizuku-settings'],
         open: (context, _) => _push(context, const ShizukuScreen()),
       ),
+      SearchEntry(
+        id: 'settings-subagents',
+        kind: SearchEntryKind.hubRow,
+        group: SettingsGroup.ai,
+        icon: AppIconography.agent,
+        title: l10n.localeName.startsWith('zh') ? '子代理' : 'Subagents',
+        keywords:
+            'subagent subagents model pool delegation 子代理 候选池 委派 启动确认 项目覆盖',
+        pages: const ['subagent-settings'],
+        open: _screen(
+          (scope) => SubagentSettingsScreen(controller: scope.controller),
+        ),
+      ),
       // The AI Team as a place of its own in Settings, not only a plugin
       // (docs/qa/team-discover-2026-09-25): the one team page (P3.4), on or
       // off; off, it sets the team up for this kind of server. The same door
@@ -316,9 +329,7 @@ extension _IndexHubRows on _IndexBuild {
             !scope.controller.isIsolated &&
             !scope.controller.isAgentBackend &&
             !scope.controller.isSideBackend,
-        open: _screen(
-          (scope) => ChannelsScreen(controller: scope.controller),
-        ),
+        open: _screen((scope) => ChannelsScreen(controller: scope.controller)),
       ),
       SearchEntry(
         id: 'settings-telegram-bot',

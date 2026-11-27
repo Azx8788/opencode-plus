@@ -292,6 +292,11 @@ abstract final class SettingsScopeCatalog {
       labelCode: 'byOwner',
     ),
     SettingsRowScope(
+      rowId: 'settings-subagents',
+      owners: _project,
+      labelCode: 'byOwner',
+    ),
+    SettingsRowScope(
       rowId: 'settings-model-and-mode',
       owners: _connection,
       labelCode: 'newChats',
