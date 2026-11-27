@@ -323,8 +323,7 @@ class OneBot11Provider extends ChannelProviderBase {
   bool _authorized(HttpRequest request) {
     final expected = accessToken.trim();
     if (expected.isEmpty) return false;
-    final header =
-        request.headers.value(HttpHeaders.authorizationHeader) ?? '';
+    final header = request.headers.value(HttpHeaders.authorizationHeader) ?? '';
     final bearer = header.toLowerCase().startsWith('bearer ')
         ? header.substring(7).trim()
         : '';

@@ -97,9 +97,7 @@ class ManagerConfigStore {
       if (uri == null ||
           (uri.scheme != 'https' && uri.scheme != 'http') ||
           uri.host.isEmpty) {
-        throw const FormatException(
-          '管理模型地址需要以 https:// 或 http:// 开头，并包含主机。',
-        );
+        throw const FormatException('管理模型地址需要以 https:// 或 http:// 开头，并包含主机。');
       }
     }
     if (config.enabled && (url.isEmpty || config.model.trim().isEmpty)) {

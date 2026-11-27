@@ -177,7 +177,9 @@ extension _ChatSessionActions on _ChatScreenState {
     _setChatState(() {
       _localTurnSince = null;
       if (target == null) return;
-      final index = _messages.indexWhere((message) => message.info.id == target);
+      final index = _messages.indexWhere(
+        (message) => message.info.id == target,
+      );
       if (index < 0) return;
       // A newer prompt appeared: this stop was about the earlier turn, and
       // claiming the newest bubble would erase its live line.

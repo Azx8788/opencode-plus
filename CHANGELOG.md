@@ -2,6 +2,17 @@
 
 This project is in public alpha. Only the newest preview is supported.
 
+## Unreleased integration
+
+  * Telegram supports one-time links, username setup and existing numeric IDs.
+    Username setup saves the verified numeric ID before starting the relay.
+  * Channel replies stay with the session that ran the turn. The relay can
+    recover a matching reply after a missed completion event without rerunning
+    the task; an uncertain Telegram delivery is not automatically repeated.
+  * Includes the LLBot local console and the verified send-pipeline changes.
+  * Subagent model pools can be drafted locally per server and project. They do
+    not change agent execution or permissions.
+
 ## 0.3.32+41 — 2026-11-26
 
   * **The answer to "when is the agent done" is no longer a flag.** A turn now

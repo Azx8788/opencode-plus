@@ -494,7 +494,9 @@ class _ChatScreenState extends State<ChatScreen>
         !_conn.isSideBackend &&
         !_watching) {
       unawaited(
-        _conn.telegramBot.bindSession(widget.sessionID).catchError((Object _) {}),
+        _conn.telegramBot
+            .bindSession(widget.sessionID)
+            .catchError((Object _) {}),
       );
     }
     _git.addListener(_gitChanged);
@@ -647,7 +649,9 @@ class _ChatScreenState extends State<ChatScreen>
           !_conn.isSideBackend &&
           !_watching) {
         unawaited(
-          _conn.telegramBot.bindSession(widget.sessionID).catchError((Object _) {}),
+          _conn.telegramBot
+              .bindSession(widget.sessionID)
+              .catchError((Object _) {}),
         );
       }
     }

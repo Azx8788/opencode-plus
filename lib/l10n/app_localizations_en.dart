@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -4195,7 +4194,8 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           'This deletes $count unsent prompts and their attachments, for every server. They will never be sent. Nothing on the server is affected.',
-      one: 'This deletes the unsent prompt and its attachments, for every server. It will never be sent. Nothing on the server is affected.',
+      one:
+          'This deletes the unsent prompt and its attachments, for every server. It will never be sent. Nothing on the server is affected.',
     );
     return '$_temp0';
   }
@@ -4218,7 +4218,8 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           'This deletes the composer text saved for $count conversations. Nothing on the server is affected.',
-      one: 'This deletes the composer text saved for 1 conversation. Nothing on the server is affected.',
+      one:
+          'This deletes the composer text saved for 1 conversation. Nothing on the server is affected.',
     );
     return '$_temp0';
   }
@@ -5706,7 +5707,8 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           '$count references are added as text when you send. Not saved with your draft.',
-      one: '1 reference is added as text when you send. Not saved with your draft.',
+      one:
+          '1 reference is added as text when you send. Not saved with your draft.',
     );
     return '$_temp0';
   }
@@ -14469,7 +14471,8 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           '$count messages waiting to send stay on this phone until you connect again.',
-      one: '1 message waiting to send stays on this phone until you connect again.',
+      one:
+          '1 message waiting to send stays on this phone until you connect again.',
     );
     return '$_temp0';
   }
@@ -17251,7 +17254,8 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           'The $count errors kept on this phone are removed, also from the saved report. This can\'t be undone.',
-      one: 'The error kept on this phone is removed, also from the saved report. This can\'t be undone.',
+      one:
+          'The error kept on this phone is removed, also from the saved report. This can\'t be undone.',
     );
     return '$_temp0';
   }
@@ -19229,8 +19233,10 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           'This prompt and the $count messages after it are removed, and files go back to how they were before it. You can put them back until you send another prompt.',
-      one: 'This prompt and the message after it are removed, and files go back to how they were before it. You can put them back until you send another prompt.',
-      zero: 'This prompt is removed, and files go back to how they were before it. You can put it back until you send another prompt.',
+      one:
+          'This prompt and the message after it are removed, and files go back to how they were before it. You can put them back until you send another prompt.',
+      zero:
+          'This prompt is removed, and files go back to how they were before it. You can put it back until you send another prompt.',
     );
     return '$_temp0';
   }
@@ -19259,8 +19265,10 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           'This prompt and the $count messages after it are hidden. Nothing is final until you choose below.',
-      one: 'This prompt and the message after it are hidden. Nothing is final until you choose below.',
-      zero: 'This prompt is hidden; nothing came after it. Nothing is final until you choose below.',
+      one:
+          'This prompt and the message after it are hidden. Nothing is final until you choose below.',
+      zero:
+          'This prompt is hidden; nothing came after it. Nothing is final until you choose below.',
     );
     return '$_temp0';
   }
@@ -22758,7 +22766,8 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           'The reload waits for $count running replies to finish, because reloading would stop them.',
-      one: 'The reload waits for 1 running reply to finish, because reloading would stop it.',
+      one:
+          'The reload waits for 1 running reply to finish, because reloading would stop it.',
     );
     return '$_temp0';
   }
@@ -26694,7 +26703,8 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           'Turning this off deletes the saved crash reports and clears the $count saved errors above.',
-      one: 'Turning this off deletes the saved crash reports and clears the saved error above.',
+      one:
+          'Turning this off deletes the saved crash reports and clears the saved error above.',
     );
     return '$_temp0';
   }
@@ -26717,7 +26727,8 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           'Deletes the crash reports and clears the $count saved errors above. Saving crash reports stays on.',
-      one: 'Deletes the crash reports and clears the saved error above. Saving crash reports stays on.',
+      one:
+          'Deletes the crash reports and clears the saved error above. Saving crash reports stays on.',
     );
     return '$_temp0';
   }
@@ -33252,7 +33263,8 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           '$count Git files aren\'t on this phone any more. Clone the project again from where it\'s hosted, or restore a copy.',
-      one: '1 Git file isn\'t on this phone any more. Clone the project again from where it\'s hosted, or restore a copy.',
+      one:
+          '1 Git file isn\'t on this phone any more. Clone the project again from where it\'s hosted, or restore a copy.',
     );
     return '$_temp0';
   }
@@ -36039,7 +36051,8 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String runningPhoneAbout(String kind) {
     String _temp0 = intl.Intl.selectLogic(kind, {
-      'leftBehind': 'Left running after its Linux ended. Nothing is waiting on it, so stopping it is safe.',
+      'leftBehind':
+          'Left running after its Linux ended. Nothing is waiting on it, so stopping it is safe.',
       'openCode': 'Part of the OpenCode server on this phone.',
       'claudeCode': 'Part of a Claude Code conversation.',
       'agentHelper': 'Runs Claude Code and other agents on this phone.',

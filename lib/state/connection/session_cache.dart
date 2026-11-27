@@ -40,8 +40,9 @@ mixin _ConnectionControllerSessionCache on ChangeNotifier {
   /// Authoritative newest page; prefetch and route hydration share an in-flight
   /// read. UI still applies its event-version merge and uses gateway.messagePage
   /// for older cursors. Failures retain existing product-error handling.
-  Future<ServerPage<MessageWithParts>> loadSessionTail(String sessionID) async =>
-      (await _self._loadSessionTail(sessionID, null)).page;
+  Future<ServerPage<MessageWithParts>> loadSessionTail(
+    String sessionID,
+  ) async => (await _self._loadSessionTail(sessionID, null)).page;
 
   /// The same read, stamped with the event version of the caller that
   /// started it.

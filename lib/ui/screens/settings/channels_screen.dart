@@ -164,7 +164,8 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
                   ? KitStatusTagTone.done
                   : KitStatusTagTone.failed,
             ),
-            onTap: () => _open(ManagerAgentScreen(controller: widget.controller)),
+            onTap: () =>
+                _open(ManagerAgentScreen(controller: widget.controller)),
           ),
           SizedBox(height: tokens.space4),
           KitGroupNote(
@@ -771,10 +772,7 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
     if (!mounted) return;
     if (groups.isEmpty) {
       setState(() {
-        _notice = _text(
-          'The bot is not in any group.',
-          '机器人目前不在任何群里。',
-        );
+        _notice = _text('The bot is not in any group.', '机器人目前不在任何群里。');
       });
       return;
     }
@@ -1129,10 +1127,7 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
           SizedBox(height: tokens.space2),
           KitButton.secondary(
             key: const ValueKey('onebot-groups-fetch'),
-            label: _text(
-              'Choose from the bot\'s groups',
-              '从机器人拉取群列表',
-            ),
+            label: _text('Choose from the bot\'s groups', '从机器人拉取群列表'),
             onPressed: _busy ? null : _fetchGroups,
             working: _busy,
           ),

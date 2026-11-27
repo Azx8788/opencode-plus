@@ -617,12 +617,11 @@ extension _ConnectionControllerQueueImpl on ConnectionController {
 
   /// A held entry always carries the message ID its send is admitted under,
   /// so a retry reuses the identity instead of admitting a second prompt.
-  Future<bool> _holdOnlinePrompt(QueuedPrompt prompt) =>
-      _holdOnlinePromptEntry(
-        prompt.messageID == null
-            ? prompt.withMessageID(createCommandReceiptID())
-            : prompt,
-      );
+  Future<bool> _holdOnlinePrompt(QueuedPrompt prompt) => _holdOnlinePromptEntry(
+    prompt.messageID == null
+        ? prompt.withMessageID(createCommandReceiptID())
+        : prompt,
+  );
 
   Future<bool> _holdOnlinePromptEntry(QueuedPrompt prompt) =>
       _serializeQueueChange(() async {
@@ -698,12 +697,11 @@ extension _ConnectionControllerQueueImpl on ConnectionController {
   });
 
   /// The body of [queuePrompt].
-  Future<bool> _queuePrompt(QueuedPrompt prompt) =>
-      _queuePromptEntry(
-        prompt.messageID == null
-            ? prompt.withMessageID(createCommandReceiptID())
-            : prompt,
-      );
+  Future<bool> _queuePrompt(QueuedPrompt prompt) => _queuePromptEntry(
+    prompt.messageID == null
+        ? prompt.withMessageID(createCommandReceiptID())
+        : prompt,
+  );
 
   Future<bool> _queuePromptEntry(QueuedPrompt prompt) =>
       _serializeQueueChange(() async {
@@ -982,21 +980,18 @@ extension _ConnectionControllerQueueImpl on ConnectionController {
             } else if (currentApi is CorrelatedPromptGateway) {
               // Still an exact-ID send: the transcript recognises this entry
               // by the ID the server echoes, and a retry is deduplicated.
-              await (currentApi as CorrelatedPromptGateway)
-                  .promptWithMessageID(
-                    entry.sessionID,
-                    messageID: entry.resolvedMessageID,
-                    text: entry.text,
-                    model: entry.model,
-                    agent: entry.agent?.isNotEmpty == true
-                        ? entry.agent
-                        : null,
-                    variant: entry.variant?.isNotEmpty == true
-                        ? entry.variant
-                        : null,
-                    attachments: entry.attachments,
-                    agentMentions: entry.mentions,
-                  );
+              await (currentApi as CorrelatedPromptGateway).promptWithMessageID(
+                entry.sessionID,
+                messageID: entry.resolvedMessageID,
+                text: entry.text,
+                model: entry.model,
+                agent: entry.agent?.isNotEmpty == true ? entry.agent : null,
+                variant: entry.variant?.isNotEmpty == true
+                    ? entry.variant
+                    : null,
+                attachments: entry.attachments,
+                agentMentions: entry.mentions,
+              );
             } else {
               await currentApi.promptAsync(
                 entry.sessionID,

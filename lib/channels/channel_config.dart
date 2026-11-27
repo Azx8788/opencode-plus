@@ -252,8 +252,7 @@ class OneBot11Config {
     backend: OneBotBackend.fromId(json['backend']?.toString()),
     transport: OneBotTransport.fromId(json['transport']?.toString()),
     webSocketUrl: json['webSocketUrl']?.toString() ?? '',
-    listenPort:
-        (json['listenPort'] as num?)?.toInt() ?? defaultListenPort,
+    listenPort: (json['listenPort'] as num?)?.toInt() ?? defaultListenPort,
     expectedSelfId: json['expectedSelfId']?.toString() ?? '',
     enabled: json['enabled'] == true,
     allowedUsers: _stringSet(json['allowedUsers']),

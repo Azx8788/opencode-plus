@@ -11,12 +11,18 @@ void main() {
     test('a finished task cannot start running again', () {
       final record = _record();
 
-      expect(ChannelTaskMachine.move(record, ChannelTaskStatus.running), isTrue);
+      expect(
+        ChannelTaskMachine.move(record, ChannelTaskStatus.running),
+        isTrue,
+      );
       expect(
         ChannelTaskMachine.move(record, ChannelTaskStatus.completed),
         isTrue,
       );
-      expect(ChannelTaskMachine.move(record, ChannelTaskStatus.running), isFalse);
+      expect(
+        ChannelTaskMachine.move(record, ChannelTaskStatus.running),
+        isFalse,
+      );
       expect(record.status, ChannelTaskStatus.completed);
     });
 
@@ -113,9 +119,7 @@ void main() {
       harness.engine.handleAgentEvent(_messageDone('m-1'));
       harness.engine.handleAgentEvent(_status('idle'));
       await waitFor(
-        () => harness.provider.sent.any(
-          (message) => message.text == '测试通过',
-        ),
+        () => harness.provider.sent.any((message) => message.text == '测试通过'),
       );
       await store.settle();
 
@@ -175,7 +179,10 @@ void main() {
       harness.engine.handleAgentEvent(_status('busy'));
 
       // The platform refuses the final answer.
-      harness.provider.receipt = DeliveryReceipt.failed('平台拒绝', retryable: false);
+      harness.provider.receipt = DeliveryReceipt.failed(
+        '平台拒绝',
+        retryable: false,
+      );
       harness.agent
         ..reply = '测试通过'
         ..replyId = 'm-1';

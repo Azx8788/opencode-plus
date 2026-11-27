@@ -89,79 +89,88 @@ void main() {
     expect(provider.status.detail, contains('Access Token'));
   });
 
-  test('reverse mode accepts the peer and reports the account online', () async {
-    final port = await _freePort();
-    final provider = OneBot11Provider(
-      accountId: 'qq-1',
-      webSocketUrl: '',
-      accessToken: _token,
-      transport: OneBot11Transport.reverse,
-      listenHost: '127.0.0.1',
-      listenPort: port,
-    );
-    addTearDown(provider.dispose);
-    await provider.connect();
-    await _waitFor(() => provider.status.detail?.contains('已监听') ?? false);
+  test(
+    'reverse mode accepts the peer and reports the account online',
+    () async {
+      final port = await _freePort();
+      final provider = OneBot11Provider(
+        accountId: 'qq-1',
+        webSocketUrl: '',
+        accessToken: _token,
+        transport: OneBot11Transport.reverse,
+        listenHost: '127.0.0.1',
+        listenPort: port,
+      );
+      addTearDown(provider.dispose);
+      await provider.connect();
+      await _waitFor(() => provider.status.detail?.contains('已监听') ?? false);
 
-    final peer = await _Peer.connect(port);
-    addTearDown(() => peer.socket.close());
-    peer.lifecycle();
+      final peer = await _Peer.connect(port);
+      addTearDown(() => peer.socket.close());
+      peer.lifecycle();
 
-    await _waitFor(() => provider.status.state == ProviderState.online);
-    expect(provider.selfId, _selfQq);
-    expect(provider.status.detail, contains(_selfQq));
-  });
+      await _waitFor(() => provider.status.state == ProviderState.online);
+      expect(provider.selfId, _selfQq);
+      expect(provider.status.detail, contains(_selfQq));
+    },
+  );
 
-  test('a wrong token is refused with 401 and never reaches the agent', () async {
-    final port = await _freePort();
-    final provider = OneBot11Provider(
-      accountId: 'qq-1',
-      webSocketUrl: '',
-      accessToken: _token,
-      transport: OneBot11Transport.reverse,
-      listenHost: '127.0.0.1',
-      listenPort: port,
-    );
-    addTearDown(provider.dispose);
-    await provider.connect();
-    await _waitFor(() => provider.status.detail?.contains('已监听') ?? false);
+  test(
+    'a wrong token is refused with 401 and never reaches the agent',
+    () async {
+      final port = await _freePort();
+      final provider = OneBot11Provider(
+        accountId: 'qq-1',
+        webSocketUrl: '',
+        accessToken: _token,
+        transport: OneBot11Transport.reverse,
+        listenHost: '127.0.0.1',
+        listenPort: port,
+      );
+      addTearDown(provider.dispose);
+      await provider.connect();
+      await _waitFor(() => provider.status.detail?.contains('已监听') ?? false);
 
-    await expectLater(
-      _Peer.connect(port, token: 'not-the-token'),
-      throwsA(isA<WebSocketException>()),
-    );
-    expect(provider.status.state, isNot(ProviderState.online));
-  });
+      await expectLater(
+        _Peer.connect(port, token: 'not-the-token'),
+        throwsA(isA<WebSocketException>()),
+      );
+      expect(provider.status.state, isNot(ProviderState.online));
+    },
+  );
 
-  test('the access_token query parameter is accepted for other clients', () async {
-    final port = await _freePort();
-    final provider = OneBot11Provider(
-      accountId: 'qq-1',
-      webSocketUrl: '',
-      accessToken: _token,
-      transport: OneBot11Transport.reverse,
-      listenHost: '127.0.0.1',
-      listenPort: port,
-    );
-    addTearDown(provider.dispose);
-    await provider.connect();
-    await _waitFor(() => provider.status.detail?.contains('已监听') ?? false);
+  test(
+    'the access_token query parameter is accepted for other clients',
+    () async {
+      final port = await _freePort();
+      final provider = OneBot11Provider(
+        accountId: 'qq-1',
+        webSocketUrl: '',
+        accessToken: _token,
+        transport: OneBot11Transport.reverse,
+        listenHost: '127.0.0.1',
+        listenPort: port,
+      );
+      addTearDown(provider.dispose);
+      await provider.connect();
+      await _waitFor(() => provider.status.detail?.contains('已监听') ?? false);
 
-    final socket = await WebSocket.connect(
-      'ws://127.0.0.1:$port/?access_token=$_token',
-    );
-    addTearDown(() => socket.close());
-    socket.add(
-      jsonEncode({
-        'post_type': 'meta_event',
-        'meta_event_type': 'lifecycle',
-        'sub_type': 'connect',
-        'self_id': int.parse(_selfQq),
-      }),
-    );
+      final socket = await WebSocket.connect(
+        'ws://127.0.0.1:$port/?access_token=$_token',
+      );
+      addTearDown(() => socket.close());
+      socket.add(
+        jsonEncode({
+          'post_type': 'meta_event',
+          'meta_event_type': 'lifecycle',
+          'sub_type': 'connect',
+          'self_id': int.parse(_selfQq),
+        }),
+      );
 
-    await _waitFor(() => provider.status.state == ProviderState.online);
-  });
+      await _waitFor(() => provider.status.state == ProviderState.online);
+    },
+  );
 
   test('a dropped peer leaves the port open for the next connection', () async {
     final port = await _freePort();
@@ -249,7 +258,8 @@ void main() {
       {'group_name': 'no id'},
     ];
     final server = await _ActionServer.start((action) {
-      if (action == 'get_group_list') return {'status': 'ok', 'retcode': 0, 'data': groups};
+      if (action == 'get_group_list')
+        return {'status': 'ok', 'retcode': 0, 'data': groups};
       return {'status': 'ok', 'retcode': 0, 'data': {}};
     });
     addTearDown(server.close);

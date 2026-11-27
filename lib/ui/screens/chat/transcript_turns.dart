@@ -94,8 +94,7 @@ bool _endsTurn(List<MessageWithParts> messages, int index) {
   // a slash — an absolute path, an unknown command the server treats as
   // text — look like a command, and its silence was never reported.
   final command = messages[prompt].parts.any(
-    (part) =>
-        part.type == 'text' && commandTexts.contains(part.text.trim()),
+    (part) => part.type == 'text' && commandTexts.contains(part.text.trim()),
   );
   if (last == null) {
     if (refused) return (prompt, null, false);

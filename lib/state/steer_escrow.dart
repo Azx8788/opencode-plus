@@ -72,9 +72,7 @@ class SteerEscrowStore {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! List) return const [];
-      return [
-        for (final value in decoded) ?SteerEscrowEntry.fromJson(value),
-      ];
+      return [for (final value in decoded) ?SteerEscrowEntry.fromJson(value)];
     } catch (_) {
       _readFailed = true;
       return const [];
@@ -111,8 +109,10 @@ class SteerEscrowStore {
     return write(entries);
   }
 
-  Future<bool> remove(String id) =>
-      write([for (final entry in read()) if (entry.id != id) entry]);
+  Future<bool> remove(String id) => write([
+    for (final entry in read())
+      if (entry.id != id) entry,
+  ]);
 
   Future<bool> removeSession(String sessionID) => write([
     for (final entry in read())

@@ -358,19 +358,22 @@ void main() {
       expect(server.countOf('POST /api/session/s/prompt'), 0);
     });
 
-    test('a stop after preparation but before the request posts nothing', () async {
-      final hold = _Hold();
-      gateway.memoryContext = (_) async {
-        // The person stops while the memory sync is in flight.
-        hold.cancel();
-        return MemoryPromptContext(value: 'memory', isCurrent: () => true);
-      };
-      await expectLater(
-        gateway.promptAsync('s', text: 'hi', cancel: hold),
-        throwsA(isA<PromptCancelledException>()),
-      );
-      expect(server.countOf('POST /api/session/s/prompt'), 0);
-    });
+    test(
+      'a stop after preparation but before the request posts nothing',
+      () async {
+        final hold = _Hold();
+        gateway.memoryContext = (_) async {
+          // The person stops while the memory sync is in flight.
+          hold.cancel();
+          return MemoryPromptContext(value: 'memory', isCurrent: () => true);
+        };
+        await expectLater(
+          gateway.promptAsync('s', text: 'hi', cancel: hold),
+          throwsA(isA<PromptCancelledException>()),
+        );
+        expect(server.countOf('POST /api/session/s/prompt'), 0);
+      },
+    );
 
     test('a stop during the request abandons it and reports a stop, not a '
         'server error', () async {
@@ -567,13 +570,15 @@ void main() {
       expect(store.read().map((entry) => entry.id), ['j']);
     });
 
-    test('unreadable stored data reports itself instead of claiming a hold',
-        () async {
-      await prefs.setString('oc.steerEscrow', '{not json');
-      final reopened = SteerEscrowStore(prefs: prefs);
-      expect(reopened.read(), isEmpty);
-      expect(reopened.readable, isFalse);
-    });
+    test(
+      'unreadable stored data reports itself instead of claiming a hold',
+      () async {
+        await prefs.setString('oc.steerEscrow', '{not json');
+        final reopened = SteerEscrowStore(prefs: prefs);
+        expect(reopened.read(), isEmpty);
+        expect(reopened.readable, isFalse);
+      },
+    );
   });
 }
 
@@ -583,9 +588,8 @@ class _RecordingGateway implements ServerGateway, CorrelatedPromptGateway {
   final List<String> calls;
 
   @override
-  ServerCapabilities get capabilities => const ServerCapabilities(
-    commandReceipts: true,
-  );
+  ServerCapabilities get capabilities =>
+      const ServerCapabilities(commandReceipts: true);
 
   @override
   bool get isClosed => false;
@@ -624,9 +628,8 @@ class _RecordingGateway implements ServerGateway, CorrelatedPromptGateway {
 /// A gateway with no exact-ID capability.
 class _PlainGateway implements ServerGateway {
   @override
-  ServerCapabilities get capabilities => const ServerCapabilities(
-    commandReceipts: true,
-  );
+  ServerCapabilities get capabilities =>
+      const ServerCapabilities(commandReceipts: true);
 
   @override
   bool get isClosed => false;

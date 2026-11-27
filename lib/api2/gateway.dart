@@ -128,9 +128,9 @@ class Api2Gateway
     String command, {
     String? directory,
     required Duration timeout,
-  }) =>
-      Api2ShellRunner(client)
-          .runShellCommand(command, directory: directory, timeout: timeout);
+  }) => Api2ShellRunner(
+    client,
+  ).runShellCommand(command, directory: directory, timeout: timeout);
 
   @override
   String? get directory => client.directory;

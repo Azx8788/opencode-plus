@@ -109,10 +109,7 @@ class _ManagerAgentScreenState extends State<ManagerAgentScreen> {
     } on Object {
       if (mounted) {
         setState(() {
-          _error = _text(
-            'Could not save the manager settings.',
-            '无法保存管理代理设置。',
-          );
+          _error = _text('Could not save the manager settings.', '无法保存管理代理设置。');
         });
       }
     } finally {
@@ -236,12 +233,7 @@ class _ManagerAgentScreenState extends State<ManagerAgentScreen> {
           ),
           SizedBox(height: tokens.space3),
           if (tasks.isEmpty)
-            KitGroupNote(
-              message: _text(
-                'No tasks recorded yet.',
-                '还没有任务记录。',
-              ),
-            )
+            KitGroupNote(message: _text('No tasks recorded yet.', '还没有任务记录。'))
           else
             for (final task in tasks) ...[
               _TaskRow(task: task),
@@ -285,9 +277,7 @@ class _TaskRow extends StatelessWidget {
         failed ? AppIconography.warning : AppIconography.chat,
       ),
       trailing: KitStatusTag(
-        label: failed
-            ? text('not delivered', '未送达')
-            : task.status.name,
+        label: failed ? text('not delivered', '未送达') : task.status.name,
         tone: failed
             ? KitStatusTagTone.needsYou
             : task.status == ChannelTaskStatus.completed

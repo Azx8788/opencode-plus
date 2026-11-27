@@ -1208,18 +1208,25 @@ class ConnectionController extends ChangeNotifier
     final targetDirectory = directory;
     final targetWorkspace = workspace ?? '';
     final targetProfile = (_connectedProfile ?? profile)?.id;
+    final targetLocation = locationRevision;
     if (targetDirectory == null || workspaceChoiceRequired) {
       throw const ProductException(
         'Open a project folder in OpenCode Plus before sending channel commands.',
       );
     }
     final transport = await _requireActionTransport();
+    if (transport is! Api2Gateway) {
+      throw const ProductException(
+        'Channels require a live OpenCode V2 connection.',
+      );
+    }
     await ensureInteractiveSendAllowed(expectedApi: transport);
     bool locationMatches() =>
         identical(api, transport) &&
         targetProfile == request.conversation.workspaceId &&
         targetProfile == (_connectedProfile ?? profile)?.id &&
         targetDirectory == directory &&
+        targetLocation == locationRevision &&
         targetWorkspace == (workspace ?? '');
     void checkLocation() {
       if (!locationMatches()) {
@@ -1254,12 +1261,14 @@ class ConnectionController extends ChangeNotifier
     checkLocation();
     final agent = selectedAgent.trim();
     final variant = selectedVariant.trim();
-    await transport.promptAsync(
+    await transport.promptWithMessageID(
       sessionID,
+      messageID: transport.createPromptMessageID(),
       text: request.text,
       model: selectedModel,
       agent: agent.isEmpty ? null : agent,
       variant: variant.isEmpty ? null : variant,
+      beforeSend: checkLocation,
     );
     return sessionID;
   }

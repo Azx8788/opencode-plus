@@ -51,6 +51,7 @@ mixin _ConnectionControllerFormsInbox on ChangeNotifier {
       set.remove(set.first);
     }
   }
+
   final Set<String> _resolvedFormIDs = {};
   int _formRevision = 0;
   int _formRefreshGeneration = 0;
@@ -117,10 +118,8 @@ mixin _ConnectionControllerFormsInbox on ChangeNotifier {
   /// cancel. Only a follow-up look separates "will not be delivered" from
   /// "was delivered already", and the caller needs that to decide whether
   /// the text may be merged into a new prompt.
-  Future<InboxCancelResult> cancelInboxItem(
-    String sessionID,
-    String inboxID,
-  ) => _self._cancelInboxItem(sessionID, inboxID);
+  Future<InboxCancelResult> cancelInboxItem(String sessionID, String inboxID) =>
+      _self._cancelInboxItem(sessionID, inboxID);
 
   /// Flips a pending send between steer and queue delivery. A 409
   /// already-delivered drops the local item and rethrows for the toast.

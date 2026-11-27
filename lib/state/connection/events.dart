@@ -33,8 +33,7 @@ mixin _ConnectionControllerEvents on ChangeNotifier {
   /// the merge all worked from "idle". This read closes that window; it only
   /// ever *adds* runs, because dropping one that is still going hides a live
   /// turn, which is the worse mistake.
-  Future<void> reconcileSessionStatuses() =>
-      _self._reconcileSessionStatuses();
+  Future<void> reconcileSessionStatuses() => _self._reconcileSessionStatuses();
 
   @visibleForTesting
   void handleEventForTesting(EventEnvelope event) => _self._onEvent(event);
