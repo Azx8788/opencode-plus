@@ -12,6 +12,7 @@ class ChannelPromptRequest {
     required this.message,
     required this.text,
     this.binding,
+    this.onSessionReady,
   });
 
   final ConversationKey conversation;
@@ -21,6 +22,10 @@ class ChannelPromptRequest {
   /// The session this conversation was already bound to, when there is one.
   /// The port reuses it instead of opening a second session for the same chat.
   final ChannelSessionBinding? binding;
+
+  /// The port registers the resolved session before submitting the prompt:
+  /// a fast run can emit its completion before the HTTP receipt arrives.
+  final Future<void> Function(ChannelSessionBinding binding)? onSessionReady;
 }
 
 /// One finished assistant message, with the identity needed to deliver it
@@ -32,10 +37,15 @@ class ChannelPromptRequest {
 /// is empty only on gateways that do not expose one.
 @immutable
 class ChannelAgentReply {
-  const ChannelAgentReply({required this.text, this.messageId = ''});
+  const ChannelAgentReply({
+    required this.text,
+    this.messageId = '',
+    this.created,
+  });
 
   final String text;
   final String messageId;
+  final int? created;
 
   bool get isEmpty => text.trim().isEmpty;
 }
@@ -66,6 +76,24 @@ abstract class ChannelAgentPort {
     final text = await latestReply(sessionID);
     return text == null ? null : ChannelAgentReply(text: text);
   }
+
+  /// Looks up the specific assistant message seen in a turn's events.
+  Future<ChannelAgentReply?> replyForMessage(
+    String sessionID,
+    String messageID,
+  ) async {
+    final reply = await latestReplyInfo(sessionID);
+    return reply?.messageId == messageID ? reply : null;
+  }
+
+  /// Returns a confirmed result for this prompt if its terminal SSE was lost.
+  /// An unknown or still-running task yields null, never a guessed answer.
+  Future<ChannelAgentReply?> recoverReply(
+    String sessionID,
+    DateTime startedAt,
+    String prompt, {
+    String? observedMessageId,
+  }) async => null;
 
   /// One line describing the local agent, for `/status`.
   String statusText();

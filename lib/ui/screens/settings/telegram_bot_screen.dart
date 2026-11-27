@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../builtin/builtin_server.dart' show looksLikeInAppServer;
 import '../../../state/connection.dart';
@@ -26,6 +27,7 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
   bool _replacingToken = false;
   bool _busy = false;
   bool _chatEdited = false;
+  bool _manual = false;
   String? _loadedProfile;
   String? _notice;
   String? _error;
@@ -54,6 +56,10 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
       _loadedProfile = snapshot.profileID;
       _chatEdited = false;
       _enabled = snapshot.enabled;
+      _token.clear();
+      _notice = null;
+      _error = null;
+      _replacingToken = false;
     }
     if (!_chatEdited && _chatID.text != snapshot.chatID) {
       _chatID.text = snapshot.chatID;
@@ -64,9 +70,54 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
   void dispose() {
     _bridge.removeListener(_changed);
     widget.controller.removeListener(_changed);
+    _bridge.cancelPairing();
     _token.dispose();
     _chatID.dispose();
     super.dispose();
+  }
+
+  Future<void> _pair() async {
+    if (_busy || _bridge.isPairing) return;
+    setState(() {
+      _error = null;
+      _notice = null;
+    });
+    try {
+      await _bridge.beginPairing(replacementToken: _token.text);
+      if (!mounted) return;
+      if (_bridge.pairingSucceeded) {
+        _token.clear();
+        _replacingToken = false;
+        _manual = false;
+        _enabled = true;
+        _chatEdited = false;
+        _syncSnapshot();
+        _notice = _text('Telegram is paired and enabled.', 'Telegram 已绑定并启用。');
+      } else {
+        _error = _bridge.pairingError;
+      }
+    } on FormatException catch (error) {
+      _error = error.message;
+    } on Object {
+      _error = _text('Could not pair Telegram.', '无法绑定 Telegram。');
+    } finally {
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _openTelegram(Uri link) async {
+    if (_bridge.pairingLink != link) return;
+    try {
+      // The bridge generated this fixed t.me URL; no token or user-supplied
+      // destination is passed to the launcher.
+      if (await launchUrl(link, mode: LaunchMode.externalApplication)) return;
+    } on Object {
+      // The app or browser may be unavailable.
+    }
+    if (!mounted) return;
+    setState(
+      () => _error = _text('Could not open Telegram.', '无法打开 Telegram。'),
+    );
   }
 
   Future<void> _save() async {
@@ -183,6 +234,9 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
   @override
   Widget build(BuildContext context) {
     final snapshot = _bridge.snapshot;
+    final pairing = _bridge.isPairing;
+    final link = _bridge.pairingLink;
+    final busy = _busy || pairing;
     final localServer = looksLikeInAppServer(widget.controller.profile);
     final tokens = KitTokens.of(context);
     final phaseTone = switch (snapshot.phase) {
@@ -240,81 +294,133 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
             controller: _token,
             saved: snapshot.hasToken && !_replacingToken,
             onReplace: () => setState(() => _replacingToken = true),
-            enabled: !_busy,
-            disabledReason: _busy ? _text('Saving settings', '正在保存设置') : null,
+            enabled: !busy,
+            disabledReason: busy ? _text('Setup in progress', '正在配置') : null,
             helper: _text(
               'Create a bot with @BotFather. The token is stored in secure storage and is never shown again.',
               '通过 @BotFather 创建机器人。Token 保存在安全存储中，保存后不会再次显示。',
             ),
           ),
           SizedBox(height: tokens.space3),
-          KitField(
-            key: const ValueKey('telegram-bot-user-id'),
-            label: _text('Allowed Telegram user ID', '允许的 Telegram 用户 ID'),
-            kind: KitFieldKind.number,
-            controller: _chatID,
-            enabled: !_busy,
-            disabledReason: _busy ? _text('Saving settings', '正在保存设置') : null,
-            hint: _text('For example: 123456789', '例如：123456789'),
-            helper: _text(
-              'Find your numeric ID with @userinfobot. Only this private chat can send instructions or receive updates.',
-              '可通过 @userinfobot 查询数字 ID。只有该账号的私聊可以发送指令或接收进度。',
-            ),
-            onChanged: (_) => _chatEdited = true,
-          ),
-          SizedBox(height: tokens.space3),
-          KitSwitchRow(
-            key: const ValueKey('telegram-bot-enabled'),
-            title: _text('Enable Telegram relay', '启用 Telegram 双向转发'),
-            supporting: _text(
-              'Save to start long polling. The token cannot be used by another poller or webhook at the same time. Keep this app process alive for background messages.',
-              '保存后开始长轮询；Bot Token 不能同时用于其他轮询程序或 Webhook。后台接收需要保持 App 进程运行。',
-            ),
-            value: _enabled,
-            onChanged: _busy
-                ? null
-                : (value) => setState(() => _enabled = value),
-          ),
-          if (snapshot.sessionID != null) ...[
-            SizedBox(height: tokens.space2),
-            KitText(
-              _text(
-                'Bound to an OpenCode conversation.',
-                '已绑定到一个 OpenCode 会话。',
+          if ((!snapshot.enabled && !(_manual && !snapshot.configured)) ||
+              pairing) ...[
+            if (link != null) ...[
+              KitGroupNote(
+                message: _text(
+                  'In Telegram, tap Start if prompted, then come back here. This link expires in 3 minutes. Do not share it.',
+                  '如 Telegram 显示「开始」，点一下再返回 App。链接 3 分钟内有效，请勿分享。',
+                ),
               ),
-              role: KitTextRole.caption,
-              tone: KitTextTone.secondary,
-            ),
-          ],
-          SizedBox(height: tokens.space3),
-          if (_error != null)
-            KitNotice(message: _error!, tone: AppStatusTone.failure),
-          if (_notice != null)
-            KitNotice(message: _notice!, tone: AppStatusTone.ok),
-          KitButton.primary(
-            key: const ValueKey('telegram-bot-save'),
-            label: _enabled
-                ? _text('Save and enable', '保存并启用')
-                : _text('Save settings', '保存设置'),
-            onPressed: _busy ? null : _save,
-            working: _busy,
-          ),
-          SizedBox(height: tokens.space2),
-          KitButton.secondary(
-            key: const ValueKey('telegram-bot-test'),
-            label: _text('Verify bot token', '验证 Bot Token'),
-            onPressed: _busy ? null : _test,
-            working: _busy,
-          ),
-          if (snapshot.configured) ...[
+              KitButton.primary(
+                key: const ValueKey('telegram-bot-open-pairing'),
+                label: _text('Open Telegram', '打开 Telegram'),
+                onPressed: () => _openTelegram(link),
+              ),
+            ] else if (!snapshot.configured || pairing)
+              KitButton.primary(
+                key: const ValueKey('telegram-bot-pair'),
+                label: _text('Pair automatically', '自动绑定'),
+                onPressed: busy || !localServer ? null : _pair,
+                working: pairing,
+              )
+            else
+              KitButton.secondary(
+                key: const ValueKey('telegram-bot-pair'),
+                label: _text('Pair automatically', '自动绑定'),
+                onPressed: busy || !localServer ? null : _pair,
+              ),
+            if (pairing)
+              KitButton.secondary(
+                label: _text('Cancel pairing', '取消绑定'),
+                onPressed: _bridge.isSavingPairing
+                    ? null
+                    : _bridge.cancelPairing,
+              ),
             SizedBox(height: tokens.space2),
-            KitButton.tertiary(
-              key: const ValueKey('telegram-bot-remove'),
-              label: _text('Remove bot configuration', '删除机器人配置'),
-              destructive: true,
-              onPressed: _busy ? null : _clear,
-            ),
           ],
+          if (!snapshot.configured && !pairing)
+            KitButton.tertiary(
+              key: const ValueKey('telegram-bot-manual'),
+              label: _manual
+                  ? _text('Hide manual setup', '收起手动配置')
+                  : _text('Use a numeric user ID instead', '改用数字 ID 手动配置'),
+              onPressed: _busy
+                  ? null
+                  : () => setState(() => _manual = !_manual),
+            ),
+          if (!pairing && (_manual || snapshot.configured)) ...[
+            KitField(
+              key: const ValueKey('telegram-bot-user-id'),
+              label: _text('Allowed Telegram user ID', '允许的 Telegram 用户 ID'),
+              kind: KitFieldKind.number,
+              controller: _chatID,
+              enabled: !_busy,
+              disabledReason: _busy ? _text('Saving settings', '正在保存设置') : null,
+              hint: _text('For example: 123456789', '例如：123456789'),
+              helper: _text(
+                'Find your numeric ID with @userinfobot. Only this private chat can send instructions or receive updates.',
+                '可通过 @userinfobot 查询数字 ID。只有该账号的私聊可以发送指令或接收进度。',
+              ),
+              onChanged: (_) => _chatEdited = true,
+            ),
+            SizedBox(height: tokens.space3),
+            KitSwitchRow(
+              key: const ValueKey('telegram-bot-enabled'),
+              title: _text('Enable Telegram relay', '启用 Telegram 双向转发'),
+              supporting: _text(
+                'Save to start long polling. The token cannot be used by another poller or webhook at the same time. Keep this app process alive for background messages.',
+                '保存后开始长轮询；Bot Token 不能同时用于其他轮询程序或 Webhook。后台接收需要保持 App 进程运行。',
+              ),
+              value: _enabled,
+              onChanged: _busy
+                  ? null
+                  : (value) => setState(() => _enabled = value),
+            ),
+            if (snapshot.sessionID != null) ...[
+              SizedBox(height: tokens.space2),
+              KitText(
+                _text(
+                  'Bound to an OpenCode conversation.',
+                  '已绑定到一个 OpenCode 会话。',
+                ),
+                role: KitTextRole.caption,
+                tone: KitTextTone.secondary,
+              ),
+            ],
+            SizedBox(height: tokens.space3),
+            if (_error != null)
+              KitNotice(message: _error!, tone: AppStatusTone.failure),
+            if (_notice != null)
+              KitNotice(message: _notice!, tone: AppStatusTone.ok),
+            KitButton.primary(
+              key: const ValueKey('telegram-bot-save'),
+              label: _enabled
+                  ? _text('Save and enable', '保存并启用')
+                  : _text('Save settings', '保存设置'),
+              onPressed: _busy ? null : _save,
+              working: _busy,
+            ),
+            SizedBox(height: tokens.space2),
+            KitButton.secondary(
+              key: const ValueKey('telegram-bot-test'),
+              label: _text('Verify bot token', '验证 Bot Token'),
+              onPressed: _busy ? null : _test,
+              working: _busy,
+            ),
+            if (snapshot.configured) ...[
+              SizedBox(height: tokens.space2),
+              KitButton.tertiary(
+                key: const ValueKey('telegram-bot-remove'),
+                label: _text('Remove bot configuration', '删除机器人配置'),
+                destructive: true,
+                onPressed: _busy ? null : _clear,
+              ),
+            ],
+          ],
+          if (pairing && _error != null)
+            KitNotice(message: _error!, tone: AppStatusTone.failure),
+          if (!pairing && !_manual && !snapshot.configured && _error != null)
+            KitNotice(message: _error!, tone: AppStatusTone.failure),
           SizedBox(height: tokens.space4),
           KitGroupNote(
             message: _text(

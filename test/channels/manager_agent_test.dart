@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:opencode_mobile/channels/channel_identity.dart';
+import 'package:opencode_mobile/channels/channel_message.dart';
+import 'package:opencode_mobile/channels/channel_provider.dart';
 import 'package:opencode_mobile/channels/channel_tasks.dart';
 import 'package:opencode_mobile/channels/manager/manager_agent.dart';
 import 'package:opencode_mobile/channels/manager/manager_client.dart';
@@ -52,13 +55,16 @@ void main() {
 
     test('a 401 becomes a sentence, not a stack trace', () async {
       final server = await _MockModel.start([
-        {'error': {'message': 'invalid key'}},
+        {
+          'error': {'message': 'invalid key'},
+        },
       ], status: 401);
       addTearDown(server.stop);
       final client = ManagerModelClient(
         baseUrl: server.baseUrl,
         apiKey: 'bad',
         model: 'm',
+        retryDelay: Duration.zero,
       );
       addTearDown(client.close);
 
@@ -72,6 +78,49 @@ void main() {
           ),
         ),
       );
+      expect(server.served, 1);
+    });
+
+    test('retries a busy gateway once and uses the second answer', () async {
+      final server = await _MockModel.start(
+        [
+          {'error': 'busy'},
+          _plain('可以用了'),
+        ],
+        statuses: [429, 200],
+      );
+      addTearDown(server.stop);
+      final client = ManagerModelClient(
+        baseUrl: server.baseUrl,
+        apiKey: 'k',
+        model: 'm',
+        retryDelay: Duration.zero,
+      );
+      addTearDown(client.close);
+      expect(
+        (await client.complete(messages: const [], tools: const [])).content,
+        '可以用了',
+      );
+      expect(server.served, 2);
+    });
+
+    test('stops after one retry if the gateway is still busy', () async {
+      final server = await _MockModel.start([
+        {'error': 'busy'},
+      ], status: 503);
+      addTearDown(server.stop);
+      final client = ManagerModelClient(
+        baseUrl: server.baseUrl,
+        apiKey: 'k',
+        model: 'm',
+        retryDelay: Duration.zero,
+      );
+      addTearDown(client.close);
+      await expectLater(
+        client.complete(messages: const [], tools: const []),
+        throwsA(isA<ManagerModelError>()),
+      );
+      expect(server.served, 2);
     });
   });
 
@@ -101,42 +150,47 @@ void main() {
       expect(host.sent, ['收到，开始处理']);
     });
 
-    test('submit_task hands the executor the text and returns its id', () async {
-      final server = await _MockModel.start([
-        _call('submit_task', {'text': '跑一遍测试'}),
-        _call('send_message', {'text': '已提交'}),
-        _plain('好的'),
-      ]);
-      addTearDown(server.stop);
-      final host = _FakeHost();
-      final agent = ChannelManagerAgent(
-        client: ManagerModelClient(
-          baseUrl: server.baseUrl,
-          apiKey: 'k',
-          model: 'm',
-        ),
-      );
+    test(
+      'submit_task hands the executor the text and returns its id',
+      () async {
+        final server = await _MockModel.start([
+          _call('submit_task', {'text': '跑一遍测试'}),
+          _call('send_message', {'text': '已提交'}),
+          _plain('好的'),
+        ]);
+        addTearDown(server.stop);
+        final host = _FakeHost();
+        final agent = ChannelManagerAgent(
+          client: ManagerModelClient(
+            baseUrl: server.baseUrl,
+            apiKey: 'k',
+            model: 'm',
+          ),
+        );
 
-      final outcome = await agent.handleUserMessage(
-        conversationKey: 'c1',
-        text: '跑测试',
-        host: host,
-      );
+        final outcome = await agent.handleUserMessage(
+          conversationKey: 'c1',
+          text: '跑测试',
+          host: host,
+        );
 
-      expect(host.submitted, ['跑一遍测试']);
-      expect(outcome.spoke, isTrue);
-      // The tool result the model received carried the id.
-      expect(
-        server.toolResults.any((result) => result.contains('task-1')),
-        isTrue,
-      );
-    });
+        expect(host.submitted, ['跑一遍测试']);
+        expect(outcome.spoke, isTrue);
+        // The tool result the model received carried the id.
+        expect(
+          server.toolResults.any((result) => result.contains('task-1')),
+          isTrue,
+        );
+      },
+    );
 
     test('an answer without send_message is not speaking', () async {
       final server = await _MockModel.start([
         {
           'choices': [
-            {'message': {'content': '好的，我来处理'}},
+            {
+              'message': {'content': '好的，我来处理'},
+            },
           ],
         },
       ]);
@@ -215,12 +269,16 @@ void main() {
       harness.provider.deliver(directMessage('跑测试', id: 'in-1'));
       await waitFor(() => harness.agent.prompts.length == 1);
       await waitFor(
-        () => harness.provider.sent.any(
-          (message) => message.text == '收到，已开始',
-        ),
+        () => harness.provider.sent.any((message) => message.text == '收到，已开始'),
       );
 
       // No "已转发" receipt: the manager is the one talking.
+      await store.settle();
+      expect(
+        store.recent().single.delivery,
+        ChannelDeliveryStatus.pending,
+        reason: 'the acknowledgment is not a task-result receipt',
+      );
       expect(
         harness.provider.sent.any(
           (message) => message.text.contains('已转发给本地 Agent'),
@@ -236,17 +294,143 @@ void main() {
       harness.engine.handleAgentEvent(_status('idle'));
 
       await waitFor(
-        () => harness.provider.sent.any(
-          (message) => message.text == '结果是：全部通过',
-        ),
+        () =>
+            harness.provider.sent.any((message) => message.text == '结果是：全部通过'),
       );
       // The executor's raw text was not relayed by the engine as well.
       expect(
-        harness.provider.sent
-            .where((message) => message.text == '全部通过')
-            .length,
+        harness.provider.sent.where((message) => message.text == '全部通过').length,
         0,
       );
+      await waitFor(
+        () => store.recent().single.delivery == ChannelDeliveryStatus.delivered,
+      );
+      expect(store.recent().single.status, ChannelTaskStatus.completed);
+    });
+
+    test(
+      'a silent submission gets a receipt without executing twice',
+      () async {
+        final server = await _MockModel.start([
+          _call('submit_task', {'text': '跑测试'}),
+          _plain('好的'),
+        ]);
+        addTearDown(server.stop);
+        final client = ManagerModelClient(
+          baseUrl: server.baseUrl,
+          apiKey: 'k',
+          model: 'm',
+        );
+        addTearDown(client.close);
+        final harness = await EngineHarness.start(
+          manager: ChannelManagerAgent(client: client),
+        );
+        addTearDown(harness.stop);
+        harness.provider.deliver(directMessage('帮我跑测试'));
+        await waitFor(() => harness.provider.sent.isNotEmpty);
+        expect(harness.agent.prompts.single.text, '跑测试');
+        expect(harness.provider.sent.single.text, '已转发给本地 Agent。');
+      },
+    );
+
+    test(
+      'a group member cannot read or cancel another member’s task',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final store = ChannelTaskStore(
+          preferences: await SharedPreferences.getInstance(),
+        );
+        const other = ConversationKey(
+          workspaceId: 'profile-1',
+          providerId: 'fake',
+          accountId: 'bot-1',
+          conversationType: ChannelConversationKind.group,
+          conversationId: 'g1',
+          ownerActorId: 'u2',
+        );
+        store.record(
+          ChannelTaskRecord(
+            id: 'other-task',
+            providerId: other.providerId,
+            accountId: other.accountId,
+            userId: other.ownerActorId,
+            conversationId: other.conversationId,
+            workspaceId: other.workspaceId,
+            conversationKey: other.value,
+            sessionId: 'ses-other',
+            prompt: 'private prompt',
+            result: 'private result',
+            createdAt: DateTime.now(),
+            status: ChannelTaskStatus.running,
+          ),
+        );
+        await store.settle();
+        final server = await _MockModel.start([
+          _call('get_task_result', {'task_id': 'other-task'}),
+          _call('list_tasks', {}),
+          _call('cancel_task', {'task_id': 'other-task'}),
+          _call('send_message', {'text': '没有这个任务'}),
+          _plain('好的'),
+        ]);
+        addTearDown(server.stop);
+        final client = ManagerModelClient(
+          baseUrl: server.baseUrl,
+          apiKey: 'k',
+          model: 'm',
+        );
+        addTearDown(client.close);
+        final harness = await EngineHarness.start(
+          ledger: store,
+          manager: ChannelManagerAgent(client: client),
+        );
+        addTearDown(harness.stop);
+        harness.provider.deliver(groupMessage('查询任务'));
+        await waitFor(() => harness.provider.sent.isNotEmpty);
+        expect(
+          server.toolResults,
+          containsAll([
+            '{"error":"没有这个任务"}',
+            '{"tasks":[]}',
+            '{"cancelled":false}',
+          ]),
+        );
+        expect(harness.agent.stopped, isEmpty);
+        expect(store.recent().single.status, ChannelTaskStatus.running);
+      },
+    );
+
+    test('unknown final delivery is not followed by a raw fallback', () async {
+      final server = await _MockModel.start([
+        _call('submit_task', {'text': '跑测试'}),
+        _plain('好的'),
+        _call('send_message', {'text': '已整理的结果'}),
+        _plain('好的'),
+      ]);
+      addTearDown(server.stop);
+      final client = ManagerModelClient(
+        baseUrl: server.baseUrl,
+        apiKey: 'k',
+        model: 'm',
+      );
+      addTearDown(client.close);
+      final harness = await EngineHarness.start(
+        manager: ChannelManagerAgent(client: client),
+      );
+      addTearDown(harness.stop);
+      harness.provider.deliver(directMessage('帮我跑测试'));
+      await waitFor(() => harness.provider.sent.isNotEmpty);
+      harness.provider.receipt = const DeliveryReceipt.unknown('确认丢失');
+      harness.agent
+        ..reply = '原始结果'
+        ..replyId = 'm-1';
+      harness.engine.handleAgentEvent(_messageDone('m-1'));
+      harness.engine.handleAgentEvent(_status('idle'));
+      await waitFor(() => server.served == 4);
+      await harness.engine.drainOutbox();
+      expect(harness.provider.attempts.map((message) => message.text), [
+        '已转发给本地 Agent。',
+        '已整理的结果',
+      ]);
     });
 
     test('a manager that cannot be reached falls back to the relay', () async {
@@ -342,13 +526,14 @@ class _FakeHost implements ManagerHost {
 
 /// A loopback Chat Completions server with a scripted list of answers.
 class _MockModel {
-  _MockModel._(this._server, this._responses, this._status);
+  _MockModel._(this._server, this._responses, this._statuses);
 
   final HttpServer _server;
   final List<Map<String, Object?>> _responses;
-  final int _status;
+  final List<int> _statuses;
 
   int _served = 0;
+  int get served => _served;
   String? lastAuth;
   Map<String, Object?> lastBody = const {};
   String? lastToolResult;
@@ -359,9 +544,10 @@ class _MockModel {
   static Future<_MockModel> start(
     List<Map<String, Object?>> responses, {
     int status = 200,
+    List<int>? statuses,
   }) async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    final model = _MockModel._(server, responses, status);
+    final model = _MockModel._(server, responses, statuses ?? [status]);
     server.listen(model._handle);
     return model;
   }
@@ -383,10 +569,10 @@ class _MockModel {
         }
       }
     }
-    final index = _served < _responses.length ? _served : _responses.length - 1;
-    _served++;
+    final requestNumber = _served++;
+    final index = requestNumber.clamp(0, _responses.length - 1);
     request.response
-      ..statusCode = _status
+      ..statusCode = _statuses[requestNumber.clamp(0, _statuses.length - 1)]
       ..headers.contentType = ContentType.json
       ..write(jsonEncode(_responses[index]));
     await request.response.close();

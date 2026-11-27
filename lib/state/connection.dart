@@ -75,6 +75,7 @@ import '../domain/work_row_status.dart';
 import 'provider_quota_monitor.dart';
 import '../quota/provider_quota_client.dart';
 import '../api2/client.dart';
+import '../api2/channel_replies.dart';
 import '../api2/gateway.dart';
 import '../api2/gateway_mappers.dart' show api2ServerCapabilities;
 import '../api2/gateway_operations.dart';
@@ -128,6 +129,7 @@ import 'profiles.dart';
 import '../telegram/telegram_bot.dart';
 import '../channels/channel_agent_port.dart';
 import '../channels/channel_hub.dart';
+import '../channels/channel_sessions.dart';
 import 'task_trace.dart';
 import '../domain/task_trace.dart';
 import '../api2/task_trace.dart';
@@ -350,11 +352,10 @@ class ConnectionController extends ChangeNotifier
     supported: _telegramSupported,
     addHostListener: addListener,
     removeHostListener: removeListener,
-    sendPrompt: _sendTelegramPrompt,
-    stopAgent: _stopTelegramAgent,
-    readLatestReply: _readLatestTelegramReply,
-    agentStatus: _telegramAgentStatus,
-    isSessionBusy: (sessionID) => busySessions.contains(sessionID),
+    agent: _ConnectionChannelAgentPort(this, status: _telegramAgentStatus),
+    inbox: channels.inbox,
+    outbox: channels.outbox,
+    ledger: channels.tasks,
   );
 
   /// The two QQ channels. Telegram keeps its own bridge above, but both run on
@@ -1175,110 +1176,6 @@ class ConnectionController extends ChangeNotifier
       isConnected &&
       api is Api2Gateway;
 
-  Future<String> _sendTelegramPrompt(String text) async {
-    if (!_telegramSupported()) {
-      throw const ProductException(
-        'Connect to this phone’s OpenCode server before sending Telegram commands.',
-      );
-    }
-    if (directory == null || workspaceChoiceRequired) {
-      throw const ProductException(
-        'Open a project folder in OpenCode Plus before sending Telegram commands.',
-      );
-    }
-    var transport = await _requireActionTransport();
-    await ensureInteractiveSendAllowed(expectedApi: transport);
-    final owner = (_connectedProfile ?? profile)?.id;
-    if (owner == null) {
-      throw const ProductException('No OpenCode server is selected.');
-    }
-    final sessionKey = '${TelegramBotBridge.sessionIDKeyPrefix}$owner';
-    final directoryKey = '${TelegramBotBridge.directoryKeyPrefix}$owner';
-    final workspaceKey = '${TelegramBotBridge.workspaceKeyPrefix}$owner';
-    var sessionID = store.prefs.getString(sessionKey);
-    final savedDirectory = store.prefs.getString(directoryKey);
-    final savedWorkspace = store.prefs.getString(workspaceKey);
-    if (sessionID == null ||
-        savedDirectory != directory ||
-        savedWorkspace != workspace) {
-      sessionID = (await createSession()).id;
-      if (!await store.prefs.setString(sessionKey, sessionID) ||
-          !await store.prefs.setString(directoryKey, directory!) ||
-          !await store.prefs.setString(workspaceKey, workspace ?? '')) {
-        throw const ProductException(
-          'The Telegram session could not be saved. No prompt was sent.',
-        );
-      }
-      transport = await _requireActionTransport();
-    }
-    await telegramBot.bindSession(sessionID);
-    await ensureInteractiveSendAllowed(expectedApi: transport);
-    final agent = selectedAgent.trim();
-    final variant = selectedVariant.trim();
-    await transport.promptAsync(
-      sessionID,
-      text: text,
-      model: selectedModel,
-      agent: agent.isEmpty ? null : agent,
-      variant: variant.isEmpty ? null : variant,
-    );
-    return sessionID;
-  }
-
-  Future<void> _stopTelegramAgent() async {
-    final sessionID = telegramBot.snapshot.sessionID;
-    if (sessionID == null || sessionID.isEmpty) {
-      throw const ProductException('There is no Telegram session to stop.');
-    }
-    final owner = (_connectedProfile ?? profile)?.id;
-    if (owner == null ||
-        store.prefs.getString(
-              '${TelegramBotBridge.directoryKeyPrefix}$owner',
-            ) !=
-            directory ||
-        store.prefs.getString(
-              '${TelegramBotBridge.workspaceKeyPrefix}$owner',
-            ) !=
-            (workspace ?? '')) {
-      throw const ProductException(
-        'The Telegram conversation belongs to a different project. Open it in the app first.',
-      );
-    }
-    if (!busySessions.contains(sessionID)) {
-      throw const ProductException(
-        'The Telegram session is not running a task.',
-      );
-    }
-    final transport = await _requireActionTransport();
-    await ensureInteractiveSendAllowed(expectedApi: transport);
-    noteStopFromThisApp(sessionID);
-    try {
-      await transport.abort(sessionID);
-    } on Object {
-      noteStopFromThisApp(sessionID, asked: false);
-      rethrow;
-    }
-  }
-
-  Future<String?> _readLatestTelegramReply() async {
-    final sessionID = telegramBot.snapshot.sessionID;
-    final gateway = api;
-    if (sessionID == null || gateway == null) return null;
-    final messages = await gateway.messages(sessionID);
-    for (final message in messages.reversed) {
-      if (message.info.role != 'assistant') continue;
-      if (message.info.time?.isDone != true) return null;
-      final text = message.parts
-          .where((part) => part.type == 'text' && !part.synthetic)
-          .map((part) => part.text)
-          .where((part) => part.trim().isNotEmpty)
-          .join('\n')
-          .trim();
-      if (text.isNotEmpty) return text;
-    }
-    return null;
-  }
-
   String _telegramAgentStatus() {
     if (!_telegramSupported() || !isConnected || api is! Api2Gateway) {
       return '本机 OpenCode 当前未连接。';
@@ -1292,9 +1189,9 @@ class ConnectionController extends ChangeNotifier
         : '本机 OpenCode 已连接；Agent 当前空闲。';
   }
 
-  // ------------------------------------------------------------ QQ channels
+  // -------------------------------------------------------- message channels
 
-  /// Sends one QQ-channel prompt through the app's normal prompt path.
+  /// Sends one channel prompt through the app's normal prompt path.
   ///
   /// The session is per conversation and per workspace: a group member's
   /// session is never reused for another member, and a session opened in
@@ -1305,23 +1202,53 @@ class ConnectionController extends ChangeNotifier
         'Connect to this phone’s OpenCode server before sending channel commands.',
       );
     }
-    if (directory == null || workspaceChoiceRequired) {
+    final targetDirectory = directory;
+    final targetWorkspace = workspace ?? '';
+    final targetProfile = (_connectedProfile ?? profile)?.id;
+    if (targetDirectory == null || workspaceChoiceRequired) {
       throw const ProductException(
         'Open a project folder in OpenCode Plus before sending channel commands.',
       );
     }
-    var transport = await _requireActionTransport();
+    final transport = await _requireActionTransport();
     await ensureInteractiveSendAllowed(expectedApi: transport);
+    bool locationMatches() =>
+        identical(api, transport) &&
+        targetProfile == request.conversation.workspaceId &&
+        targetProfile == (_connectedProfile ?? profile)?.id &&
+        targetDirectory == directory &&
+        targetWorkspace == (workspace ?? '');
+    void checkLocation() {
+      if (!locationMatches()) {
+        throw const ProductException(
+          'The channel project changed before the prompt was sent.',
+        );
+      }
+    }
+
+    checkLocation();
     var sessionID = request.binding?.sessionID;
     final binding = request.binding;
     if (sessionID == null ||
         sessionID.isEmpty ||
         binding == null ||
-        !binding.matches(directory: directory!, workspace: workspace ?? '')) {
-      sessionID = (await createSession()).id;
-      transport = await _requireActionTransport();
-      await ensureInteractiveSendAllowed(expectedApi: transport);
+        !binding.matches(
+          directory: targetDirectory,
+          workspace: targetWorkspace,
+        )) {
+      sessionID = (await _createSession(scopeIsCurrent: locationMatches)).id;
     }
+    checkLocation();
+    await request.onSessionReady?.call(
+      ChannelSessionBinding(
+        sessionID: sessionID,
+        directory: targetDirectory,
+        workspace: targetWorkspace,
+        boundAt: DateTime.now(),
+      ),
+    );
+    await ensureInteractiveSendAllowed(expectedApi: transport);
+    checkLocation();
     final agent = selectedAgent.trim();
     final variant = selectedVariant.trim();
     await transport.promptAsync(
@@ -1361,22 +1288,38 @@ class ConnectionController extends ChangeNotifier
   /// assistant message exactly once even when two turns run back to back.
   Future<ChannelAgentReply?> _readLatestReplyInfo(String sessionID) async {
     final gateway = api;
-    if (gateway == null) return null;
-    final messages = await gateway.messages(sessionID);
-    for (final message in messages.reversed) {
-      if (message.info.role != 'assistant') continue;
-      if (message.info.time?.isDone != true) return null;
-      final text = message.parts
-          .where((part) => part.type == 'text' && !part.synthetic)
-          .map((part) => part.text)
-          .where((part) => part.trim().isNotEmpty)
-          .join('\n')
-          .trim();
-      if (text.isNotEmpty) {
-        return ChannelAgentReply(text: text, messageId: message.info.id);
-      }
-    }
-    return null;
+    if (gateway is! Api2Gateway) return null;
+    final reply = await Api2ChannelReplies(gateway.client).latest(sessionID);
+    return identical(gateway, api) ? reply : null;
+  }
+
+  Future<ChannelAgentReply?> _readChannelReply(
+    String sessionID,
+    String messageID,
+  ) async {
+    final gateway = api;
+    if (gateway is! Api2Gateway) return null;
+    final reply = await Api2ChannelReplies(
+      gateway.client,
+    ).byId(sessionID, messageID);
+    return identical(gateway, api) ? reply : null;
+  }
+
+  Future<ChannelAgentReply?> _recoverChannelReply(
+    String sessionID,
+    DateTime startedAt,
+    String prompt, {
+    String? observedMessageId,
+  }) async {
+    final gateway = api;
+    if (!_telegramSupported() || gateway is! Api2Gateway) return null;
+    final reply = await Api2ChannelReplies(gateway.client).recover(
+      sessionID,
+      startedAt,
+      prompt,
+      observedMessageId: observedMessageId,
+    );
+    return identical(gateway, api) ? reply : null;
   }
 
   String _channelAgentStatus() {
@@ -1390,15 +1333,17 @@ class ConnectionController extends ChangeNotifier
   void _notifyProfileDataChanged() => _profileDataChanges.notifyListeners();
 }
 
-/// The only door between the QQ channels and this controller.
+/// The only door between the message channels and this controller.
 ///
 /// Everything the channel layer may do with the agent passes through here, and
 /// nothing here can create a tool call, approve a permission or bypass the
 /// app's own send gates.
 class _ConnectionChannelAgentPort extends ChannelAgentPort {
-  _ConnectionChannelAgentPort(this._controller);
+  _ConnectionChannelAgentPort(this._controller, {String Function()? status})
+    : _status = status;
 
   final ConnectionController _controller;
+  final String Function()? _status;
 
   @override
   Future<String> sendPrompt(ChannelPromptRequest request) =>
@@ -1417,7 +1362,26 @@ class _ConnectionChannelAgentPort extends ChannelAgentPort {
       _controller._readLatestReplyInfo(sessionID);
 
   @override
-  String statusText() => _controller._channelAgentStatus();
+  Future<ChannelAgentReply?> replyForMessage(
+    String sessionID,
+    String messageID,
+  ) => _controller._readChannelReply(sessionID, messageID);
+
+  @override
+  Future<ChannelAgentReply?> recoverReply(
+    String sessionID,
+    DateTime startedAt,
+    String prompt, {
+    String? observedMessageId,
+  }) => _controller._recoverChannelReply(
+    sessionID,
+    startedAt,
+    prompt,
+    observedMessageId: observedMessageId,
+  );
+
+  @override
+  String statusText() => (_status ?? _controller._channelAgentStatus)();
 
   @override
   bool isBusy(String sessionID) => _controller.busySessions.contains(sessionID);

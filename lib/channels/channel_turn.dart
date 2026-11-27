@@ -11,6 +11,10 @@
 /// scheduled for and nothing else.
 library;
 
+import 'channel_agent_port.dart';
+import 'channel_message.dart';
+import 'channel_sessions.dart';
+
 enum TurnPhase {
   /// Submitted to the agent; the session may or may not be executing yet.
   running,
@@ -18,8 +22,9 @@ enum TurnPhase {
   /// The session reported idle. The answer is being collected.
   finishing,
 
-  /// The answer reached the chat (or there was nothing to send).
-  delivered,
+  /// Execution ended and the answer, if any, was handed to the delivery path.
+  /// Platform acknowledgement is tracked independently in the ledger.
+  closed,
 
   /// `/stop` was asked for. Nothing from this turn is delivered afterwards.
   cancelled,
@@ -38,18 +43,23 @@ class ChannelTurn {
     required this.conversationKey,
     required this.prompt,
     required this.startedAt,
-  });
+  }) : lastPrompt = prompt;
 
   /// Stable for the life of the turn; also the task id the outbox records.
   final String id;
 
   final String conversationKey;
   final String prompt;
+  String lastPrompt;
   final DateTime startedAt;
 
-  /// The OpenCode session this turn was submitted to. Null until the prompt
-  /// has been accepted.
+  /// The OpenCode session this turn will be submitted to. Known before POST
+  /// in ports that resolve the session first.
   String? sessionID;
+  ChannelSessionBinding? binding;
+  ChannelMessage? request;
+  bool promptAccepted = false;
+  bool executionObserved = false;
 
   DateTime? finishedAt;
 
@@ -69,11 +79,26 @@ class ChannelTurn {
   /// been sent yet.
   String? lastSeenMessageId;
 
+  String? _textMessageId;
+  final _textParts = <String, String>{};
+
+  void rememberText(String messageId, String partId, String text) {
+    if (_textMessageId != messageId) _textParts.clear();
+    _textMessageId = messageId;
+    _textParts[partId] = text;
+  }
+
+  ChannelAgentReply? get streamedReply {
+    final id = _textMessageId;
+    if (id == null) return null;
+    return ChannelAgentReply(text: _textParts.values.join('\n'), messageId: id);
+  }
+
   bool get isOpen => phase == TurnPhase.running;
   bool get isCancelled => phase == TurnPhase.cancelled;
   bool get isFinished =>
       phase == TurnPhase.finishing ||
-      phase == TurnPhase.delivered ||
+      phase == TurnPhase.closed ||
       phase == TurnPhase.cancelled;
 
   bool hasDelivered(String? messageId) =>
@@ -88,7 +113,6 @@ class ChannelTurn {
     if (messageId != null && messageId.isNotEmpty) {
       deliveredMessageIds.add(messageId);
     }
-    if (phase == TurnPhase.finishing) phase = TurnPhase.delivered;
   }
 
   @override

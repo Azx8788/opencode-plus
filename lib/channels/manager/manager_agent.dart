@@ -87,8 +87,7 @@ class ChannelManagerAgent {
       'type': 'function',
       'function': {
         'name': 'submit_task',
-        'description':
-            '把一项工作交给执行 Agent。返回 task_id。提交成功不代表任务完成。',
+        'description': '把一项工作交给执行 Agent。返回 task_id。提交成功不代表任务完成。',
         'parameters': {
           'type': 'object',
           'properties': {
@@ -116,7 +115,8 @@ class ChannelManagerAgent {
       'type': 'function',
       'function': {
         'name': 'get_task_status',
-        'description': '查询任务状态：submitted/running/waiting_permission/completed/failed/cancelled。',
+        'description':
+            '查询任务状态：submitted/running/waiting_permission/completed/failed/cancelled。',
         'parameters': {
           'type': 'object',
           'properties': {
@@ -158,8 +158,7 @@ class ChannelManagerAgent {
       'type': 'function',
       'function': {
         'name': 'stay_silent',
-        'description':
-            '明确决定本次不回复用户（例如重复消息、无意义的寒暄）。调用后不要再调用 send_message。',
+        'description': '明确决定本次不回复用户（例如重复消息、无意义的寒暄）。调用后不要再调用 send_message。',
         'parameters': {
           'type': 'object',
           'properties': {
@@ -186,11 +185,12 @@ class ChannelManagerAgent {
       '1. 所有对外发言必须调用 send_message；你的普通回复用户看不到。\n'
       '2. 提交成功不等于执行成功。没有拿到真实结果前，不得声称任务完成。\n'
       '3. 不得编造进度、结果或错误信息。\n'
-      '4. 用户补充要求时，若任务仍在执行，把补充并入同一任务（再次 submit_task 即可）。\n'
+      '4. 执行中只有收到具体补充要求才再次 submit_task；如果只是问进度，查一次 get_task_status，再用 send_message 回答。\n'
       '5. 任务失败或等待权限时，如实说明，并说明用户需要在 App 中处理什么。\n'
       '6. 只谈论本会话的任务，不要提及其它会话、账号或用户。\n'
       '7. 回复要适合聊天窗口：简短、少用表格和 Markdown。\n'
-      '8. 拿不准时先问清楚，不要猜。';
+      '8. 拿不准时先问清楚，不要猜。\n'
+      '9. 不要反复查询同一任务；拿到状态就回答。';
 
   /// Runs the manager for one inbound message.
   Future<ManagerOutcome> handleUserMessage({
@@ -255,6 +255,7 @@ class ChannelManagerAgent {
       } on ManagerModelError catch (error) {
         return ManagerOutcome(
           spoke: spoke,
+          silentByChoice: silent && !spoke,
           reason: error.message,
           steps: step + 1,
         );

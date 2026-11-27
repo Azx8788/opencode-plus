@@ -61,8 +61,10 @@ storage. Android backup is disabled for this app.
 ### Optional Telegram bot
 
 When enabled for the phone's built-in OpenCode server, the app stores the bot
-token in Android secure storage and stores the allowed Telegram user ID and
-polling cursor in app preferences. The bot accepts private text messages only
+token in Android secure storage and stores the allowed Telegram user ID,
+polling cursor, and a bounded channel task and delivery history in app
+preferences. Optional automatic setup passes a short-lived, single-use pairing
+code to Telegram via a private `/start` link. The bot accepts private text messages only
 from that configured ID. Messages are sent to the currently linked OpenCode
 conversation as normal prompts. The conversation's agent replies and brief
 tool-progress notices are sent to that Telegram chat. Telegram and its

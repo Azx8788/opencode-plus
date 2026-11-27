@@ -450,6 +450,47 @@ void main() {
       expect(await queue.due('p', 'a'), isEmpty);
     });
 
+    test('an outbox item can only be claimed by one sender', () async {
+      final queue = await outbox();
+      final entry = await queue.enqueue(
+        providerId: 'p',
+        accountId: 'a',
+        address: address,
+        text: 'result',
+        purpose: DeliveryPurpose.finalAnswer,
+      );
+      final claims = await Future.wait([
+        queue.markSending(entry.id),
+        queue.markSending(entry.id),
+      ]);
+      expect(claims.whereType<OutboxEntry>(), hasLength(1));
+      await queue.settle(entry.id, const DeliveryReceipt.unknown('没有确认'));
+      expect(await queue.markSending(entry.id), isNull);
+    });
+
+    test('platform-requested delays stop at the attempt ceiling', () async {
+      final queue = await outbox();
+      final entry = await queue.enqueue(
+        providerId: 'p',
+        accountId: 'a',
+        address: address,
+        text: 'result',
+        purpose: DeliveryPurpose.finalAnswer,
+      );
+      const limited = DeliveryReceipt.deferred('限流', retryAfter: Duration.zero);
+      await queue.markSending(entry.id);
+      expect(
+        (await queue.settle(entry.id, limited))?.status,
+        OutboxStatus.deferred,
+      );
+      expect(await queue.markSending(entry.id), isNotNull);
+      expect(
+        (await queue.settle(entry.id, limited))?.status,
+        OutboxStatus.failed,
+      );
+      expect(await queue.markSending(entry.id), isNull);
+    });
+
     test('a final failure stays failed and is never due again', () async {
       final queue = await outbox();
       final entry = await queue.enqueue(

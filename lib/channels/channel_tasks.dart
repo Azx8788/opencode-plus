@@ -81,6 +81,7 @@ class ChannelTaskRecord {
     required this.prompt,
     required this.createdAt,
     this.workspaceId = '',
+    this.conversationKey,
     this.sessionId,
     this.status = ChannelTaskStatus.created,
     this.delivery = ChannelDeliveryStatus.pending,
@@ -97,6 +98,8 @@ class ChannelTaskRecord {
   final String conversationId;
   final String userId;
   final String workspaceId;
+  // Legacy rows lack the chat kind/thread and cannot be exposed to a model.
+  final String? conversationKey;
   final String prompt;
   final DateTime createdAt;
 
@@ -125,6 +128,7 @@ class ChannelTaskRecord {
     'conversationId': conversationId,
     'userId': userId,
     'workspaceId': workspaceId,
+    if (conversationKey != null) 'conversationKey': conversationKey,
     'prompt': prompt,
     'createdAt': createdAt.toIso8601String(),
     if (sessionId != null) 'sessionId': sessionId,
@@ -148,6 +152,7 @@ class ChannelTaskRecord {
       conversationId: json['conversationId']?.toString() ?? '',
       userId: json['userId']?.toString() ?? '',
       workspaceId: json['workspaceId']?.toString() ?? '',
+      conversationKey: json['conversationKey']?.toString(),
       prompt: prompt,
       createdAt:
           DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
@@ -183,6 +188,8 @@ class ChannelTaskMachine {
       // A prompt can be accepted and start running before the record is
       // written; refusing that would leave the task stuck at "created".
       ChannelTaskStatus.running,
+      ChannelTaskStatus.waitingPermission,
+      ChannelTaskStatus.completed,
       ChannelTaskStatus.cancelled,
       ChannelTaskStatus.failed,
     },
@@ -251,6 +258,8 @@ abstract class ChannelTaskLedger {
   });
 
   List<ChannelTaskRecord> recent({int limit = 50});
+
+  Future<void> clear(String providerId, String accountId) async {}
 }
 
 class NoopTaskLedger extends ChannelTaskLedger {
@@ -406,6 +415,7 @@ class ChannelTaskStore extends ChannelTaskLedger {
           )
           .toList();
 
+  @override
   Future<void> clear(String providerId, String accountId) => _locked(() async {
     final records = _load()
       ..removeWhere(
@@ -421,9 +431,7 @@ class ChannelTaskStore extends ChannelTaskLedger {
 
   void _trim(List<ChannelTaskRecord> records) {
     while (records.length > capacity) {
-      final finished = records.indexWhere(
-        (record) => !record.status.isOpen,
-      );
+      final finished = records.indexWhere((record) => !record.status.isOpen);
       records.removeAt(finished >= 0 ? finished : 0);
     }
   }

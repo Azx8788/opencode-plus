@@ -2,7 +2,7 @@
 /// wire format.
 ///
 /// This is deliberately the smallest client that can do tool calls: one POST,
-/// no streaming, no retries beyond one reconnect. The manager is not on the
+/// no streaming, one retry for transient failures. The manager is not on the
 /// hot path of a conversation — a slow or failed call falls back to the plain
 /// relay, which is what the app did before the manager existed.
 library;
@@ -36,9 +36,10 @@ class ManagerModelReply {
 
 /// A call that did not produce a reply, with a message a person can read.
 class ManagerModelError implements Exception {
-  const ManagerModelError(this.message);
+  const ManagerModelError(this.message, {this.retryable = false});
 
   final String message;
+  final bool retryable;
 
   @override
   String toString() => message;
@@ -52,6 +53,7 @@ class ManagerModelClient {
     this.timeout = const Duration(seconds: 60),
     this.maxTokens,
     this.temperature,
+    this.retryDelay = const Duration(milliseconds: 600),
     HttpClient? httpClient,
   }) : _client = httpClient ?? HttpClient();
 
@@ -62,6 +64,7 @@ class ManagerModelClient {
   final Duration timeout;
   final int? maxTokens;
   final double? temperature;
+  final Duration retryDelay;
 
   final HttpClient _client;
 
@@ -87,31 +90,52 @@ class ManagerModelClient {
       if (temperature != null) 'temperature': temperature,
     });
 
-    final HttpClientResponse response;
+    for (var attempt = 0; ; attempt++) {
+      try {
+        return await _post(body);
+      } on ManagerModelError catch (error) {
+        if (!error.retryable || attempt != 0) rethrow;
+        await Future<void>.delayed(retryDelay);
+      }
+    }
+  }
+
+  Future<ManagerModelReply> _post(String body) async {
+    final deadline = Stopwatch()..start();
+    Duration remaining() => timeout - deadline.elapsed;
+    HttpClientRequest? request;
     try {
-      final request = await _client
-          .postUrl(endpoint)
-          .timeout(timeout);
+      request = await _client.postUrl(endpoint).timeout(timeout);
+      request.followRedirects = false;
       request.headers
         ..set(HttpHeaders.authorizationHeader, 'Bearer $apiKey')
         ..contentType = ContentType.json;
       request.write(body);
-      response = await request.close().timeout(timeout);
+      final response = await request.close().timeout(remaining());
+      final text = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(remaining());
+      final status = response.statusCode;
+      if (status < 200 || status >= 300) {
+        throw ManagerModelError(
+          '管理模型返回 $status：${_short(text)}',
+          retryable: status == 429 || status >= 500,
+        );
+      }
+      return _parse(text);
     } on TimeoutException {
+      request?.abort();
       throw const ManagerModelError('管理模型响应超时。');
+    } on ManagerModelError {
+      rethrow;
     } on SocketException catch (error) {
-      throw ManagerModelError('无法连接管理模型：${error.message}');
+      throw ManagerModelError('无法连接管理模型：${error.message}', retryable: true);
+    } on HttpException catch (error) {
+      throw ManagerModelError('管理模型连接中断：${error.message}', retryable: true);
     } on Object catch (error) {
       throw ManagerModelError('管理模型请求失败：$error');
     }
-
-    final text = await response.transform(utf8.decoder).join();
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ManagerModelError(
-        '管理模型返回 ${response.statusCode}：${_short(text)}',
-      );
-    }
-    return _parse(text);
   }
 
   ManagerModelReply _parse(String text) {

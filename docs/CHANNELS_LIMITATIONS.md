@@ -17,7 +17,7 @@ credentials and approvals this repository does not have.
 | Area | Implemented | Automated tests | Real platform |
 | --- | --- | --- | --- |
 | Channel engine (routing, tasks, policy, dedupe, outbox) | Yes | Yes (87 channel tests) | n/a |
-| Telegram relay (migrated to the channel layer) | Yes | Yes (original 9 regression tests, unchanged) | Previously verified; re-verified only against a local fake in CI |
+| Telegram automatic private-chat pairing and final reply recovery | Yes | Local Bot API and OpenCode v2 wire/HTTP regressions | **Not verified** for these changes against a real Telegram account on Android |
 | Official QQ: token, gateway, identify, heartbeat, resume | Yes | Yes, against a local fake gateway | **Not verified** — needs AppID/Secret and scene approval |
 | Official QQ: C2C / group / channel message parsing | Yes | Yes | **Not verified** — needs a real bot |
 | Official QQ: passive reply window and 5-reply budget | Yes | Yes (fake clock) | **Not verified** |
@@ -78,8 +78,8 @@ credentials and approvals this repository does not have.
 
 ## Product behaviour that may surprise
 
-* Telegram remains a single-owner private chat with one session; that is the
-  shipped behaviour and is preserved deliberately.
+* Telegram remains a single-owner private chat with one current binding.
+  Switching the binding does not discard the result an earlier task still owes.
 * `/approve` and `/deny` from a chat are refused with an explanation. Approvals
   stay in the app.
 * Group members never share a session. If you want shared context in a group, it

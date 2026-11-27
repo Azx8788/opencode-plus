@@ -23,10 +23,11 @@ Settings → 消息渠道 → **Telegram**, or the older Settings → Conversati
 Telegram bot entry. Both open the same page.
 
 1. Create a bot with [@BotFather](https://t.me/BotFather) and copy the token.
-2. Get your numeric user id from [@userinfobot](https://t.me/userinfobot).
-3. Open the bot's private chat and send `/start` — Telegram does not let a bot
-   write first.
-4. Paste the token and the id, verify, then enable and save.
+2. Paste the token and choose **Pair automatically → Open Telegram**.
+3. In Telegram, tap **Start** if prompted, then return to the app. The one-time
+   link expires in three minutes. A successful pairing enables the relay.
+4. If you prefer, choose **Use a numeric user ID instead**. Existing bindings
+   do not need to be paired again.
 
 The relay removes any webhook and publishes the command menu when it starts, so a
 leftover webhook cannot leave it "connected but deaf".

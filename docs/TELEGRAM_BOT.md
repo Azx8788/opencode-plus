@@ -13,14 +13,17 @@ behaviour, while transport, de-duplication, task lifecycle and delivery live in
 ## Setup
 
 1. Create a bot with [@BotFather](https://t.me/BotFather) and copy its token.
-2. Get your numeric Telegram user ID from [@userinfobot](https://t.me/userinfobot).
-3. Open the bot's private chat and send `/start`. Telegram does not let a bot
-   write first, so this is what makes the chat reachable.
-4. In OpenCode Plus, open **Settings → Conversations → Telegram bot**.
-5. Enter the bot token and your user ID, verify the token, then enable and save.
-   Verification reports the bot's `@username` and whether the private chat is
-   reachable yet.
-6. Connect the app to its built-in OpenCode server and open a project. Opening a
+2. In OpenCode Plus, open **Settings → Conversations → Telegram bot**. Paste
+   the token and choose **Pair automatically → Open Telegram**.
+3. In Telegram, tap **Start** if prompted, then return to the app. The link
+   contains an eight-character random code, not the bot token. It can be used
+   once, expires in three minutes and only works in a private chat. Don't share it.
+4. On success the app saves the stable numeric ID and enables the relay. No
+   second bot or manual ID lookup is needed. If the bot already has a webhook
+   or another poller, stop that receiver before pairing; pairing itself never
+   removes a webhook. Existing bindings stay valid. To rebind an enabled bot,
+   disable it and save first. The numeric-ID setup remains available as a fallback.
+5. Connect the app to its built-in OpenCode server and open a project. Opening a
    conversation binds that session for progress and replies. A Telegram text
    sent before a session is bound starts a separate conversation in the
    currently open project.
@@ -53,6 +56,14 @@ process; start the app again to resume polling.
   waiting for a permission or question response, the bot asks you to handle it
   in the app. It never auto-approves agent requests.
 
+The reply uses the session that ran the task, even if you open another chat or
+use `/new` before it finishes. If the app is still running but misses a completion
+event, it can recover an unambiguous result from the server transcript without
+sending the task again. It cannot reconstruct an in-flight turn after Android
+kills the app. If Telegram does not acknowledge a send, the app records the
+delivery as unknown rather than sending it again. See **Message channels →
+Manager agent → Channel task records** for execution and delivery status.
+
 Only plain text is accepted inbound in this first version. Photos, files,
 voice notes, inline keyboards and remote permission approval are not supported.
 
@@ -74,4 +85,9 @@ local stand-in for the Bot API: it asserts the webhook is cleared and the menu
 published before the first poll, that a plain message reaches the agent and
 binds its session, that `/status`, `/stop` and `/new` answer correctly, that a
 foreign account is ignored, that a `409` is reported rather than hidden, and
-that agent progress and the finished reply come back to Telegram.
+that agent progress and the finished reply come back to Telegram. It also
+exercises automatic binding (wrong code, group, bot, expired/cancelled), fast
+completion before the submit receipt, rebinding, reconnect and lost delivery
+acknowledgements. `test/channels/api2_channel_replies_test.dart` checks the
+OpenCode 2 transcript fallback against a local HTTP server. These are not
+real Telegram-account tests.

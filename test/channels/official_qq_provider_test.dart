@@ -73,6 +73,9 @@ class _FakeQq {
         if (decoded is! Map) return;
         final payload = Map<String, dynamic>.from(decoded);
         frames.add(payload);
+        // A buffered heartbeat can reach us after the closing handshake.
+        // Record it, but do not try to write to a closed fake socket.
+        if (upgraded.readyState != WebSocket.open) return;
         switch (payload['op']) {
           case 1:
             if (ackHeartbeats) upgraded.add(jsonEncode({'op': 11}));

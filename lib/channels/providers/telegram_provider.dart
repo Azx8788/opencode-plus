@@ -19,6 +19,7 @@ class TelegramProvider extends ChannelProviderBase {
     required this.token,
     required this.chatId,
     required String Function() apiOrigin,
+    this.onOffset,
     this.pollTimeout = const Duration(seconds: 25),
     this.maxBackoff = const Duration(seconds: 60),
   }) : _apiOrigin = apiOrigin,
@@ -27,6 +28,7 @@ class TelegramProvider extends ChannelProviderBase {
   final String token;
   final String chatId;
   final String Function() _apiOrigin;
+  final Future<void> Function(int offset)? onOffset;
   final Duration pollTimeout;
   final Duration maxBackoff;
 
@@ -111,44 +113,43 @@ class TelegramProvider extends ChannelProviderBase {
 
   Future<void> _pollLoop(int generation) async {
     publishStatus(ProviderState.connecting, clearError: true);
-    await _prepareBot();
+    final setup = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+    _http = setup;
+    try {
+      await _prepareBot(setup, generation);
+    } finally {
+      if (identical(_http, setup)) _http = null;
+      setup.close(force: true);
+    }
     while (_running && generation == _generation && !isClosed) {
       final http = HttpClient()
         ..connectionTimeout = const Duration(seconds: 10);
       _http = http;
       try {
-        final query = <String, String>{
-          'timeout': '${pollTimeout.inSeconds}',
-          'allowed_updates': '["message"]',
-          if (offset != null) 'offset': '$offset',
-        };
-        final result = await _request(
-          'getUpdates',
-          query,
-          get: true,
-          timeout: pollTimeout + const Duration(seconds: 10),
+        final updates = await readUpdates(
           client: http,
+          offset: offset,
+          wait: pollTimeout,
         );
         if (!_running || generation != _generation) break;
-        if (result['result'] is! List) {
-          throw const TelegramFailure('Telegram 返回了无法识别的消息格式。');
-        }
         if (status.state != ProviderState.online) {
           publishStatus(ProviderState.online, clearError: true);
         }
         _consecutiveFailures = 0;
-        for (final raw in result['result'] as List) {
-          if (raw is! Map || raw['update_id'] is! int) continue;
-          final updateID = raw['update_id'] as int;
+        for (final (updateID, message) in updates) {
+          if (offset != null && updateID < offset!) continue;
           // Advance before dispatch: a process death cannot replay a prompt
           // whose delivery to OpenCode may already have succeeded.
+          await onOffset?.call(updateID + 1);
+          if (!_running || generation != _generation) break;
           offset = updateID + 1;
-          final message = normalizeUpdate(
-            Map<String, dynamic>.from(raw),
-            accountId: accountId,
-            botUsername: _botUsername,
-          );
-          if (message != null) emitMessage(message);
+          if (message != null &&
+              message.conversationType == ChannelConversationKind.direct &&
+              message.conversationId == chatId &&
+              message.senderId == chatId &&
+              message.extensions['sender_is_bot'] != true) {
+            emitMessage(message);
+          }
         }
       } on Object catch (error) {
         if (!_running || generation != _generation || isClosed) break;
@@ -182,12 +183,15 @@ class TelegramProvider extends ChannelProviderBase {
   /// the relay would look "connected but deaf", so removing it is part of
   /// starting up. Both calls are best-effort: a network hiccup here must not
   /// stop the poll loop, which reports its own failures.
-  Future<void> _prepareBot() async {
+  Future<void> _prepareBot(HttpClient client, int generation) async {
     try {
-      await _request('deleteWebhook', const {'drop_pending_updates': false});
+      await _request('deleteWebhook', const {
+        'drop_pending_updates': false,
+      }, client: client);
     } on Object {
       // getUpdates still reports 409 if a webhook really is in the way.
     }
+    if (!_running || generation != _generation) return;
     try {
       await _request('setMyCommands', const {
         'commands': [
@@ -197,10 +201,59 @@ class TelegramProvider extends ChannelProviderBase {
           {'command': 'queue', 'description': '排队下一条 Agent 指令'},
           {'command': 'help', 'description': '显示使用说明'},
         ],
-      });
+      }, client: client);
     } on Object {
       // The menu is a convenience; commands work when typed.
     }
+  }
+
+  /// A bounded getUpdates call. Setup uses this without starting the relay or
+  /// deleting a webhook, and handles only the expected pairing command.
+  Future<List<(int, ChannelMessage?)>> readUpdates({
+    required HttpClient client,
+    required Duration wait,
+    int? offset,
+  }) async {
+    final result = await _request(
+      'getUpdates',
+      {
+        'timeout': '${wait.inSeconds}',
+        'allowed_updates': '["message"]',
+        if (offset != null) 'offset': '$offset',
+      },
+      get: true,
+      timeout: wait + const Duration(seconds: 10),
+      client: client,
+    );
+    final items = result['result'];
+    if (items is! List) {
+      throw const TelegramFailure('Telegram 返回了无法识别的消息格式。');
+    }
+    return [
+      for (final raw in items)
+        if (raw is Map && raw['update_id'] is int)
+          (
+            raw['update_id'] as int,
+            normalizeUpdate(
+              Map<String, dynamic>.from(raw),
+              accountId: accountId,
+              botUsername: _botUsername,
+            ),
+          ),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+  }
+
+  Future<String> pairingUsername(HttpClient client) async {
+    final me = await _request('getMe', const {}, client: client);
+    final bot = me['result'];
+    final username = bot is Map ? bot['username'] : null;
+    if (bot is! Map ||
+        bot['is_bot'] != true ||
+        username is! String ||
+        !RegExp(r'^[A-Za-z0-9_]{5,32}$').hasMatch(username)) {
+      throw const TelegramFailure('Telegram 未返回有效的机器人用户名。');
+    }
+    return username;
   }
 
   /// Verifies the credential and whether the owner can be written to.
@@ -266,6 +319,10 @@ class TelegramProvider extends ChannelProviderBase {
     if (isClosed) {
       return const DeliveryReceipt.failed('渠道已关闭');
     }
+    if (context.address.conversationType != ChannelConversationKind.direct ||
+        context.address.conversationId != chatId) {
+      return const DeliveryReceipt.failed('Telegram 私聊绑定已变更，本条消息未发送。');
+    }
     if (message.text.trim().isEmpty) {
       return const DeliveryReceipt.failed('空消息未发送');
     }
@@ -277,6 +334,9 @@ class TelegramProvider extends ChannelProviderBase {
       });
       final result = payload['result'];
       final messageID = result is Map ? result['message_id']?.toString() : null;
+      if (messageID == null || messageID.isEmpty) {
+        return const DeliveryReceipt.unknown('Telegram 未返回发送回执。');
+      }
       return DeliveryReceipt.delivered(messageId: messageID);
     } on TelegramFailure catch (error) {
       final retryable = error.retryable;
@@ -327,6 +387,12 @@ class TelegramProvider extends ChannelProviderBase {
           .join()
           .timeout(timeout);
       final payload = _payload(body);
+      if (method == 'sendMessage' &&
+          payload?['ok'] != false &&
+          (httpResponse.statusCode != HttpStatus.ok ||
+              payload?['ok'] != true)) {
+        throw const HttpException('No definitive Telegram acknowledgement');
+      }
       if (httpResponse.statusCode != HttpStatus.ok || payload?['ok'] != true) {
         throw _failure(payload, httpResponse.statusCode);
       }
@@ -334,6 +400,7 @@ class TelegramProvider extends ChannelProviderBase {
     } on TelegramFailure {
       rethrow;
     } on Object {
+      if (method == 'sendMessage') rethrow; // The platform may already have it.
       throw const TelegramFailure('无法连接 Telegram，请检查网络后重试。');
     } finally {
       if (ownsClient) http.close(force: true);
@@ -428,7 +495,7 @@ class TelegramProvider extends ChannelProviderBase {
       extensions: {
         'update_id': update['update_id'],
         'chat_type': chatType,
-        if (from['is_bot'] == true) 'sender_is_bot': true,
+        if (from['is_bot'] is bool) 'sender_is_bot': from['is_bot'],
       },
     );
   }

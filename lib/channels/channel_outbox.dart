@@ -244,10 +244,15 @@ class ChannelOutbox {
     return entry;
   });
 
-  /// Records the attempt that is about to start. Returns the updated entry,
-  /// or null when the entry is gone (a deleted account, a cleared queue).
-  Future<OutboxEntry?> markSending(String id) =>
-      _update(id, (entry) => entry.copyWith(status: OutboxStatus.sending));
+  /// Claims a planned or due entry once, even if two drains read the same row.
+  Future<OutboxEntry?> markSending(String id) => _update(id, (entry) {
+    final due =
+        entry.status == OutboxStatus.deferred &&
+        entry.attempts < maxAttempts &&
+        !(entry.nextAttemptAt?.isAfter(_clock()) ?? false);
+    if (entry.status != OutboxStatus.planned && !due) return null;
+    return entry.copyWith(status: OutboxStatus.sending);
+  });
 
   Future<OutboxEntry?> settle(String id, DeliveryReceipt receipt) =>
       _locked(() async {
@@ -267,14 +272,20 @@ class ChannelOutbox {
               clearError: true,
             );
           case DeliveryStatus.deferred:
-            next = current.copyWith(
-              status: OutboxStatus.deferred,
-              attempts: attempts,
-              lastError: receipt.error,
-              nextAttemptAt: _clock().add(
-                receipt.retryAfter ?? _backoffFor(attempts),
-              ),
-            );
+            next = attempts < maxAttempts
+                ? current.copyWith(
+                    status: OutboxStatus.deferred,
+                    attempts: attempts,
+                    lastError: receipt.error,
+                    nextAttemptAt: _clock().add(
+                      receipt.retryAfter ?? _backoffFor(attempts),
+                    ),
+                  )
+                : current.copyWith(
+                    status: OutboxStatus.failed,
+                    attempts: attempts,
+                    lastError: receipt.error,
+                  );
           case DeliveryStatus.failed:
             final retryable = receipt.retryable && attempts < maxAttempts;
             next = retryable
@@ -343,12 +354,13 @@ class ChannelOutbox {
 
   Future<OutboxEntry?> _update(
     String id,
-    OutboxEntry Function(OutboxEntry entry) transform,
+    OutboxEntry? Function(OutboxEntry entry) transform,
   ) => _locked(() async {
     final entries = await _load();
     final index = entries.indexWhere((entry) => entry.id == id);
     if (index < 0) return null;
     final next = transform(entries[index]);
+    if (next == null) return null;
     entries[index] = next;
     await _save(entries);
     _emit(next);
