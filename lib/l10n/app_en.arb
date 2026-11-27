@@ -27574,6 +27574,42 @@
   "@chatUiCompactConfirmAction": {
     "description": "Confirm sheet button that starts compacting"
   },
+  "chatUiCompactionRevertAction": "Revert this compaction",
+  "@chatUiCompactionRevertAction": {
+    "description": "Long-press menu on a finished compaction summary: disables that boundary so the model reads the earlier conversation again"
+  },
+  "chatUiCompactionKeepTurns": "Keep the newest turns",
+  "@chatUiCompactionKeepTurns": {
+    "description": "Compaction options: keep the newest complete turns out of the summary"
+  },
+  "chatUiCompactionKeepTurnsHint": "Everything older is summarized; these turns stay as written.",
+  "@chatUiCompactionKeepTurnsHint": {
+    "description": "Compaction options: one-line explanation of the keep choice"
+  },
+  "chatUiCompactionInstruction": "Additional instruction (optional)",
+  "@chatUiCompactionInstruction": {
+    "description": "Compaction options: label for the extra instruction sent with the compaction request"
+  },
+  "chatUiCompactionInstructionHint": "For example: keep the plan and its decisions; leave out exploration.",
+  "@chatUiCompactionInstructionHint": {
+    "description": "Compaction options: example of an additional instruction"
+  },
+  "chatUiCompactionRevertTitle": "Revert this compaction?",
+  "@chatUiCompactionRevertTitle": {
+    "description": "Confirmation title before reverting the latest finished compaction"
+  },
+  "chatUiCompactionRevertBody": "The model will read the conversation as it was before this compaction. No messages are deleted, and anything sent after it is kept.",
+  "@chatUiCompactionRevertBody": {
+    "description": "Confirmation body: reverting a compaction only changes what the model reads"
+  },
+  "chatUiCompactionRevertConfirm": "Revert compaction",
+  "@chatUiCompactionRevertConfirm": {
+    "description": "Confirmation button that reverts the latest finished compaction"
+  },
+  "chatUiCompactionReverted": "Compaction reverted. The model reads the earlier conversation again.",
+  "@chatUiCompactionReverted": {
+    "description": "Composer note after a compaction boundary was disabled"
+  },
   "kitTurnReconnecting": "Connection lost. Reconnecting to get the rest of this reply.",
   "@kitTurnReconnecting": {
     "description": "KitTurn: end line of an unfinished turn while the connection is coming back"

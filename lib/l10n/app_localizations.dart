@@ -36218,6 +36218,60 @@ abstract class AppLocalizations {
   /// **'Compact conversation'**
   String get chatUiCompactConfirmAction;
 
+  /// Compaction options: keep the newest complete turns out of the summary
+  ///
+  /// In en, this message translates to:
+  /// **'Keep the newest turns'**
+  String get chatUiCompactionKeepTurns;
+
+  /// Compaction options: one-line explanation of the keep choice
+  ///
+  /// In en, this message translates to:
+  /// **'Everything older is summarized; these turns stay as written.'**
+  String get chatUiCompactionKeepTurnsHint;
+
+  /// Compaction options: table stakes text for the additional instruction field
+  ///
+  /// In en, this message translates to:
+  /// **'Additional instruction (optional)'**
+  String get chatUiCompactionInstruction;
+
+  /// Compaction options: example of an additional instruction
+  ///
+  /// In en, this message translates to:
+  /// **'For example: keep the plan and its decisions; leave out exploration.'**
+  String get chatUiCompactionInstructionHint;
+
+  /// Long-press menu on a finished compaction summary: disables that boundary so the model reads the earlier conversation again
+  ///
+  /// In en, this message translates to:
+  /// **'Revert this compaction'**
+  String get chatUiCompactionRevertAction;
+
+  /// Confirmation title before reverting the latest finished compaction
+  ///
+  /// In en, this message translates to:
+  /// **'Revert this compaction?'**
+  String get chatUiCompactionRevertTitle;
+
+  /// Confirmation body: reverting a compaction only changes what the model reads
+  ///
+  /// In en, this message translates to:
+  /// **'The model will read the conversation as it was before this compaction. No messages are deleted, and anything sent after it is kept.'**
+  String get chatUiCompactionRevertBody;
+
+  /// Confirmation button that reverts the latest finished compaction
+  ///
+  /// In en, this message translates to:
+  /// **'Revert compaction'**
+  String get chatUiCompactionRevertConfirm;
+
+  /// Composer note after a compaction boundary was disabled
+  ///
+  /// In en, this message translates to:
+  /// **'Compaction reverted. The model reads the earlier conversation again.'**
+  String get chatUiCompactionReverted;
+
   /// KitTurn: end line of an unfinished turn while the connection is coming back
   ///
   /// In en, this message translates to:

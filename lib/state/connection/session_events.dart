@@ -452,6 +452,38 @@ extension _ConnectionControllerSessionEventsImpl on ConnectionController {
           unawaited(_refreshOneSession(sid));
         }
         break;
+
+      case 'session.compaction.started':
+        final sid = props['sessionID']?.toString();
+        if (sid != null && sid.isNotEmpty) {
+          _markSessionChanged(sid, affectsMetadata: false);
+          unawaited(_refreshOneSession(sid));
+        }
+        break;
+
+      case 'session.compaction.ended':
+        final sid = props['sessionID']?.toString();
+        if (sid != null && sid.isNotEmpty) {
+          _markSessionChanged(sid);
+          unawaited(_refreshOneSession(sid));
+        }
+        break;
+
+      case 'session.compaction.failed':
+        final sid = props['sessionID']?.toString();
+        if (sid != null && sid.isNotEmpty) {
+          _markSessionChanged(sid);
+          unawaited(_refreshOneSession(sid));
+        }
+        break;
+
+      case 'session.compaction.reverted':
+        final sid = props['sessionID']?.toString();
+        if (sid != null && sid.isNotEmpty) {
+          _markSessionChanged(sid);
+          unawaited(_refreshOneSession(sid));
+        }
+        break;
     }
   }
 }

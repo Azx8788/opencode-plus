@@ -338,7 +338,15 @@ extension _ConnectionControllerEventsImpl on ConnectionController {
       case 'session.error':
       case 'session.idle':
       case 'session.compacted':
+      case 'session.compaction.started':
+      case 'session.compaction.ended':
+      case 'session.compaction.failed':
+      case 'session.compaction.reverted':
         _onRunStatusEvent(env, props);
+        break;
+      case 'session.compaction.delta':
+        // Progress text is transient; the durable compaction message is
+        // hydrated when the ended event arrives.
         break;
 
       case 'todo.updated':

@@ -268,8 +268,20 @@ abstract class SessionOperationsGateway {
     String id, {
     required String providerID,
     required String modelID,
+    CompactOptions options = const CompactOptions(),
   });
+  Future<void> revertCompaction(String sessionID, String compactionID);
   Future<void> addSessionLocationReminder(String sessionID, String directory);
+}
+
+/// Optional per-request behavior for a supported compaction endpoint.
+/// Servers without the matching capability must continue to receive `{}`.
+class CompactOptions {
+  const CompactOptions({this.instructions = '', this.keepTurns, this.keepTokens});
+
+  final String instructions;
+  final int? keepTurns;
+  final int? keepTokens;
 }
 
 /// Host administration: projects, worktrees, workspaces, organizations, and

@@ -21584,6 +21584,34 @@ class AppLocalizationsZh extends AppLocalizations {
   String get chatUiCompactConfirmAction => '压缩对话';
 
   @override
+  String get chatUiCompactionRevertAction => '撤回本次压缩';
+
+  @override
+  String get chatUiCompactionKeepTurns => '保留最近的轮次';
+
+  @override
+  String get chatUiCompactionKeepTurnsHint => '更早的内容会被总结；这些轮次保持原文。';
+
+  @override
+  String get chatUiCompactionInstruction => '附加说明（可选）';
+
+  @override
+  String get chatUiCompactionInstructionHint => '例如：保留方案和决定，省略探索过程。';
+
+  @override
+  String get chatUiCompactionRevertTitle => '撤回这次压缩？';
+
+  @override
+  String get chatUiCompactionRevertBody =>
+      '模型将重新读取这次压缩之前的对话。不会删除任何消息，压缩之后发送的内容也会保留。';
+
+  @override
+  String get chatUiCompactionRevertConfirm => '撤回压缩';
+
+  @override
+  String get chatUiCompactionReverted => '已撤回压缩。模型将重新读取较早的对话。';
+
+  @override
   String get kitTurnReconnecting => '连接已断开。正在重新连接以获取此回复的其余部分。';
 
   @override

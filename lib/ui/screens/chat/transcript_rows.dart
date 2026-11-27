@@ -103,6 +103,7 @@ class TranscriptNotice extends StatefulWidget {
     this.initiallyOpen = false,
     this.actionLabel,
     this.onAction,
+    this.menu = const [],
   });
 
   /// Opened at first: the text is what the notice is for (an agent's own
@@ -113,6 +114,7 @@ class TranscriptNotice extends StatefulWidget {
   /// a failed compaction). Absent when there is nothing to do.
   final String? actionLabel;
   final VoidCallback? onAction;
+  final List<KitMenuItem> menu;
 
   final String header;
 
@@ -148,6 +150,7 @@ class _TranscriptNoticeState extends State<TranscriptNotice> {
       detail: body.isEmpty ? null : _proseMarkdown(context, body),
       expanded: body.isEmpty ? null : _open,
       onExpansionChanged: (open) => setState(() => _open = open),
+      menu: widget.menu,
       action: label == null || onAction == null
           ? null
           : KitAction(
@@ -188,6 +191,7 @@ class V2TranscriptRow extends StatelessWidget {
     this.knownSessions = const {},
     this.onOpenChild,
     this.onCompactAgain,
+    this.onRevertCompaction,
     this.modelName,
   });
 
@@ -198,6 +202,7 @@ class V2TranscriptRow extends StatelessWidget {
   /// Retries a failed compaction. Given only for the newest failure while
   /// the conversation is idle; older ones are history.
   final VoidCallback? onCompactAgain;
+  final VoidCallback? onRevertCompaction;
   final Part part;
   final String messageId;
   final String? parentSessionID;
@@ -281,6 +286,17 @@ class V2TranscriptRow extends StatelessWidget {
             icon: AppIconography.collapse,
             header: strings.chatUiContextCompacted,
             text: _compactionWords(part, strings),
+            menu: onRevertCompaction == null
+                ? const []
+                : [
+                    KitMenuItem(
+                      key: const ValueKey('compaction-revert'),
+                      label: strings.chatUiCompactionRevertAction,
+                      icon: AppIconography.history,
+                      destructive: true,
+                      onSelected: onRevertCompaction!,
+                    ),
+                  ],
           ),
         };
       default:

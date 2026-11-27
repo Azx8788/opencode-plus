@@ -13,6 +13,7 @@ import '../../state/connection.dart';
 import '../app_iconography.dart';
 import '../app_theme.dart' show AppStatusTone;
 import '../kit/kit.dart';
+import '../widgets/compaction_options_sheet.dart';
 import '../widgets/product_states.dart'
     show productErrorDetails, productErrorText;
 import 'active_context_screen.dart';
@@ -220,6 +221,7 @@ class _SessionContextScreenState extends State<SessionContextScreen> {
   bool _failedOlder = false;
   bool _olderNeedsReload = false;
   bool _compactStarted = false;
+  Object? _compactFailure;
   final Set<String> _usedCursors = {};
   bool get _sameLocation =>
       widget.controller.locationRevision == _locationRevision;
@@ -379,6 +381,45 @@ class _SessionContextScreenState extends State<SessionContextScreen> {
   Future<void> _compact() async {
     final l10n = _sharedCopy(context);
     final conn = widget.controller;
+    final capabilities = conn.capabilities;
+    final offersOptions =
+        capabilities.compactionOptions || capabilities.compactionKeepTurns;
+    final options = await showCompactionOptionsSheet(
+      context,
+      capabilities: capabilities,
+    );
+    if (options == null || !mounted) return;
+    if (offersOptions) {
+      final repository = await conn.prepareActionRepository();
+      if (repository == null || !_sameLocation) {
+        if (mounted) {
+          setState(
+            () => _compactFailure = ProductException(
+              l10n.e7SharedOpenCodeIsReconnectingTryAgain,
+            ),
+          );
+        }
+        return;
+      }
+      try {
+        final model = conn.modelForSession(widget.sessionID);
+        await repository.compactSession(
+          widget.sessionID,
+          providerID: model?.providerID ?? '',
+          modelID: model?.modelID ?? '',
+          options: options,
+        );
+        if (mounted) {
+          setState(() {
+            _compactStarted = true;
+            _compactFailure = null;
+          });
+        }
+      } catch (error) {
+        if (mounted) setState(() => _compactFailure = error);
+      }
+      return;
+    }
     final started = await showKitConfirm(
       context,
       title: l10n.sessionContextCompactTitle,
@@ -402,6 +443,7 @@ class _SessionContextScreenState extends State<SessionContextScreen> {
           widget.sessionID,
           providerID: model?.providerID ?? '',
           modelID: model?.modelID ?? '',
+          options: options,
         );
       },
     );
@@ -662,6 +704,13 @@ class _SessionContextScreenState extends State<SessionContextScreen> {
               key: const ValueKey('session-context-compact-started'),
               tone: AppStatusTone.ok,
               message: l10n.sessionContextCompactStarted,
+            ),
+          ] else if (_compactFailure != null) ...[
+            gap,
+            KitNotice(
+              key: const ValueKey('session-context-compact-failed'),
+              tone: AppStatusTone.failure,
+              message: productErrorText(_compactFailure!),
             ),
           ] else if (near) ...[
             gap,

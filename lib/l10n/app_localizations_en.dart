@@ -22953,6 +22953,37 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatUiCompactConfirmAction => 'Compact conversation';
 
   @override
+  String get chatUiCompactionRevertAction => 'Revert this compaction';
+
+  @override
+  String get chatUiCompactionKeepTurns => 'Keep the newest turns';
+
+  @override
+  String get chatUiCompactionKeepTurnsHint =>
+      'Everything older is summarized; these turns stay as written.';
+
+  @override
+  String get chatUiCompactionInstruction => 'Additional instruction (optional)';
+
+  @override
+  String get chatUiCompactionInstructionHint =>
+      'For example: keep the plan and its decisions; leave out exploration.';
+
+  @override
+  String get chatUiCompactionRevertTitle => 'Revert this compaction?';
+
+  @override
+  String get chatUiCompactionRevertBody =>
+      'The model will read the conversation as it was before this compaction. No messages are deleted, and anything sent after it is kept.';
+
+  @override
+  String get chatUiCompactionRevertConfirm => 'Revert compaction';
+
+  @override
+  String get chatUiCompactionReverted =>
+      'Compaction reverted. The model reads the earlier conversation again.';
+
+  @override
   String get kitTurnReconnecting =>
       'Connection lost. Reconnecting to get the rest of this reply.';
 

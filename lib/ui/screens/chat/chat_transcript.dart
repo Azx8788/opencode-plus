@@ -658,6 +658,9 @@ extension _ChatTranscript on _ChatScreenState {
     onCompactAgain: !_watching && _canCompactAgain(index)
         ? () => unawaited(_compact())
         : null,
+    onRevertCompaction: !_watching && _canRevertCompaction(index)
+        ? () => unawaited(_revertCompaction(m.info.id))
+        : null,
     onOpenChild: _watching
         ? _openWatchedChild
         : _subagentNavigation

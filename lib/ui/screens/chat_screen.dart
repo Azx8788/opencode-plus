@@ -115,6 +115,7 @@ import '../widgets/agent_features_chip.dart';
 import '../widgets/always_allow_invitation.dart';
 import '../git/git_sheet.dart';
 import '../widgets/command_sheet.dart';
+import '../widgets/compaction_options_sheet.dart';
 import '../widgets/session_menu.dart';
 import '../widgets/safety_confirms.dart';
 import '../widgets/default_notices.dart';

@@ -343,8 +343,32 @@ extension _ChatSessionActions on _ChatScreenState {
     return true;
   }
 
+  /// Whether the finished compaction at [index] can be reverted: it is the
+  /// newest compaction, nothing is running, and this server can disable a
+  /// compaction boundary.
+  bool _canRevertCompaction(int index) {
+    if (_conn.isIsolated || !_conn.capabilities.compactionRevert) return false;
+    if (_conn.busySessions.contains(widget.sessionID)) return false;
+    final part = v2VariantPart(_messages[index]);
+    if (part?.type != 'v2:compaction' || part?.toolName != 'completed') {
+      return false;
+    }
+    for (var later = index + 1; later < _messages.length; later += 1) {
+      if (v2VariantPart(_messages[later])?.type == 'v2:compaction') {
+        return false;
+      }
+    }
+    return true;
+  }
+
   Future<void> _compact() async {
     if (!_supportsSessionCompact) return;
+    if (_conn.busySessions.contains(widget.sessionID)) {
+      _showActionError(
+        ProductException(_chatL10n(context).sessionContextCompactBusy),
+      );
+      return;
+    }
     final model = _conn.modelForSession(widget.sessionID);
     if (model == null && !_conn.serverOwnsSessionSelection) {
       _showActionError(
@@ -353,26 +377,47 @@ extension _ChatSessionActions on _ChatScreenState {
       return;
     }
     final strings = _chatL10n(context);
+    final capabilities = _conn.capabilities;
+    final offersOptions =
+        capabilities.compactionOptions || capabilities.compactionKeepTurns;
     try {
-      // Asked first; the sheet shows progress while the request runs and
-      // keeps the question open with Try again if it fails.
-      final confirmed = await showKitConfirm(
+      // A server with per-request compaction settings asks in one sheet that
+      // is also the confirmation; everyone else keeps the one-question flow
+      // and the empty request body.
+      final options = await showCompactionOptionsSheet(
         context,
-        icon: AppIconography.collapse,
-        title: strings.chatUiCompactConfirmTitle,
-        body: strings.chatUiCompactConfirmBody,
-        confirmLabel: strings.chatUiCompactConfirmAction,
-        action: () async {
-          final repository = await _requireActionRepository();
-          await repository.compactSession(
-            widget.sessionID,
-            providerID: model?.providerID ?? '',
-            modelID: model?.modelID ?? '',
-          );
-        },
+        capabilities: capabilities,
       );
-      if (!confirmed || !mounted) return;
-      _showComposerNote(_chatL10n(context).chatUiCompactionStarted);
+      if (options == null || !mounted) return;
+      if (!offersOptions) {
+        final confirmed = await showKitConfirm(
+          context,
+          icon: AppIconography.collapse,
+          title: strings.chatUiCompactConfirmTitle,
+          body: strings.chatUiCompactConfirmBody,
+          confirmLabel: strings.chatUiCompactConfirmAction,
+          action: () async {
+            final repository = await _requireActionRepository();
+            await repository.compactSession(
+              widget.sessionID,
+              providerID: model?.providerID ?? '',
+              modelID: model?.modelID ?? '',
+              options: options,
+            );
+          },
+        );
+        if (!confirmed || !mounted) return;
+      } else {
+        final repository = await _requireActionRepository();
+        await repository.compactSession(
+          widget.sessionID,
+          providerID: model?.providerID ?? '',
+          modelID: model?.modelID ?? '',
+          options: options,
+        );
+        if (!mounted) return;
+      }
+      _showComposerNote(strings.chatUiCompactionStarted);
     } catch (error) {
       if (mounted) _showActionError(error);
     }
@@ -380,6 +425,37 @@ extension _ChatSessionActions on _ChatScreenState {
 
   Future<void> _continueTruncated() =>
       _sendInsteadOfDraft(_chatL10n(context).returnBriefContinue);
+
+  /// Reverts the latest finished compaction by disabling its boundary. Only
+  /// offered when the server reports [ServerCapabilities.compactionRevert];
+  /// no messages are deleted, so the transcript is simply reloaded.
+  Future<void> _revertCompaction(String compactionID) async {
+    if (!_conn.capabilities.compactionRevert) return;
+    if (_conn.busySessions.contains(widget.sessionID)) {
+      _showActionError(ProductException(_chatL10n(context).revertBusy));
+      return;
+    }
+    final strings = _chatL10n(context);
+    try {
+      final confirmed = await showKitConfirm(
+        context,
+        icon: AppIconography.history,
+        title: strings.chatUiCompactionRevertTitle,
+        body: strings.chatUiCompactionRevertBody,
+        confirmLabel: strings.chatUiCompactionRevertConfirm,
+        kind: KitConfirmKind.destructive,
+        action: () async {
+          final repository = await _requireActionRepository();
+          await repository.revertCompaction(widget.sessionID, compactionID);
+        },
+      );
+      if (!confirmed || !mounted) return;
+      _showComposerNote(strings.chatUiCompactionReverted);
+      await _load(resetHistory: true);
+    } catch (error) {
+      if (mounted) _showActionError(error);
+    }
+  }
 
   /// "Undo last prompt" (conversation menu, /undo): the same "Undo from
   /// here" flow as a prompt's own menu, from the newest prompt.

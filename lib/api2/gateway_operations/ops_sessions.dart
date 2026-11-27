@@ -130,12 +130,27 @@ mixin _Api2SessionOps on _Api2Core {
     String id, {
     required String providerID,
     required String modelID,
+    CompactOptions options = const CompactOptions(),
   }) => _guard(
     'Could not compact the session',
     // Lossy: v2 compaction has no provider/model pair; the session's own
     // compaction agent handles it.
-    () => _transport.postJson('/session/$id/compact', body: const {}),
+    () => _transport.postJson(
+      '/session/$id/compact',
+      body: compactSessionBody(options, api2ServerCapabilities),
+    ),
   );
+
+  @override
+  Future<void> revertCompaction(String sessionID, String compactionID) =>
+      _guard(
+        'Could not revert the compaction',
+        () => _transport.postJson(
+          '/session/${Uri.encodeComponent(sessionID)}/compaction/'
+          '${Uri.encodeComponent(compactionID)}/revert',
+          body: const {},
+        ),
+      );
 
   @override
   Future<void> addSessionLocationReminder(String sessionID, String directory) =>

@@ -82,6 +82,14 @@ class ServerCapabilities {
   final bool sessionDiff;
   final bool sessionFork;
   final bool sessionCompact;
+  /// The server accepts per-request compaction instructions and retention
+  /// options in the compact operation body.
+  final bool compactionOptions;
+  /// The server can retain an exact number of complete conversation turns.
+  final bool compactionKeepTurns;
+  /// The server can disable the latest completed compaction boundary without
+  /// deleting the underlying conversation messages.
+  final bool compactionRevert;
   final bool persistentPermissionGrants;
 
   /// The runtime asks before it acts (permission requests the app answers),
@@ -245,6 +253,9 @@ class ServerCapabilities {
     this.sessionDiff = true,
     this.sessionFork = true,
     this.sessionCompact = true,
+    this.compactionOptions = false,
+    this.compactionKeepTurns = false,
+    this.compactionRevert = false,
     this.persistentPermissionGrants = true,
     this.permissionRequests = true,
     this.savedPermissionList = true,
@@ -336,6 +347,9 @@ class ServerCapabilities {
         sessionDiff: sessionDiff,
         sessionFork: sessionFork,
         sessionCompact: sessionCompact,
+        compactionOptions: compactionOptions,
+        compactionKeepTurns: compactionKeepTurns,
+        compactionRevert: compactionRevert,
         persistentPermissionGrants: persistentPermissionGrants,
         permissionRequests: permissionRequests,
         savedPermissionList: savedPermissionList,

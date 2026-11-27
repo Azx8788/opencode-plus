@@ -26,6 +26,7 @@ import '../domain/terminal_lifecycle.dart';
 import '../domain/plugin_inventory.dart';
 import 'plugin_mapper.dart';
 import 'client.dart';
+import 'compaction_request.dart';
 import 'active_context_mapper.dart';
 import 'gateway_mappers.dart';
 import 'models.dart';

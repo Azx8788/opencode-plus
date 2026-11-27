@@ -152,7 +152,8 @@ class KitMessage extends StatelessWidget {
 
   /// Something that happened during a turn that nobody typed ("Context
   /// added", "Instructions updated", a compaction summary). It does not end
-  /// the turn. One line; opens to [detail] when given.
+  /// the turn. The header opens to [detail] when given and offers [menu]
+  /// through the same tappable region.
   const KitMessage.notice({
     super.key,
     required String this.text,
@@ -163,6 +164,7 @@ class KitMessage extends StatelessWidget {
     this.failed = false,
     this.expanded,
     this.onExpansionChanged,
+    this.menu = const <KitMenuItem>[],
     this.noticeKey,
   }) : kind = KitMessageKind.notice,
        note = null,
@@ -173,7 +175,6 @@ class KitMessage extends StatelessWidget {
        body = null,
        attachments = const <KitAttachment>[],
        time = null,
-       menu = const <KitMenuItem>[],
        heading = null,
        took = null,
        working = false,
@@ -245,8 +246,8 @@ class KitMessage extends StatelessWidget {
   final KitAction? noteAction;
   final DateTime? noteSince;
 
-  /// prompt: Copy message, Edit and resend, Revert to here… Empty makes the
-  /// bubble inert.
+  /// Prompt or notice header actions. Empty makes a prompt bubble inert and
+  /// leaves a notice with only its fold, if any.
   final List<KitMenuItem> menu;
 
   /// notice, marker: the one line of words.
@@ -641,8 +642,9 @@ class _BubbleState extends State<_Bubble> {
       child: CustomPaint(
         foregroundPainter: _focusRingVisible
             ? _BubbleRingPainter(
-                radius: _bubbleRadius(tokens)
-                    .resolve(Directionality.of(context)),
+                radius: _bubbleRadius(
+                  tokens,
+                ).resolve(Directionality.of(context)),
                 color: roles.accent,
                 width: ringWidth,
               )
@@ -765,6 +767,7 @@ class _Fold extends StatefulWidget {
     required this.expanded,
     required this.onExpansionChanged,
     required this.foldKey,
+    this.menu = const [],
     this.trailing,
     this.railIcon,
     this.railMark,
@@ -789,6 +792,7 @@ class _Fold extends StatefulWidget {
   final bool? expanded;
   final ValueChanged<bool>? onExpansionChanged;
   final Key? foldKey;
+  final List<KitMenuItem> menu;
 
   /// An action at the end of the line, outside the fold's tap region; it
   /// drops under the line at large text.
@@ -889,32 +893,38 @@ class _FoldState extends State<_Fold> with SingleTickerProviderStateMixin {
         : tappable;
 
     final Widget header;
-    if (_opens) {
+    if (_opens || widget.menu.isNotEmpty) {
+      // The header owns both gestures. A separate outer detector would
+      // compete with KitTappable's long-press recognizer.
+      final line = _opens
+          ? Row(
+              children: [
+                Expanded(child: widget.line),
+                SizedBox(width: tokens.space1),
+                _FirstLine(
+                  child: ExcludeSemantics(
+                    child: SizedBox.square(
+                      dimension: tokens.smallIconSize,
+                      child: KitSpin.chevron(expanded: open),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          : widget.line;
       header = target(
         Semantics(
-          expanded: open,
+          expanded: _opens ? open : null,
           child: KitTappable(
             tappableKey: widget.foldKey,
-            onTap: _toggle,
+            onTap: _opens
+                ? _toggle
+                : () => showKitMenu(context, items: widget.menu),
+            menu: widget.menu,
             label: widget.label,
             shape: KitShape.tile,
             surface: KitSurfaceLevel.ground,
-            child: lineBox(
-              Row(
-                children: [
-                  Expanded(child: widget.line),
-                  SizedBox(width: tokens.space1),
-                  _FirstLine(
-                    child: ExcludeSemantics(
-                      child: SizedBox.square(
-                        dimension: tokens.smallIconSize,
-                        child: KitSpin.chevron(expanded: open),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            child: lineBox(line),
           ),
         ),
       );
@@ -1158,6 +1168,7 @@ class _Notice extends StatelessWidget {
       expanded: message.expanded,
       onExpansionChanged: message.onExpansionChanged,
       body: message.detail,
+      menu: message.menu,
       railIcon: onRail ? glyph : null,
       trailing: action == null
           ? null

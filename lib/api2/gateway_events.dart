@@ -289,6 +289,38 @@ class Api2EventAdapter {
           _env('session.compacted', {'sessionID': event.sessionID}),
         ];
 
+      case Api2SessionCompactionEvent():
+        return [
+          _env('session.compaction.${switch (event.phase) {
+            Api2Phase.started => 'started',
+            Api2Phase.delta => 'delta',
+            Api2Phase.ended => 'ended',
+            Api2Phase.failed => 'failed',
+            _ => event.phase.name,
+          }}', {
+            'sessionID': event.sessionID,
+            if (event.reason != null) 'reason': event.reason,
+            if (event.text != null) 'text': event.text,
+            if (event.error != null)
+              'error': {
+                if (event.error!.type != null) 'name': event.error!.type,
+                if (event.error!.message != null)
+                  'message': event.error!.message,
+              },
+          }),
+        ];
+
+      case Api2SessionCompactionRevertedEvent():
+        return [
+          _env('session.compaction.reverted', {
+            'sessionID': event.sessionID,
+            if (event.compactionID != null)
+              'compactionID': event.compactionID,
+            if (event.modelVisibleFrom != null)
+              'modelVisibleFrom': event.modelVisibleFrom,
+          }),
+        ];
+
       case Api2SessionInboxEvent():
         // Every inbox phase passes through under its v2 wire type
         // (`session.inbox.enqueued|delivered|cancelled|delivery.changed`,

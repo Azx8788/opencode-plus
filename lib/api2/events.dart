@@ -297,6 +297,12 @@ sealed class Api2Event {
         return _compaction(Api2Phase.ended, d);
       case 'session.compaction.failed':
         return _compaction(Api2Phase.failed, d);
+      case 'session.compaction.reverted':
+        return Api2SessionCompactionRevertedEvent(
+          sessionID: _asString(d['sessionID']) ?? '',
+          compactionID: _asString(d['compactionID']),
+          modelVisibleFrom: _asString(d['modelVisibleFrom']),
+        );
       case 'session.revert.staged':
         return Api2SessionRevertEvent(
           phase: Api2Phase.staged,
@@ -876,6 +882,19 @@ class Api2SessionCompactionEvent extends Api2Event {
     this.reason,
     this.text,
     this.error,
+  });
+}
+
+/// The server disabled a completed compaction boundary without deleting the
+/// messages it had hidden from the model.
+class Api2SessionCompactionRevertedEvent extends Api2Event {
+  final String sessionID;
+  final String? compactionID;
+  final String? modelVisibleFrom;
+  const Api2SessionCompactionRevertedEvent({
+    required this.sessionID,
+    this.compactionID,
+    this.modelVisibleFrom,
   });
 }
 

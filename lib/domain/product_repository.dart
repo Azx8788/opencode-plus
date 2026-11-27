@@ -394,5 +394,13 @@ abstract class ProductRepository implements ServerOperationsGateway {
     String id, {
     required String providerID,
     required String modelID,
+    CompactOptions options = const CompactOptions(),
   });
+  @override
+  Future<void> revertCompaction(String sessionID, String compactionID) =>
+      Future.error(
+        const ProductException(
+          'Compaction reversion is unavailable on this server',
+        ),
+      );
 }
