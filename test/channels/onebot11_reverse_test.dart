@@ -258,8 +258,9 @@ void main() {
       {'group_name': 'no id'},
     ];
     final server = await _ActionServer.start((action) {
-      if (action == 'get_group_list')
+      if (action == 'get_group_list') {
         return {'status': 'ok', 'retcode': 0, 'data': groups};
+      }
       return {'status': 'ok', 'retcode': 0, 'data': {}};
     });
     addTearDown(server.close);
