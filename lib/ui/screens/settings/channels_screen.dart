@@ -10,11 +10,13 @@ import '../../../channels/channel_config.dart';
 import '../../../channels/channel_hub.dart';
 import '../../../channels/channel_provider.dart';
 import '../../../channels/providers/onebot11_provider.dart' show OneBotGroup;
+import '../../../platform/platform_capabilities.dart';
 import '../../../state/connection.dart';
 import '../../app_iconography.dart';
 import '../../../telegram/telegram_bot.dart';
 import '../../app_theme.dart' show AppStatusTone;
 import '../../kit/kit.dart';
+import 'local_llbot_screen.dart';
 import 'telegram_bot_screen.dart';
 
 /// 消息渠道: the one door to every messaging channel.
@@ -951,8 +953,8 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
         children: [
           KitText(
             _text(
-              'Connect to an LLBot you run yourself over the OneBot 11 forward WebSocket. The bot account, the QQ login and the protocol implementation all live outside this app.',
-              '通过 OneBot 11 正向 WebSocket 连接你自行运行的 LLBot。机器人账号、QQ 登录和协议实现都在本应用之外。',
+              'Connect to a OneBot 11 service you run yourself. The app does not install or start the service.',
+              '连接你自行运行的 OneBot 11 服务。App 不会安装或启动协议端。',
             ),
             role: KitTextRole.body,
           ),
@@ -972,6 +974,16 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
               snapshot.lastError!,
               role: KitTextRole.caption,
               tone: KitTextTone.attention,
+            ),
+          ],
+          if (platformCapabilities.isAndroid) ...[
+            SizedBox(height: tokens.space3),
+            KitButton.secondary(
+              key: const ValueKey('onebot-local-llbot'),
+              label: _text('Local LLBot console', '本机 LLBot 管理页'),
+              onPressed: () => Navigator.of(context).push<void>(
+                KitPageRoute<void>(builder: (_) => const LocalLlbotScreen()),
+              ),
             ),
           ],
           SizedBox(height: tokens.space5),
@@ -1203,8 +1215,8 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
           SizedBox(height: tokens.space3),
           KitGroupNote(
             message: _text(
-              'Run the protocol implementation on a Linux x64 machine or a PC: LLBot, NapCat or SnowLuma. Turn on its OneBot 11 WebSocket — forward if it can listen, reverse if it should dial this phone — set an access token, then fill in the address or the port and the QQ number it logs in. None of them is bundled with this app — LLBot is GPL-2.0, NapCat and SnowLuma carry their own licences — and hosting any of them under Android/PRoot is not supported.',
-              '请在一台 Linux x64 机器或 PC 上运行协议端：LLBot、NapCat 或 SnowLuma。开启它的 OneBot 11 WebSocket——能监听就用正向，需要主动连出就用反向——设置 Access Token，然后填写地址或端口，以及它登录的 QQ 号。三者都不随本应用分发（LLBot 为 GPL-2.0，NapCat 与 SnowLuma 各有自己的许可），也不支持在 Android/PRoot 里托管。',
+              'Enable the protocol service’s OneBot 11 WebSocket and set an access token. Use forward when the service listens, or reverse when it dials this phone. LLBot (GPL-2.0), NapCat and SnowLuma are not bundled. Running LLBot in this phone’s Linux is experimental; start it separately before opening its console.',
+              '在协议端开启 OneBot 11 WebSocket 并设置 Access Token；协议端监听时选正向，协议端主动连入时选反向。三者都不随本应用分发（LLBot 为 GPL-2.0）。本机 Linux 运行 LLBot 仍是试验功能，请先单独启动，再打开管理页。',
             ),
           ),
         ],

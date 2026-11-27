@@ -54,9 +54,9 @@ class KitWebPreviewController extends ChangeNotifier {
 ///
 /// This is deliberately not a browser. It loads [origin] and nothing else:
 ///
-/// - the page may only navigate within the same host and port; a link to any
-///   other address does not load here, it is handed to [onLeave] (which sends
-///   it through `openExternalLink`);
+/// - the page may only navigate within the same host and port (and scheme
+///   when [strictOrigin] is set). Other top-level links are blocked and
+///   reported to [onLeave], where the caller may choose to keep them blocked;
 /// - no JavaScript channel to the app is ever added, so the page cannot call
 ///   into it;
 /// - cookies, cache and local storage are cleared when the preview opens and
@@ -80,7 +80,10 @@ class KitWebPreview extends StatefulWidget {
     required this.controller,
     required this.onLeave,
     this.unsupportedAction,
+    this.unsupportedBody,
     this.supported,
+    this.strictOrigin = false,
+    this.failureBody,
   });
 
   /// The one origin this view may show (host and port are what count).
@@ -93,8 +96,17 @@ class KitWebPreview extends StatefulWidget {
   /// Offered when the platform cannot show a web view at all.
   final KitAction? unsupportedAction;
 
+  /// Overrides the generic unsupported message for views with no browser fallback.
+  final String? unsupportedBody;
+
   /// Overrides the platform check (tests).
   final bool? supported;
+
+  /// Do not let a navigation switch between HTTP and HTTPS on this port.
+  final bool strictOrigin;
+
+  /// A service-specific hint when the page does not answer.
+  final String? failureBody;
 
   static bool platformSupported() =>
       !kIsWeb &&
@@ -134,11 +146,15 @@ class _KitWebPreviewState extends State<KitWebPreview> {
       NavigationDelegate(
         onNavigationRequest: (request) {
           final target = Uri.tryParse(request.url);
-          if (target != null && devPreviewMayLoad(target, widget.origin)) {
+          if (target != null &&
+              devPreviewMayLoad(
+                target,
+                widget.origin,
+                strictOrigin: widget.strictOrigin,
+              )) {
             return NavigationDecision.navigate;
           }
-          // Only a person's navigation leaves; a sub-frame or a script
-          // asking for another address is simply not loaded.
+          // Report a blocked main-frame navigation to the owning screen.
           if (target != null && request.isMainFrame) widget.onLeave(target);
           return NavigationDecision.prevent;
         },
@@ -215,7 +231,7 @@ class _KitWebPreviewState extends State<KitWebPreview> {
       return KitStateView(
         icon: AppIconography.browser,
         title: l10n.devPreviewUnsupportedTitle,
-        body: l10n.devPreviewUnsupportedBody,
+        body: widget.unsupportedBody ?? l10n.devPreviewUnsupportedBody,
         primary: widget.unsupportedAction,
       );
     }
@@ -246,9 +262,11 @@ class _KitWebPreviewState extends State<KitWebPreview> {
                         child: KitStateView(
                           icon: AppIconography.browser,
                           title: l10n.devPreviewFailedTitle,
-                          body: l10n.devPreviewFailedBody(
-                            '${widget.origin.port}',
-                          ),
+                          body:
+                              widget.failureBody ??
+                              l10n.devPreviewFailedBody(
+                                '${widget.origin.port}',
+                              ),
                           primary: KitAction(
                             key: const ValueKey('dev-preview-retry'),
                             label: l10n.devPreviewRetry,

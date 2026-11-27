@@ -220,11 +220,12 @@ class DevPreviewTarget {
 }
 
 /// Whether the preview may load [target] when it was opened for [origin]:
-/// the same host and port only. Everything else leaves through
-/// `openExternalLink`.
-bool devPreviewMayLoad(Uri target, Uri origin) {
+/// the same host and port only. Credentialed local consoles can also require
+/// the exact scheme with [strictOrigin].
+bool devPreviewMayLoad(Uri target, Uri origin, {bool strictOrigin = false}) {
   final scheme = target.scheme.toLowerCase();
   if (scheme != 'http' && scheme != 'https') return false;
+  if (strictOrigin && scheme != origin.scheme.toLowerCase()) return false;
   if (target.userInfo.isNotEmpty) return false;
   return target.host.toLowerCase() == origin.host.toLowerCase() &&
       target.port == origin.port;

@@ -114,7 +114,8 @@ from each project.
 | NapCat | Next to the QQ NT client | 6099 | HTTP 3000, WS server 3001, WS client dials a URL |
 | SnowLuma | Windows x64 or Linux x64/arm64 | 5099 | HTTP 3000, WS 3001, WS server and client |
 
-None of them is bundled, and none is supported inside Android/PRoot.
+None of them is bundled. Running the protocol service under Android/PRoot is
+still experimental.
 
 This route logs a real QQ account in through a third-party implementation. It is
 not authorised by Tencent, it can get an account restricted, and it is **not
@@ -147,6 +148,11 @@ Notes:
 ### 2.2 Configure the app
 
 Settings → 消息渠道 → **QQ 普通账号（OneBot 11）**:
+
+On Android, **本机 LLBot 管理页** opens the running local LLBot console inside
+the app at `http://127.0.0.1:3080/`. It doesn't start LLBot, open an external
+browser, or change the OneBot connection below. See
+[the local enrollment runbook](QQ_LOCAL_DEPLOYMENT_RUNBOOK.txt).
 
 | Field | Meaning |
 | --- | --- |
