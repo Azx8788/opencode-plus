@@ -289,6 +289,7 @@ class ChannelConversationEngine {
       final runtime = _runtimeFor(primary);
       await runtime.store.ready();
     }
+    if (!_started || _disposed) return;
     _retryTimer ??= Timer.periodic(const Duration(seconds: 10), (_) {
       unawaited(drainOutbox());
     });

@@ -17,7 +17,7 @@ credentials and approvals this repository does not have.
 | Area | Implemented | Automated tests | Real platform |
 | --- | --- | --- | --- |
 | Channel engine (routing, tasks, policy, dedupe, outbox) | Yes | Yes (87 channel tests) | n/a |
-| Telegram automatic private-chat pairing and final reply recovery | Yes | Local Bot API and OpenCode v2 wire/HTTP regressions | **Not verified** for these changes against a real Telegram account on Android |
+| Telegram private-chat link and username pairing, final reply recovery | Yes | Local Bot API and OpenCode v2 wire/HTTP regressions | **Not verified** for these changes against a real Telegram account on Android |
 | Official QQ: token, gateway, identify, heartbeat, resume | Yes | Yes, against a local fake gateway | **Not verified** — needs AppID/Secret and scene approval |
 | Official QQ: C2C / group / channel message parsing | Yes | Yes | **Not verified** — needs a real bot |
 | Official QQ: passive reply window and 5-reply budget | Yes | Yes (fake clock) | **Not verified** |

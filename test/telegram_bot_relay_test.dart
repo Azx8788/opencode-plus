@@ -11,7 +11,9 @@ import 'package:opencode_mobile/channels/channel_provider.dart';
 import 'package:opencode_mobile/channels/channel_sessions.dart';
 import 'package:opencode_mobile/domain/models.dart';
 import 'package:opencode_mobile/telegram/telegram_bot.dart';
+import 'package:opencode_mobile/telegram/telegram_identity.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
 /// End-to-end contract for the relay: a real [TelegramBotBridge] long-polls a
 /// local stand-in for the Bot API, dispatches the updates it receives, and
@@ -21,6 +23,31 @@ const _token = '123456789:AAH-test-token-value-1234567890';
 const _owner = '424242';
 const _profile = 'profile-1';
 const _directory = '/home/owner/projects/demo-project';
+const _chatKey = '${TelegramBotBridge.chatIDKeyPrefix}$_profile';
+const _setupKey = '${TelegramIdentityStore.setupKeyPrefix}$_profile';
+const _legacyName = '${TelegramIdentityStore.legacyUsernameKeyPrefix}$_profile';
+const _legacyBound = '${TelegramIdentityStore.legacyBoundIDKeyPrefix}$_profile';
+
+class _BindingPlatform extends InMemorySharedPreferencesStore {
+  _BindingPlatform(Map<String, Object> state)
+    : super.withData({
+        for (final entry in state.entries) 'flutter.${entry.key}': entry.value,
+      });
+
+  bool refuseBinding = false;
+  Completer<void>? started;
+  Completer<void>? release;
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) async {
+    if (key == 'flutter.$_chatKey') {
+      started?.complete();
+      await release?.future;
+      if (refuseBinding) return false;
+    }
+    return super.setValue(valueType, key, value);
+  }
+}
 
 class _FakeTelegram {
   _FakeTelegram._(this._server) {
@@ -50,15 +77,17 @@ class _FakeTelegram {
     Object? chat = _owner,
     String type = 'private',
     bool isBot = false,
+    Object? username,
+    int? date,
   }) {
     _pending.add({
       'update_id': ++_updateID,
       'message': {
         'message_id': _updateID,
-        'date': 0,
+        'date': date ?? DateTime.now().millisecondsSinceEpoch ~/ 1000,
         'text': text,
         'chat': {'id': chat, 'type': type},
-        'from': {'id': from, 'is_bot': isBot},
+        'from': {'id': from, 'is_bot': isBot, 'username': ?username},
       },
     });
     return _updateID;
@@ -243,13 +272,22 @@ class _Harness {
     String? reply,
     Duration replyRecoveryInterval = const Duration(seconds: 10),
     Duration pairingWindow = const Duration(minutes: 3),
+    Map<String, Object> savedPreferences = const {},
+    void Function(_BindingPlatform)? configureStorage,
   }) async {
     final telegram = await _FakeTelegram.start();
     telegramApiOrigin = telegram.origin;
-    SharedPreferences.setMockInitialValues({
-      if (configured) '${TelegramBotBridge.chatIDKeyPrefix}$_profile': _owner,
+    final initial = <String, Object>{
+      if (configured) _chatKey: _owner,
       '${TelegramBotBridge.enabledKeyPrefix}$_profile': enabled,
-    });
+      ...savedPreferences,
+    };
+    SharedPreferences.setMockInitialValues(initial);
+    if (configureStorage != null) {
+      final platform = _BindingPlatform(initial);
+      SharedPreferencesStorePlatform.instance = platform;
+      configureStorage(platform);
+    }
     FlutterSecureStorage.setMockInitialValues({
       if (configured) '${TelegramBotBridge.tokenKeyPrefix}$_profile': _token,
     });
@@ -594,7 +632,275 @@ void main() {
     expect(notice, contains('可以与该用户私聊'));
   });
 
+  group('username binding on the shared Telegram engine', () {
+    test(
+      'verification checks the token, not a private username lookup',
+      () async {
+        final harness = await _Harness.start(enabled: false);
+        addTearDown(harness.stop);
+        final result = await harness.bridge.testConnection(
+          username: '@OwNeR_Name',
+          chatID: _owner,
+        );
+        expect(result, contains('@owner_name'));
+        expect(harness.telegram.calls, ['getMe']);
+      },
+    );
+
+    test('first fresh private match becomes the only durable ID', () async {
+      final harness = await _Harness.start(enabled: false, configured: false);
+      addTearDown(harness.stop);
+      final prefs = await SharedPreferences.getInstance();
+      await harness.bridge.saveConfiguration(
+        username: '@Owner_Name',
+        token: _token,
+        enabled: true,
+      );
+      expect(harness.bridge.snapshot.awaitingUsername, 'owner_name');
+      expect(harness.bridge.engine, isNull);
+      expect(prefs.getString(_chatKey), isNull);
+      harness.telegram.enqueue('other handle', username: 'someone_else');
+      harness.telegram.enqueue(
+        'group',
+        username: 'owner_name',
+        chat: -100,
+        type: 'group',
+      );
+      harness.telegram.enqueue('bot', username: 'owner_name', isBot: true);
+      harness.telegram.enqueue('wrong chat', username: 'owner_name', chat: 999);
+      final stale = harness.telegram.enqueue(
+        'past update',
+        username: 'owner_name',
+        date: 1,
+      );
+      await _waitFor(() => harness.telegram.lastPolledOffset > stale);
+      expect(harness.recorder.prompts, isEmpty);
+      expect(harness.telegram.sends, isEmpty);
+
+      harness.recorder.beforePromptReceipt = () async {
+        expect(prefs.getString(_chatKey), _owner);
+        expect(prefs.getString(_setupKey), isNull);
+      };
+      harness.telegram.enqueue('first prompt', username: 'OWNER_NAME');
+      await _waitFor(() => harness.telegram.sendTargets.isNotEmpty);
+      expect(harness.bridge.snapshot.awaitingBinding, isFalse);
+      expect(harness.bridge.snapshot.chatID, _owner);
+      expect(harness.recorder.prompts, ['first prompt']);
+      expect(harness.telegram.sendTargets, everyElement(_owner));
+
+      harness.telegram.enqueue(
+        'reused handle',
+        username: 'owner_name',
+        from: 999,
+        chat: 999,
+      );
+      harness.telegram.enqueue('owner renamed', username: 'new_owner_name');
+      await _waitFor(() => harness.recorder.prompts.length == 2);
+      expect(harness.recorder.prompts, ['first prompt', 'owner renamed']);
+    });
+
+    test('optional ID is a constraint, not a binding or a recipient', () async {
+      final harness = await _Harness.start(enabled: false);
+      addTearDown(harness.stop);
+      await harness.bridge.saveConfiguration(
+        username: 'owner_name',
+        chatID: _owner,
+        enabled: true,
+      );
+      harness.telegram.enqueue(
+        'wrong ID',
+        username: 'owner_name',
+        from: 999,
+        chat: 999,
+      );
+      final wrong = harness.telegram.enqueue(
+        'wrong handle',
+        username: 'stranger',
+      );
+      await _waitFor(() => harness.telegram.lastPolledOffset > wrong);
+      expect(harness.bridge.snapshot.chatID, isEmpty);
+      expect(harness.bridge.snapshot.expectedUserID, _owner);
+      expect(harness.telegram.sends, isEmpty);
+      harness.telegram.enqueue('/start', username: 'owner_name');
+      await _waitFor(() => harness.telegram.sends.isNotEmpty);
+      expect(harness.bridge.snapshot.chatID, _owner);
+      expect(harness.recorder.prompts, isEmpty);
+    });
+
+    test(
+      'legacy pending settings retain the ID constraint but discard the old session',
+      () async {
+        final prefsKey = '${TelegramBotBridge.sessionIDKeyPrefix}$_profile';
+        final harness = await _Harness.start(
+          savedPreferences: {
+            _legacyName: 'Owner_Name',
+            prefsKey: 'ses-other-owner',
+          },
+        );
+        addTearDown(harness.stop);
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getString(_legacyName), isNull);
+        expect(harness.bridge.snapshot.expectedUserID, _owner);
+        expect(harness.bridge.snapshot.sessionID, isNull);
+        final wrong = harness.telegram.enqueue(
+          '/start',
+          username: 'owner_name',
+          from: 999,
+          chat: 999,
+        );
+        await _waitFor(() => harness.telegram.lastPolledOffset > wrong);
+        expect(harness.bridge.snapshot.awaitingBinding, isTrue);
+        harness.telegram.enqueue('/start', username: 'OWNER_NAME');
+        await _waitFor(() => harness.telegram.sends.isNotEmpty);
+        expect(prefs.getString(_chatKey), _owner);
+        expect(prefs.getString(prefsKey), isNull);
+      },
+    );
+
+    test(
+      'legacy bound ID upgrades once and survives a profile reload',
+      () async {
+        final harness = await _Harness.start(
+          savedPreferences: {
+            _legacyName: 'old_handle',
+            _legacyBound: _owner,
+            _chatKey:
+                '', // The old username-only flow stored the ID separately.
+          },
+        );
+        addTearDown(harness.stop);
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getString(_legacyName), isNull);
+        expect(prefs.getString(_legacyBound), isNull);
+        expect(prefs.getString(_chatKey), _owner);
+        harness.changeProfile('other');
+        await _waitFor(() => harness.bridge.snapshot.profileID == 'other');
+        expect(harness.bridge.snapshot.chatID, isEmpty);
+        harness.changeProfile(_profile);
+        await _waitFor(() => harness.bridge.snapshot.chatID == _owner);
+        harness.telegram.enqueue(
+          'old name taken',
+          username: 'old_handle',
+          from: 999,
+          chat: 999,
+        );
+        harness.telegram.enqueue('old owner removed their name');
+        await _waitFor(() => harness.telegram.sends.isNotEmpty);
+        expect(harness.recorder.prompts, ['old owner removed their name']);
+      },
+    );
+
+    test('conflicting legacy IDs never poll or use either identity', () async {
+      final harness = await _Harness.start(
+        savedPreferences: {_legacyName: 'owner_name', _legacyBound: '999'},
+      );
+      addTearDown(harness.stop);
+      expect(harness.bridge.snapshot.phase, TelegramBotPhase.error);
+      expect(harness.bridge.snapshot.chatID, isEmpty);
+      expect(harness.telegram.calls, isEmpty);
+      await harness.bridge.clearConfiguration();
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString(_chatKey), isNull);
+      expect(prefs.getString(_legacyBound), isNull);
+    });
+
+    test('a refused ID write cannot enable forwarding', () async {
+      final harness = await _Harness.start(
+        enabled: false,
+        configureStorage: (platform) => platform.refuseBinding = true,
+      );
+      addTearDown(harness.stop);
+      await harness.bridge.saveConfiguration(
+        username: 'owner_name',
+        enabled: true,
+      );
+      harness.telegram.enqueue('never forward', username: 'owner_name');
+      await _waitFor(
+        () => harness.bridge.snapshot.phase == TelegramBotPhase.error,
+      );
+      expect(harness.bridge.snapshot.awaitingBinding, isTrue);
+      expect(harness.bridge.engine, isNull);
+      expect(harness.recorder.prompts, isEmpty);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString(_chatKey), isNull);
+    });
+
+    test(
+      'a settings edit drains an in-flight binding without dispatching it',
+      () async {
+        late _BindingPlatform storage;
+        final harness = await _Harness.start(
+          enabled: false,
+          configureStorage: (platform) => storage = platform,
+        );
+        addTearDown(harness.stop);
+        await harness.bridge.saveConfiguration(
+          username: 'old_owner',
+          enabled: true,
+        );
+        final started = storage.started = Completer<void>();
+        final release = storage.release = Completer<void>();
+        addTearDown(() {
+          if (!release.isCompleted) release.complete();
+        });
+        harness.telegram.enqueue(
+          'do not forward after edit',
+          username: 'old_owner',
+        );
+        await started.future.timeout(const Duration(seconds: 8));
+        final editing = harness.bridge.saveConfiguration(
+          username: 'new_owner',
+          enabled: true,
+        );
+        release.complete();
+        await editing;
+        storage.started = null;
+        storage.release = null;
+        expect(harness.recorder.prompts, isEmpty);
+        expect(harness.bridge.snapshot.awaitingUsername, 'new_owner');
+        expect(harness.bridge.snapshot.chatID, isEmpty);
+        harness.telegram.enqueue(
+          'new user',
+          username: 'new_owner',
+          from: 999,
+          chat: 999,
+        );
+        await _waitFor(() => harness.telegram.sends.isNotEmpty);
+        expect(harness.recorder.prompts, ['new user']);
+        expect(harness.telegram.sendTargets, everyElement('999'));
+      },
+    );
+  });
+
   group('automatic binding', () {
+    test(
+      'a link replaces a disabled username setup instead of inheriting it',
+      () async {
+        final harness = await _Harness.start(enabled: false);
+        addTearDown(harness.stop);
+        await harness.bridge.saveConfiguration(
+          username: 'old_owner',
+          chatID: _owner,
+          enabled: false,
+        );
+        final pairing = harness.bridge.beginPairing();
+        await _waitFor(() => harness.bridge.pairingLink != null);
+        final code = harness.bridge.pairingLink!.queryParameters['start'];
+        harness.telegram.enqueue('/start $code', from: 999, chat: 999);
+        await pairing;
+        expect(harness.bridge.pairingSucceeded, isTrue);
+        expect(harness.bridge.snapshot.awaitingBinding, isFalse);
+        expect(harness.bridge.snapshot.chatID, '999');
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getString(_setupKey), isNull);
+        expect(prefs.getString(_chatKey), '999');
+        harness.telegram.enqueue('old owner', username: 'old_owner');
+        harness.telegram.enqueue('paired owner', from: 999, chat: 999);
+        await _waitFor(() => harness.telegram.sends.isNotEmpty);
+        expect(harness.recorder.prompts, ['paired owner']);
+      },
+    );
+
     test(
       'accepts only a fresh matching private start, then enables the relay',
       () async {

@@ -20,6 +20,9 @@ import '../channels/channel_text.dart';
 import '../channels/providers/telegram_provider.dart';
 import '../domain/models.dart';
 import '../ui/kit/kit_redact.dart';
+import 'telegram_identity.dart';
+
+export 'telegram_identity.dart' show telegramPrivateMessageAllowed;
 
 enum TelegramBotPhase { disabled, needsSetup, starting, polling, error }
 
@@ -45,23 +48,6 @@ class _PairingAttempt {
 @visibleForTesting
 String telegramApiOrigin = 'https://api.telegram.org';
 
-/// Whether [senderID] may talk to the bot in a private chat owned by
-/// [allowedUserID]. Kept as a named predicate because it is the one rule the
-/// relay must never get wrong.
-@visibleForTesting
-bool telegramPrivateMessageAllowed({
-  required String allowedUserID,
-  required Object? chatType,
-  required Object? senderID,
-  required Object? chatID,
-  required bool senderIsBot,
-}) =>
-    RegExp(r'^[1-9][0-9]{0,19}$').hasMatch(allowedUserID) &&
-    chatType == 'private' &&
-    !senderIsBot &&
-    '$senderID' == allowedUserID &&
-    '$chatID' == allowedUserID;
-
 @visibleForTesting
 List<String> telegramMessageChunks(String text) =>
     chunkText(text, maxCodeUnits: 3500);
@@ -75,6 +61,8 @@ class TelegramBotSnapshot {
     required this.enabled,
     required this.hasToken,
     required this.phase,
+    this.awaitingUsername,
+    this.expectedUserID = '',
     this.lastError,
   });
 
@@ -84,12 +72,15 @@ class TelegramBotSnapshot {
   final bool enabled;
   final bool hasToken;
   final TelegramBotPhase phase;
+  final String? awaitingUsername;
+  final String expectedUserID;
 
   /// The last transport failure in words the person can act on, cleared when
   /// polling recovers. Null while everything works.
   final String? lastError;
 
-  bool get configured => hasToken && chatID.isNotEmpty;
+  bool get configured => hasToken && (chatID.isNotEmpty || awaitingBinding);
+  bool get awaitingBinding => awaitingUsername != null;
 }
 
 /// A Telegram long-poll bridge bound to one saved OpenCode profile.
@@ -121,6 +112,7 @@ class TelegramBotBridge extends ChangeNotifier {
     Duration replyRecoveryInterval = const Duration(seconds: 10),
     Duration pairingWindow = const Duration(minutes: 3),
   }) : _preferences = preferences,
+       _identityStore = TelegramIdentityStore(preferences),
        _secureStorage = secureStorage,
        _events = events,
        _profileID = profileID,
@@ -139,13 +131,14 @@ class TelegramBotBridge extends ChangeNotifier {
 
   static const tokenKeyPrefix = 'oc.telegramBot.token.';
   static const enabledKeyPrefix = 'oc.telegramBot.enabled.';
-  static const chatIDKeyPrefix = 'oc.telegramBot.chat.';
+  static const chatIDKeyPrefix = TelegramIdentityStore.chatKeyPrefix;
   static const sessionIDKeyPrefix = 'oc.telegramBot.session.';
   static const directoryKeyPrefix = 'oc.telegramBot.directory.';
   static const workspaceKeyPrefix = 'oc.telegramBot.workspace.';
   static const _offsetPrefix = 'oc.telegramBot.offset.';
 
   final SharedPreferences _preferences;
+  final TelegramIdentityStore _identityStore;
   final FlutterSecureStorage _secureStorage;
   final Stream<EventEnvelope> _events;
   final String? Function() _profileID;
@@ -166,18 +159,24 @@ class TelegramBotBridge extends ChangeNotifier {
   TelegramProvider? _provider;
   ChannelConversationEngine? _engine;
   ChannelSessionBinding? _binding;
+  Future<void>? _teardown;
+  Future<void> _identityWork = Future<void>.value();
+  Future<void> _sessionWork = Future<void>.value();
 
   String? _ownerID;
   String? _token;
   String _chatID = '';
+  TelegramUsernameSetup? _usernameSetup;
   String? _sessionID;
   String? _sessionDirectory;
   String? _sessionWorkspace;
   bool _enabled = false;
   bool _disposed = false;
+  bool _editingConfiguration = false;
   bool? _supportedAtLoad;
   int _loadGeneration = 0;
   Future<void>? _initializing;
+  String? _loadError;
   _PairingAttempt? _pairing;
   String? _pairingError;
   bool _pairingSucceeded = false;
@@ -195,7 +194,9 @@ class TelegramBotBridge extends ChangeNotifier {
     enabled: _enabled,
     hasToken: _token != null,
     phase: _phase,
-    lastError: _provider?.status.lastError,
+    awaitingUsername: _usernameSetup?.username,
+    expectedUserID: _usernameSetup?.expectedID ?? '',
+    lastError: _loadError ?? _provider?.status.lastError,
   );
 
   /// The engine behind the facade, exposed for diagnostics and tests that need
@@ -203,8 +204,9 @@ class TelegramBotBridge extends ChangeNotifier {
   ChannelConversationEngine? get engine => _engine;
 
   TelegramBotPhase get _phase {
+    if (_loadError != null) return TelegramBotPhase.error;
     if (!_enabled) return TelegramBotPhase.disabled;
-    if (!_supported() || _token == null || _chatID.isEmpty) {
+    if (!_supported() || _token == null || !_hasIdentity) {
       return TelegramBotPhase.needsSetup;
     }
     return switch (_provider?.status.state) {
@@ -230,32 +232,64 @@ class TelegramBotBridge extends ChangeNotifier {
   void _hostChanged() {
     final next = _profileID();
     if (_pairing != null && _pairing!.profileID != next) cancelPairing();
+    if (_editingConfiguration) return;
     if (next == _ownerID) {
       // A transient SSE disconnect is not a change of Telegram identity. Keep
       // the in-flight turns so they can be reconciled once SSE/REST is back.
-      if (_engine != null || _supported() == _supportedAtLoad) return;
+      if (_provider != null || _supported() == _supportedAtLoad) return;
     }
     unawaited(_loadCurrentProfile());
   }
 
   String _profileKey(String prefix, String profileID) => '$prefix$profileID';
 
+  bool get _hasIdentity => _chatID.isNotEmpty || _usernameSetup != null;
+
   bool get _canPoll =>
       !_disposed &&
       _enabled &&
       _token != null &&
-      _chatID.isNotEmpty &&
+      _hasIdentity &&
       _ownerID != null &&
       _supported();
 
   Future<void> _teardownChannel() async {
+    if (_teardown case final previous?) {
+      await previous;
+      return;
+    }
     final engine = _engine;
     final provider = _provider;
     _engine = null;
     _provider = null;
-    await engine?.stop();
-    await provider?.dispose();
+    final cleanup = _stopChannel(engine, provider);
+    _teardown = cleanup;
+    try {
+      await cleanup;
+    } finally {
+      if (identical(_teardown, cleanup)) _teardown = null;
+    }
   }
+
+  Future<void> _stopChannel(
+    ChannelConversationEngine? engine,
+    TelegramProvider? provider,
+  ) async {
+    final stop = engine?.stop();
+    await provider?.dispose();
+    await stop;
+    await _identityWork;
+    await _sessionWork;
+  }
+
+  Future<T> _withIdentity<T>(Future<T> Function() action) {
+    final result = _identityWork.then((_) => action());
+    _identityWork = result.then<void>((_) {}, onError: (Object _) {});
+    return result;
+  }
+
+  bool _isCurrentProfile(String owner, int generation) =>
+      !_disposed && generation == _loadGeneration && owner == _profileID();
 
   Future<void> _loadCurrentProfile() async {
     final generation = ++_loadGeneration;
@@ -265,34 +299,40 @@ class TelegramBotBridge extends ChangeNotifier {
     _ownerID = owner;
     _supportedAtLoad = _supported();
     _chatID = '';
+    _usernameSetup = null;
     _sessionID = null;
     _sessionDirectory = null;
     _sessionWorkspace = null;
     _binding = null;
     _token = null;
     _enabled = false;
+    _loadError = null;
     if (owner != null && owner.isNotEmpty) {
       try {
         final token = await _secureStorage.read(
           key: _profileKey(tokenKeyPrefix, owner),
         );
-        if (generation != _loadGeneration || _disposed) return;
-        _token = token;
-        if (_token?.isNotEmpty == true) KitRedact.registerKnownSecret(_token!);
-        _chatID =
-            _preferences.getString(_profileKey(chatIDKeyPrefix, owner)) ?? '';
-        _sessionID = _preferences.getString(
-          _profileKey(sessionIDKeyPrefix, owner),
-        );
-        _sessionDirectory = _preferences.getString(
-          _profileKey(directoryKeyPrefix, owner),
-        );
-        _sessionWorkspace = _preferences.getString(
-          _profileKey(workspaceKeyPrefix, owner),
-        );
+        if (!_isCurrentProfile(owner, generation)) return;
+        _token = token?.isNotEmpty == true ? token : null;
+        if (_token case final secret?) KitRedact.registerKnownSecret(secret);
+        final identity = await _withIdentity(() => _identityStore.load(owner));
+        if (!_isCurrentProfile(owner, generation)) return;
+        _chatID = identity.chatID;
+        _usernameSetup = identity.setup;
+        if (_chatID.isNotEmpty) {
+          _sessionID = _preferences.getString(
+            _profileKey(sessionIDKeyPrefix, owner),
+          );
+          _sessionDirectory = _preferences.getString(
+            _profileKey(directoryKeyPrefix, owner),
+          );
+          _sessionWorkspace = _preferences.getString(
+            _profileKey(workspaceKeyPrefix, owner),
+          );
+        }
         _enabled =
             _preferences.getBool(_profileKey(enabledKeyPrefix, owner)) ?? false;
-        if (_sessionID != null && _sessionID!.isNotEmpty) {
+        if (_chatID.isNotEmpty && _sessionID?.isNotEmpty == true) {
           _binding = ChannelSessionBinding(
             sessionID: _sessionID!,
             directory: _sessionDirectory ?? '',
@@ -300,7 +340,10 @@ class TelegramBotBridge extends ChangeNotifier {
           );
         }
         if (generation != _loadGeneration || _disposed) return;
-      } catch (_) {
+      } on Object {
+        if (!_isCurrentProfile(owner, generation)) return;
+        _enabled = false;
+        _loadError = '无法读取或验证 Telegram 绑定，请检查或重新配置。';
         _notify();
         return;
       }
@@ -314,18 +357,80 @@ class TelegramBotBridge extends ChangeNotifier {
     final token = _token;
     if (owner == null || token == null) return;
     final offsetKey = _profileKey(_offsetPrefix, owner);
-    final provider = TelegramProvider(
+    final setup = _usernameSetup;
+    late final TelegramProvider provider;
+    provider = TelegramProvider(
       accountId: owner,
       token: token,
       chatId: _chatID,
       apiOrigin: () => telegramApiOrigin,
+      onBindPrivateUser: setup == null
+          ? null
+          : (message) =>
+                _bindUsername(owner, generation, setup, provider, message),
       onOffset: (offset) async {
-        if (generation != _loadGeneration || _disposed) return;
+        if (!_isCurrentProfile(owner, generation)) return;
         if (!await _preferences.setInt(offsetKey, offset)) {
           throw const TelegramFailure('无法保存 Telegram 接收位置。');
         }
       },
     )..offset = _preferences.getInt(offsetKey);
+    _provider = provider;
+    if (_chatID.isNotEmpty) await _startEngine(owner, generation, provider);
+    if (_isCurrentProfile(owner, generation) &&
+        identical(_provider, provider)) {
+      await provider.connect();
+    }
+  }
+
+  Future<bool> _bindUsername(
+    String owner,
+    int generation,
+    TelegramUsernameSetup setup,
+    TelegramProvider provider,
+    ChannelMessage message,
+  ) async {
+    bool current() =>
+        _isCurrentProfile(owner, generation) && identical(_provider, provider);
+    if (!current() ||
+        !identical(setup, _usernameSetup) ||
+        message.text.trim().isEmpty ||
+        message.receivedAt.millisecondsSinceEpoch ~/ 1000 < setup.notBefore ||
+        !telegramPrivateMessageAllowed(
+          allowedUserID: setup.expectedID,
+          allowedUsername: setup.username,
+          chatType: message.extensions['chat_type'],
+          senderID: message.senderId,
+          senderUsername: message.senderName,
+          chatID: message.conversationId,
+          senderIsBot: message.extensions['sender_is_bot'] != false,
+        )) {
+      return false;
+    }
+    try {
+      await _withIdentity(() async {
+        if (!current()) return;
+        // A preview settings edit might have left a conversation from the
+        // previous owner. No newly identified account may inherit it.
+        await _clearIdentityState(owner, preserveOffset: true);
+        if (!current()) return;
+        await _identityStore.bind(owner, setup, message.senderId);
+      });
+    } on Object {
+      throw const TelegramFailure('无法保存 Telegram 账号绑定，请重试。');
+    }
+    if (!current()) return false;
+    _usernameSetup = null;
+    _chatID = message.senderId;
+    await _startEngine(owner, generation, provider);
+    return current();
+  }
+
+  Future<void> _startEngine(
+    String owner,
+    int generation,
+    TelegramProvider provider,
+  ) async {
     final engine = ChannelConversationEngine(
       provider: provider,
       policy: ChannelPolicy(
@@ -341,10 +446,7 @@ class TelegramBotBridge extends ChangeNotifier {
       workspaceId: owner,
       directory: () => _directory() ?? '',
       workspace: () => _workspace() ?? '',
-      agentReady: () =>
-          _supported() &&
-          generation == _loadGeneration &&
-          owner == _profileID(),
+      agentReady: () => _supported() && _isCurrentProfile(owner, generation),
       copy: const ChannelEngineCopy(
         channelNoun: '机器人',
         finishedEmpty: '任务已结束，但未能读取本轮文字回复。请在 OpenCode Plus 的会话中查看结果。',
@@ -367,18 +469,8 @@ class TelegramBotBridge extends ChangeNotifier {
         },
       ),
     );
-    _provider = provider;
     _engine = engine;
     await engine.start();
-    if (generation != _loadGeneration || _disposed) {
-      if (identical(_engine, engine)) {
-        _engine = null;
-        _provider = null;
-      }
-      await engine.shutdown();
-      return;
-    }
-    await provider.connect();
   }
 
   ConversationKey _conversationKey(String owner) => ConversationKey(
@@ -392,9 +484,25 @@ class TelegramBotBridge extends ChangeNotifier {
 
   /// Persists a binding with the same keys the relay has always used, so an
   /// existing installation keeps its conversation across upgrades.
-  Future<void> _writeBinding(ChannelSessionBinding? binding) async {
+  Future<void> _writeBinding(ChannelSessionBinding? binding) {
     final owner = _ownerID;
-    if (owner == null || owner != _profileID() || _disposed) return;
+    final generation = _loadGeneration;
+    if (owner == null || _chatID.isEmpty) return Future<void>.value();
+    final write = _sessionWork.then((_) async {
+      if (!_isCurrentProfile(owner, generation)) {
+        throw StateError('Telegram profile changed');
+      }
+      await _persistBinding(owner, generation, binding);
+    });
+    _sessionWork = write.then<void>((_) {}, onError: (Object _) {});
+    return write;
+  }
+
+  Future<void> _persistBinding(
+    String owner,
+    int generation,
+    ChannelSessionBinding? binding,
+  ) async {
     if (binding == null) {
       if (!await _preferences.remove(_profileKey(sessionIDKeyPrefix, owner)) ||
           !await _preferences.remove(_profileKey(directoryKeyPrefix, owner)) ||
@@ -415,7 +523,7 @@ class TelegramBotBridge extends ChangeNotifier {
         )) {
       throw StateError('Could not save the Telegram session');
     }
-    if (owner != _ownerID || owner != _profileID() || _disposed) return;
+    if (!_isCurrentProfile(owner, generation)) return;
     _binding = binding;
     _sessionID = binding?.sessionID;
     _sessionDirectory = binding?.directory;
@@ -423,6 +531,7 @@ class TelegramBotBridge extends ChangeNotifier {
   }
 
   Future<void> bindSession(String? sessionID) async {
+    if (_editingConfiguration || isPairing || _chatID.isEmpty) return;
     final engine = _engine;
     if (engine == null) {
       await _writeBinding(
@@ -445,12 +554,12 @@ class TelegramBotBridge extends ChangeNotifier {
   /// While waiting, no update is sent to OpenCode and no settings are written.
   Future<void> beginPairing({String? replacementToken}) async {
     if (_disposed || isPairing) return;
+    if (_editingConfiguration) {
+      throw const FormatException('Could not pair while saving settings.');
+    }
     final owner = _profileID();
     if (owner == null || owner.isEmpty) {
       throw const FormatException('请先选择本机 OpenCode 服务器。');
-    }
-    if (_preferences.getBool(_profileKey(enabledKeyPrefix, owner)) == true) {
-      throw const FormatException('请先关闭并保存现有 Telegram 转发，再重新绑定。');
     }
     final attempt = _PairingAttempt(owner);
     _pairing = attempt;
@@ -460,6 +569,13 @@ class TelegramBotBridge extends ChangeNotifier {
     TelegramProvider? provider;
     try {
       await initialize();
+      if (!_isCurrentPairing(attempt)) return;
+      await _preferences.reload();
+      if (!_isCurrentPairing(attempt)) return;
+      if (_preferences.getBool(_profileKey(enabledKeyPrefix, owner)) == true) {
+        throw const FormatException('请先关闭并保存现有 Telegram 转发，再重新绑定。');
+      }
+      await _teardownChannel();
       if (!_isCurrentPairing(attempt)) return;
       final replacement = replacementToken?.trim() ?? '';
       final tokenKey = _profileKey(tokenKeyPrefix, owner);
@@ -595,25 +711,27 @@ class TelegramBotBridge extends ChangeNotifier {
     );
     KitRedact.registerKnownSecret(token);
     if (!_isCurrentPairing(attempt)) return;
-    if (!await _preferences.setInt(_profileKey(_offsetPrefix, owner), offset) ||
-        !await _preferences.setString(chatKey, chatID)) {
+    await _withIdentity(() async {
+      if (!_isCurrentPairing(attempt)) return;
+      await _identityStore.replace(owner, chatID: chatID);
+    });
+    if (!_isCurrentPairing(attempt)) return;
+    if (!await _preferences.setInt(_profileKey(_offsetPrefix, owner), offset)) {
       throw const FormatException('无法保存 Telegram 绑定，转发未启用。');
     }
     if (!_isCurrentPairing(attempt)) return;
-    if (!await _preferences.setBool(
-      _profileKey(enabledKeyPrefix, owner),
-      true,
-    )) {
-      throw const FormatException('无法启用 Telegram 转发。');
-    }
+    await _setRelayEnabled(owner, true);
   }
 
-  Future<void> _clearIdentityState(String owner) async {
+  Future<void> _clearIdentityState(
+    String owner, {
+    bool preserveOffset = false,
+  }) async {
     for (final prefix in [
       sessionIDKeyPrefix,
       directoryKeyPrefix,
       workspaceKeyPrefix,
-      _offsetPrefix,
+      if (!preserveOffset) _offsetPrefix,
     ]) {
       if (!await _preferences.remove(_profileKey(prefix, owner))) {
         throw const FormatException('无法移除旧的 Telegram 会话绑定。');
@@ -624,93 +742,135 @@ class TelegramBotBridge extends ChangeNotifier {
     await _ledger.clear(ChannelProviderIds.telegram, owner);
   }
 
-  /// Saves a configuration. A null [token] keeps the existing secret; an
-  /// empty string also means "leave the saved token unchanged".
+  void _checkConfigurationOwner(String owner) {
+    if (_disposed || _profileID() != owner) {
+      throw const FormatException('The server profile changed. Try again.');
+    }
+  }
+
+  Future<void> _setRelayEnabled(String owner, bool enabled) async {
+    final key = _profileKey(enabledKeyPrefix, owner);
+    final saved = await _preferences.setBool(key, enabled);
+    await _preferences.reload();
+    if (!saved || _preferences.getBool(key) != enabled) {
+      throw const FormatException('Could not save the Telegram setting.');
+    }
+  }
+
+  Future<void> _editConfiguration(
+    Future<void> Function(String owner) edit,
+  ) async {
+    if (isPairing || _editingConfiguration) {
+      throw const FormatException('请先完成或取消 Telegram 配对。');
+    }
+    final owner = _profileID();
+    if (_disposed || owner == null || owner.isEmpty) {
+      throw const FormatException('Select the phone OpenCode server first.');
+    }
+    _editingConfiguration = true;
+    _loadGeneration++;
+    try {
+      await _teardownChannel();
+      _checkConfigurationOwner(owner);
+      await edit(owner);
+    } finally {
+      _editingConfiguration = false;
+      if (!_disposed) await _loadCurrentProfile();
+    }
+  }
+
+  static void _validateIdentity(String chat, String username) {
+    if (chat.isNotEmpty && !validTelegramUserID(chat)) {
+      throw const FormatException('Enter a positive numeric Telegram user ID.');
+    }
+    if (username.isNotEmpty && !validTelegramUsername(username)) {
+      throw const FormatException(
+        'Enter a Telegram @username, not a name or link.',
+      );
+    }
+  }
+
+  /// An empty [token] keeps the secret. An optional [username] is only for
+  /// first contact; [chatID] then constrains (but does not grant) admission.
   Future<void> saveConfiguration({
-    required String chatID,
+    String chatID = '',
+    String username = '',
     required bool enabled,
     String? token,
   }) async {
-    if (isPairing) throw const FormatException('请先完成或取消 Telegram 配对。');
-    final owner = _profileID();
-    if (owner == null || owner.isEmpty) {
-      throw const FormatException('Select the phone OpenCode server first.');
+    final chat = chatID.trim();
+    final name = normalizeTelegramUsername(username);
+    _validateIdentity(chat, name);
+    if ((username.trim().isNotEmpty && name.isEmpty) ||
+        (enabled && chat.isEmpty && name.isEmpty)) {
+      throw const FormatException(
+        'Enter a Telegram username or numeric user ID.',
+      );
     }
-    final normalizedChatID = chatID.trim();
-    final validChatID = RegExp(
-      r'^[1-9][0-9]{0,19}$',
-    ).hasMatch(normalizedChatID);
-    if (enabled && !validChatID) {
-      throw const FormatException('Enter a positive numeric Telegram user ID.');
-    }
-    final newToken = token?.trim();
-    if (newToken != null && newToken.isNotEmpty) {
-      _validateToken(newToken);
-    }
-    if ((newToken?.isNotEmpty == true && newToken != _token) ||
-        (validChatID && normalizedChatID != _chatID)) {
-      await _teardownChannel();
-      if (!await _preferences.setBool(
-        _profileKey(enabledKeyPrefix, owner),
-        false,
-      )) {
+    final replacement = token?.trim() ?? '';
+    if (replacement.isNotEmpty) _validateToken(replacement);
+
+    await _editConfiguration((owner) async {
+      final tokenKey = _profileKey(tokenKeyPrefix, owner);
+      final previousToken = await _secureStorage.read(key: tokenKey);
+      final useToken = replacement.isNotEmpty ? replacement : previousToken;
+      if (enabled && (useToken == null || useToken.isEmpty)) {
         throw const FormatException(
-          'Could not disable the previous Telegram binding.',
+          'Add the bot token before enabling the bot.',
         );
       }
-      await _clearIdentityState(owner);
-    }
-    if (newToken != null && newToken.isNotEmpty) {
-      await _secureStorage.write(
-        key: _profileKey(tokenKeyPrefix, owner),
-        value: newToken,
-      );
-      KitRedact.registerKnownSecret(newToken);
-    }
-    final existingToken = newToken?.isNotEmpty == true
-        ? newToken
-        : await _secureStorage.read(key: _profileKey(tokenKeyPrefix, owner));
-    if (enabled && (existingToken == null || existingToken.isEmpty)) {
-      throw const FormatException('Add the bot token before enabling the bot.');
-    }
-    if (validChatID &&
-        !await _preferences.setString(
-          _profileKey(chatIDKeyPrefix, owner),
-          normalizedChatID,
-        )) {
-      throw const FormatException('Could not save the Telegram chat ID.');
-    }
-    if (!await _preferences.setBool(
-      _profileKey(enabledKeyPrefix, owner),
-      enabled,
-    )) {
-      throw const FormatException('Could not save the Telegram setting.');
-    }
-    await _loadCurrentProfile();
+      TelegramSavedIdentity? previous;
+      try {
+        previous = await _withIdentity(() => _identityStore.load(owner));
+      } on FormatException {
+        // An explicit edit can recover a conflicting or unreadable binding.
+      }
+      _checkConfigurationOwner(owner);
+      await _setRelayEnabled(owner, false);
+      final sameIdentity = name.isEmpty
+          ? previous?.setup == null && previous?.chatID == chat
+          : previous?.setup?.username == name &&
+                previous?.setup?.expectedID == chat;
+      if (!sameIdentity || previousToken != useToken) {
+        await _clearIdentityState(owner);
+        await _withIdentity(
+          () => _identityStore.replace(
+            owner,
+            chatID: name.isEmpty ? chat : '',
+            setup: name.isEmpty ? null : TelegramUsernameSetup(name, chat),
+          ),
+        );
+      }
+      _checkConfigurationOwner(owner);
+      if (replacement.isNotEmpty && replacement != previousToken) {
+        await _secureStorage.write(key: tokenKey, value: replacement);
+        KitRedact.registerKnownSecret(replacement);
+      }
+      _checkConfigurationOwner(owner);
+      if (enabled) await _setRelayEnabled(owner, true);
+    });
   }
 
   Future<void> clearToken() async {
     cancelPairing();
     if (isPairing) return;
-    final owner = _profileID();
-    if (owner == null) return;
-    await _teardownChannel();
-    await _preferences.setBool(_profileKey(enabledKeyPrefix, owner), false);
-    await _secureStorage.delete(key: _profileKey(tokenKeyPrefix, owner));
-    await _loadCurrentProfile();
+    if (_profileID() == null) return;
+    await _editConfiguration((owner) async {
+      await _setRelayEnabled(owner, false);
+      await _secureStorage.delete(key: _profileKey(tokenKeyPrefix, owner));
+    });
   }
 
   Future<void> clearConfiguration() async {
     cancelPairing();
     if (isPairing) return;
-    final owner = _profileID();
-    if (owner == null) return;
-    await _teardownChannel();
-    await _preferences.setBool(_profileKey(enabledKeyPrefix, owner), false);
-    await _preferences.remove(_profileKey(chatIDKeyPrefix, owner));
-    await _secureStorage.delete(key: _profileKey(tokenKeyPrefix, owner));
-    await _clearIdentityState(owner);
-    await _loadCurrentProfile();
+    if (_profileID() == null) return;
+    await _editConfiguration((owner) async {
+      await _setRelayEnabled(owner, false);
+      await _withIdentity(() => _identityStore.replace(owner));
+      await _secureStorage.delete(key: _profileKey(tokenKeyPrefix, owner));
+      await _clearIdentityState(owner);
+    });
   }
 
   /// Verifies the credential and whether the owner can be written to.
@@ -721,6 +881,7 @@ class TelegramBotBridge extends ChangeNotifier {
   Future<String> testConnection({
     String? replacementToken,
     String? chatID,
+    String? username,
   }) async {
     final owner = _profileID();
     if (owner == null) {
@@ -729,13 +890,15 @@ class TelegramBotBridge extends ChangeNotifier {
     final token = replacementToken?.trim().isNotEmpty == true
         ? replacementToken!.trim()
         : await _secureStorage.read(key: _profileKey(tokenKeyPrefix, owner));
-    final chat = chatID?.trim().isNotEmpty == true
-        ? chatID!.trim()
-        : _preferences.getString(_profileKey(chatIDKeyPrefix, owner)) ??
-              _chatID;
-    if (token == null || token.isEmpty || chat.isEmpty) {
+    _checkConfigurationOwner(owner);
+    final name = normalizeTelegramUsername(
+      username ?? _usernameSetup?.username ?? '',
+    );
+    final chat = chatID?.trim() ?? _usernameSetup?.expectedID ?? _chatID;
+    _validateIdentity(chat, name);
+    if (token == null || token.isEmpty || (chat.isEmpty && name.isEmpty)) {
       throw const FormatException(
-        'Save a bot token and Telegram user ID first.',
+        'Add a bot token and Telegram username or user ID first.',
       );
     }
     _validateToken(token);
@@ -746,7 +909,11 @@ class TelegramBotBridge extends ChangeNotifier {
       apiOrigin: () => telegramApiOrigin,
     );
     try {
-      return await probe.probe();
+      final result = await probe.probe(
+        pendingUsername: name.isEmpty ? null : name,
+      );
+      _checkConfigurationOwner(owner);
+      return result;
     } finally {
       await probe.dispose();
     }

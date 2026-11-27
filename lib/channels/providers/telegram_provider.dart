@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../../telegram/telegram_identity.dart';
 import '../channel_capabilities.dart';
 import '../channel_message.dart';
 import '../channel_provider.dart';
@@ -17,18 +18,25 @@ class TelegramProvider extends ChannelProviderBase {
   TelegramProvider({
     required super.accountId,
     required this.token,
-    required this.chatId,
+    required String chatId,
     required String Function() apiOrigin,
     this.onOffset,
+    this.onBindPrivateUser,
     this.pollTimeout = const Duration(seconds: 25),
     this.maxBackoff = const Duration(seconds: 60),
-  }) : _apiOrigin = apiOrigin,
+  }) : _chatId = chatId,
+       _apiOrigin = apiOrigin,
        super(providerId: ChannelProviderIds.telegram);
 
   final String token;
-  final String chatId;
+  String _chatId;
+  String get chatId => _chatId;
   final String Function() _apiOrigin;
   final Future<void> Function(int offset)? onOffset;
+
+  /// Called only for a human private message. True means the app saved this
+  /// sender's numeric ID and subscribed its channel engine to this provider.
+  final Future<bool> Function(ChannelMessage message)? onBindPrivateUser;
   final Duration pollTimeout;
   final Duration maxBackoff;
 
@@ -72,6 +80,7 @@ class TelegramProvider extends ChannelProviderBase {
   bool _running = false;
   int _generation = 0;
   HttpClient? _http;
+  Future<void>? _offsetWrite;
   int _consecutiveFailures = 0;
   String? _botUsername;
 
@@ -86,7 +95,7 @@ class TelegramProvider extends ChannelProviderBase {
   @override
   Future<void> connect() async {
     if (isClosed) return;
-    if (token.isEmpty || chatId.isEmpty) {
+    if (token.isEmpty || (chatId.isEmpty && onBindPrivateUser == null)) {
       publishStatus(
         ProviderState.needsSetup,
         detail: '缺少 Bot Token 或用户 ID',
@@ -106,6 +115,11 @@ class TelegramProvider extends ChannelProviderBase {
     _generation++;
     _http?.close(force: true);
     _http = null;
+    try {
+      await _offsetWrite;
+    } on Object {
+      // A refused write is handled by the poll generation that attempted it.
+    }
     if (!isClosed) {
       publishStatus(ProviderState.disabled, detail: '已断开');
     }
@@ -137,19 +151,36 @@ class TelegramProvider extends ChannelProviderBase {
         }
         _consecutiveFailures = 0;
         for (final (updateID, message) in updates) {
+          if (!_running || generation != _generation) break;
           if (offset != null && updateID < offset!) continue;
           // Advance before dispatch: a process death cannot replay a prompt
           // whose delivery to OpenCode may already have succeeded.
-          await onOffset?.call(updateID + 1);
+          final write = _offsetWrite = onOffset?.call(updateID + 1);
+          try {
+            await write;
+          } finally {
+            if (identical(_offsetWrite, write)) _offsetWrite = null;
+          }
           if (!_running || generation != _generation) break;
           offset = updateID + 1;
-          if (message != null &&
-              message.conversationType == ChannelConversationKind.direct &&
-              message.conversationId == chatId &&
-              message.senderId == chatId &&
-              message.extensions['sender_is_bot'] != true) {
-            emitMessage(message);
+          if (message == null ||
+              !telegramPrivateMessageAllowed(
+                allowedUserID: chatId.isEmpty ? message.senderId : chatId,
+                chatType: message.extensions['chat_type'],
+                senderID: message.senderId,
+                chatID: message.conversationId,
+                senderIsBot: message.extensions['sender_is_bot'] != false,
+              )) {
+            continue;
           }
+          if (chatId.isEmpty) {
+            if (await onBindPrivateUser?.call(message) != true) {
+              continue;
+            }
+            if (!_running || generation != _generation) break;
+            _chatId = message.senderId;
+          }
+          emitMessage(message);
         }
       } on Object catch (error) {
         if (!_running || generation != _generation || isClosed) break;
@@ -261,12 +292,16 @@ class TelegramProvider extends ChannelProviderBase {
   /// Returns a notice for the settings page. A missing private chat is not an
   /// error: Telegram forbids a bot from writing first, so the relay can still
   /// be enabled and starts working the moment the owner sends `/start`.
-  Future<String> probe({String? replacementToken, String? chatID}) async {
+  Future<String> probe({
+    String? replacementToken,
+    String? chatID,
+    String? pendingUsername,
+  }) async {
     final useToken = replacementToken?.trim().isNotEmpty == true
         ? replacementToken!.trim()
         : token;
     final chat = chatID?.trim().isNotEmpty == true ? chatID!.trim() : chatId;
-    if (useToken.isEmpty || chat.isEmpty) {
+    if (useToken.isEmpty || (chat.isEmpty && pendingUsername == null)) {
       throw const FormatException(
         'Save a bot token and Telegram user ID first.',
       );
@@ -285,6 +320,10 @@ class TelegramProvider extends ChannelProviderBase {
     final result = me['result'];
     final username = result is Map ? result['username']?.toString() ?? '' : '';
     final botName = username.isEmpty ? '该机器人' : '@$username';
+    if (pendingUsername != null) {
+      return 'Token 验证成功（$botName）。请启用转发，再用 @$pendingUsername '
+          '私聊机器人发送 /start，以绑定该账号的数字 ID。';
+    }
     try {
       await _request(
         'getChat',
@@ -319,7 +358,8 @@ class TelegramProvider extends ChannelProviderBase {
     if (isClosed) {
       return const DeliveryReceipt.failed('渠道已关闭');
     }
-    if (context.address.conversationType != ChannelConversationKind.direct ||
+    if (chatId.isEmpty ||
+        context.address.conversationType != ChannelConversationKind.direct ||
         context.address.conversationId != chatId) {
       return const DeliveryReceipt.failed('Telegram 私聊绑定已变更，本条消息未发送。');
     }
@@ -467,7 +507,9 @@ class TelegramProvider extends ChannelProviderBase {
       'channel' => ChannelConversationKind.channel,
       _ => ChannelConversationKind.unknown,
     };
-    final text = message['text']?.toString() ?? '';
+    final text = message['text'] is String ? message['text'] as String : '';
+    final username = from['username'];
+    final date = message['date'];
     final segments = <ChannelSegment>[];
     if (text.isNotEmpty) segments.add(ChannelSegment.text(text));
     final mentionsAccount =
@@ -480,7 +522,7 @@ class TelegramProvider extends ChannelProviderBase {
       conversationId: chat['id']?.toString() ?? '',
       conversationType: kind,
       senderId: from['id']?.toString() ?? '',
-      senderName: from['username']?.toString(),
+      senderName: username is String ? username : null,
       conversationTitle: chat['title']?.toString(),
       messageId: message['message_id']?.toString() ?? '',
       text: text,
@@ -490,7 +532,7 @@ class TelegramProvider extends ChannelProviderBase {
           : null,
       mentionsAccount: mentionsAccount,
       receivedAt: DateTime.fromMillisecondsSinceEpoch(
-        ((message['date'] as num?)?.toInt() ?? 0) * 1000,
+        (date is int && date >= 0 && date <= 253402300799 ? date : 0) * 1000,
       ),
       extensions: {
         'update_id': update['update_id'],

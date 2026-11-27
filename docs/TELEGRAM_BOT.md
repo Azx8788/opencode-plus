@@ -22,11 +22,21 @@ behaviour, while transport, de-duplication, task lifecycle and delivery live in
    second bot or manual ID lookup is needed. If the bot already has a webhook
    or another poller, stop that receiver before pairing; pairing itself never
    removes a webhook. Existing bindings stay valid. To rebind an enabled bot,
-   disable it and save first. The numeric-ID setup remains available as a fallback.
+    disable it and save first.
 5. Connect the app to its built-in OpenCode server and open a project. Opening a
    conversation binds that session for progress and replies. A Telegram text
    sent before a session is bound starts a separate conversation in the
-   currently open project.
+    currently open project.
+
+### Bind by username or numeric ID
+
+Instead of opening the pairing link, choose **Bind by username or numeric ID**.
+Enter your account's `@username` (not the bot's name), save and enable the relay,
+then send `/start` from that account in the bot's private chat. The first new
+matching private text binds its numeric ID. If you also enter an ID, both must
+match before binding, and no prompts or replies are relayed before the binding
+is saved. You may leave the username blank and use a numeric ID alone. Existing
+numeric-ID configurations need no setup changes.
 
 Enabling the relay claims the bot for long polling: it removes any webhook and
 publishes the command menu (`/status`, `/stop`, `/new`, `/help`) so the bot is
@@ -69,9 +79,11 @@ voice notes, inline keyboards and remote permission approval are not supported.
 
 ## Security and privacy
 
-The bot accepts private-chat messages only when both the sender and private
-chat IDs match the configured numeric user ID. Other senders are ignored. The
-bot token is stored in Android secure storage; profile deletion removes it.
+After binding, both sender and private chat IDs must match the saved numeric
+ID. Changing or removing the Telegram username does not revoke that account;
+another account acquiring the old name does not gain access. Groups and bots
+cannot bind or reach the relay. The bot token is stored in Android secure
+storage; profile deletion removes it and the local identity settings.
 Telegram instructions are sent through the app's existing OpenCode connection
 and ordinary permission policy. Agent reply text and short progress notices are
 sent to Telegram, so Telegram receives that content. Do not relay information
@@ -86,8 +98,9 @@ published before the first poll, that a plain message reaches the agent and
 binds its session, that `/status`, `/stop` and `/new` answer correctly, that a
 foreign account is ignored, that a `409` is reported rather than hidden, and
 that agent progress and the finished reply come back to Telegram. It also
-exercises automatic binding (wrong code, group, bot, expired/cancelled), fast
-completion before the submit receipt, rebinding, reconnect and lost delivery
+exercises automatic binding (wrong code, group, bot, expired/cancelled), username
+binding (optional ID, old settings, storage refusal and in-flight reconfiguration),
+fast completion before the submit receipt, rebinding, reconnect and lost delivery
 acknowledgements. `test/channels/api2_channel_replies_test.dart` checks the
 OpenCode 2 transcript fallback against a local HTTP server. These are not
 real Telegram-account tests.

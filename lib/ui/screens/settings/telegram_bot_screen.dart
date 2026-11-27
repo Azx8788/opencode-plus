@@ -22,11 +22,13 @@ class TelegramBotScreen extends StatefulWidget {
 class _TelegramBotScreenState extends State<TelegramBotScreen> {
   late final TextEditingController _token = TextEditingController();
   late final TextEditingController _chatID = TextEditingController();
+  late final TextEditingController _username = TextEditingController();
   late final TelegramBotBridge _bridge = widget.controller.telegramBot;
   bool _enabled = false;
   bool _replacingToken = false;
   bool _busy = false;
-  bool _chatEdited = false;
+  bool _identityEdited = false;
+  bool _enabledEdited = false;
   bool _manual = false;
   String? _loadedProfile;
   String? _notice;
@@ -54,15 +56,21 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
     final snapshot = _bridge.snapshot;
     if (snapshot.profileID != _loadedProfile) {
       _loadedProfile = snapshot.profileID;
-      _chatEdited = false;
-      _enabled = snapshot.enabled;
+      _identityEdited = false;
+      _enabledEdited = false;
       _token.clear();
       _notice = null;
       _error = null;
       _replacingToken = false;
     }
-    if (!_chatEdited && _chatID.text != snapshot.chatID) {
-      _chatID.text = snapshot.chatID;
+    if (!_enabledEdited) _enabled = snapshot.enabled;
+    if (!_identityEdited) {
+      final chat = snapshot.awaitingBinding
+          ? snapshot.expectedUserID
+          : snapshot.chatID;
+      final name = snapshot.awaitingUsername ?? '';
+      if (_chatID.text != chat) _chatID.text = chat;
+      if (_username.text != name) _username.text = name;
     }
   }
 
@@ -73,6 +81,7 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
     _bridge.cancelPairing();
     _token.dispose();
     _chatID.dispose();
+    _username.dispose();
     super.dispose();
   }
 
@@ -89,8 +98,8 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
         _token.clear();
         _replacingToken = false;
         _manual = false;
-        _enabled = true;
-        _chatEdited = false;
+        _enabledEdited = false;
+        _identityEdited = false;
         _syncSnapshot();
         _notice = _text('Telegram is paired and enabled.', 'Telegram 已绑定并启用。');
       } else {
@@ -122,6 +131,12 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
 
   Future<void> _save() async {
     if (_busy) return;
+    final owner = _bridge.snapshot.profileID;
+    if (owner == null || widget.controller.profile?.id != owner) return;
+    final enabled = _enabled;
+    final token = _token.text;
+    final chat = _chatID.text;
+    final username = _username.text;
     setState(() {
       _busy = true;
       _error = null;
@@ -129,26 +144,26 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
     });
     try {
       var notice = _text('Settings saved.', '设置已保存。');
-      if (_enabled) {
-        await _bridge.saveConfiguration(
-          token: _token.text,
-          chatID: _chatID.text,
-          enabled: false,
-        );
-        _enabled = false;
-        notice = await _bridge.testConnection(chatID: _chatID.text);
-        await _bridge.saveConfiguration(chatID: _chatID.text, enabled: true);
-        _enabled = true;
-      } else {
-        await _bridge.saveConfiguration(
-          token: _token.text,
-          chatID: _chatID.text,
-          enabled: false,
+      if (enabled) {
+        notice = await _bridge.testConnection(
+          replacementToken: token,
+          chatID: chat,
+          username: username,
         );
       }
+      if (!mounted || widget.controller.profile?.id != owner) return;
+      await _bridge.saveConfiguration(
+        token: token,
+        chatID: chat,
+        username: username,
+        enabled: enabled,
+      );
+      if (!mounted || widget.controller.profile?.id != owner) return;
       _token.clear();
       _replacingToken = false;
-      _chatEdited = false;
+      _enabledEdited = false;
+      _identityEdited = false;
+      _syncSnapshot();
       _notice = notice;
     } on FormatException catch (error) {
       _error = error.message;
@@ -170,6 +185,7 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
       _notice = await _bridge.testConnection(
         replacementToken: _token.text,
         chatID: _chatID.text,
+        username: _username.text,
       );
     } on FormatException catch (error) {
       _error = error.message;
@@ -192,11 +208,14 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
     });
     try {
       await _bridge.clearConfiguration();
+      if (!mounted) return;
       _token.clear();
       _chatID.clear();
+      _username.clear();
       _enabled = false;
       _replacingToken = false;
-      _chatEdited = false;
+      _identityEdited = false;
+      _enabledEdited = false;
       _notice = _text(
         'Telegram bot configuration removed.',
         'Telegram 机器人配置已删除。',
@@ -278,6 +297,13 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
               tone: KitTextTone.attention,
             ),
           ],
+          if (snapshot.awaitingUsername case final name? when snapshot.enabled)
+            KitNotice(
+              message: _text(
+                'Waiting for @$name. Send /start from that account in a private chat with the bot.',
+                '正在等待 @$name。请用该账号在机器人私聊中发送 /start。',
+              ),
+            ),
           if (!localServer) ...[
             SizedBox(height: tokens.space3),
             KitGroupNote(
@@ -343,12 +369,29 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
               key: const ValueKey('telegram-bot-manual'),
               label: _manual
                   ? _text('Hide manual setup', '收起手动配置')
-                  : _text('Use a numeric user ID instead', '改用数字 ID 手动配置'),
+                  : _text('Bind by username or numeric ID', '用用户名或数字 ID 绑定'),
               onPressed: _busy
                   ? null
                   : () => setState(() => _manual = !_manual),
             ),
           if (!pairing && (_manual || snapshot.configured)) ...[
+            KitField(
+              key: const ValueKey('telegram-bot-username'),
+              label: _text(
+                'Your Telegram username (optional)',
+                '你的 Telegram 用户名（可选）',
+              ),
+              controller: _username,
+              enabled: !_busy,
+              disabledReason: _busy ? _text('Saving settings', '正在保存设置') : null,
+              hint: '@your_username',
+              helper: _text(
+                'Use your own @username, not the bot’s. A matching private message binds your numeric ID. Changing the username here starts a new binding.',
+                '请填写你自己的 @username，而非机器人的。首次匹配的私聊会绑定数字 ID；在这里填写新用户名会重新绑定。',
+              ),
+              onChanged: (_) => _identityEdited = true,
+            ),
+            SizedBox(height: tokens.space2),
             KitField(
               key: const ValueKey('telegram-bot-user-id'),
               label: _text('Allowed Telegram user ID', '允许的 Telegram 用户 ID'),
@@ -358,10 +401,10 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
               disabledReason: _busy ? _text('Saving settings', '正在保存设置') : null,
               hint: _text('For example: 123456789', '例如：123456789'),
               helper: _text(
-                'Find your numeric ID with @userinfobot. Only this private chat can send instructions or receive updates.',
-                '可通过 @userinfobot 查询数字 ID。只有该账号的私聊可以发送指令或接收进度。',
+                'With a username, the ID is optional and both must match if entered. Without a username, the ID is required.',
+                '使用用户名时，数字 ID 可选；同时填写时必须都匹配。不填用户名时必须填写数字 ID。',
               ),
-              onChanged: (_) => _chatEdited = true,
+              onChanged: (_) => _identityEdited = true,
             ),
             SizedBox(height: tokens.space3),
             KitSwitchRow(
@@ -374,7 +417,10 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
               value: _enabled,
               onChanged: _busy
                   ? null
-                  : (value) => setState(() => _enabled = value),
+                  : (value) => setState(() {
+                      _enabledEdited = true;
+                      _enabled = value;
+                    }),
             ),
             if (snapshot.sessionID != null) ...[
               SizedBox(height: tokens.space2),

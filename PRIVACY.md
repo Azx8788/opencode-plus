@@ -64,8 +64,10 @@ When enabled for the phone's built-in OpenCode server, the app stores the bot
 token in Android secure storage and stores the allowed Telegram user ID,
 polling cursor, and a bounded channel task and delivery history in app
 preferences. Optional automatic setup passes a short-lived, single-use pairing
-code to Telegram via a private `/start` link. The bot accepts private text messages only
-from that configured ID. Messages are sent to the currently linked OpenCode
+code to Telegram via a private `/start` link. Username setup keeps the entered
+username in preferences while waiting for a matching private message; after
+binding only the verified numeric ID is used. The bot relays private text only
+from that ID. Messages are sent to the currently linked OpenCode
 conversation as normal prompts. The conversation's agent replies and brief
 tool-progress notices are sent to that Telegram chat. Telegram and its
 infrastructure receive whatever prompt and reply text you choose to send;

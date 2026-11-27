@@ -24,8 +24,8 @@ of losing its servers and its Ubuntu.
 - **Scheduled prompts**, widgets, voice input, and multi-agent teams are kept.
 - **Optional Telegram relay** for the on-phone OpenCode server: send text
   instructions from one allowlisted private account and receive agent replies
-  plus brief progress notices. Pair from a Telegram link without looking up a
-  user ID. The bot token stays in Android secure storage.
+  plus brief progress notices. Pair from a Telegram link or by username;
+  manual numeric ID setup still works. The bot token stays in Android secure storage.
   See [docs/TELEGRAM_BOT.md](docs/TELEGRAM_BOT.md) for setup and limits.
 - **A manager agent for the chat side (optional)**: a separate model reads each
   channel message, decides whether to hand it to the executor, and writes what
@@ -303,7 +303,8 @@ QQ 普通账号（LLBot + OneBot 11）共用同一套指令、白名单、会话
 
 可选 Telegram 机器人在「设置 → 对话 → Telegram 机器人」配置：使用
 @BotFather 创建 bot，粘贴 Token，点击「自动绑定 → 打开 Telegram」，按提示点击「开始」。
-不用查数字用户 ID；机器人只处理已绑定账号的私聊。Agent 回复和工具进度会回传 Telegram。Bot Token 使用 Android
+也可填写自己的 `@username`，启用后在私聊中发 `/start`；绑定后只认数字 ID。
+已有数字 ID 配置无需重绑。Agent 回复和工具进度会回传 Telegram。Bot Token 使用 Android
 安全存储；在 Telegram 收发的内容会经过 Telegram 服务。要后台持续接收消息，
 需保持 App 可运行并启用后台运行功能。
 

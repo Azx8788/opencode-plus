@@ -26,7 +26,10 @@ Telegram bot entry. Both open the same page.
 2. Paste the token and choose **Pair automatically → Open Telegram**.
 3. In Telegram, tap **Start** if prompted, then return to the app. The one-time
    link expires in three minutes. A successful pairing enables the relay.
-4. If you prefer, choose **Use a numeric user ID instead**. Existing bindings
+4. Alternatively, choose **Bind by username or numeric ID**. Enter your own
+   `@username`, save and enable the relay, then send `/start` in the bot's
+   private chat. The relay saves the numeric ID on the first new matching
+   message. You can also enter the ID directly; existing ID-only bindings
    do not need to be paired again.
 
 The relay removes any webhook and publishes the command menu when it starts, so a
