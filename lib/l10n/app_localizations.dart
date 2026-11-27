@@ -47840,6 +47840,18 @@ abstract class AppLocalizations {
   /// **'channels messaging Telegram QQ official bot OneBot LLBot personal account remote agent'**
   String get channelsSettingsKeywords;
 
+  /// Chat journey: the inbox cancel could not be confirmed, so the text was not taken back
+  ///
+  /// In en, this message translates to:
+  /// **'Could not confirm the cancel. The message may still be pending; nothing was merged.'**
+  String get chatUiCouldNotConfirmCancel;
+
+  /// New chat: the session was created but the first prompt did not confirm; the person is taken into that conversation
+  ///
+  /// In en, this message translates to:
+  /// **'The conversation is open, but the first message was not confirmed. Send it again from here — it may already have arrived.'**
+  String get chatsNewFirstMessageUnconfirmed;
+
   /// No description provided for @telegramBotSettingsTitle.
   ///
   /// In en, this message translates to:

@@ -36509,6 +36509,14 @@
   "settingsV3VoiceTyping": "Voice typing",
   "channelsSettingsTitle": "Message channels",
   "channelsSettingsKeywords": "channels messaging Telegram QQ official bot OneBot LLBot personal account remote agent",
+  "chatUiCouldNotConfirmCancel": "Could not confirm the cancel. The message may still be pending; nothing was merged.",
+  "@chatUiCouldNotConfirmCancel": {
+    "description": "Chat journey: the inbox cancel could not be confirmed, so the text was not taken back"
+  },
+  "chatsNewFirstMessageUnconfirmed": "The conversation is open, but the first message was not confirmed. Send it again from here — it may already have arrived.",
+  "@chatsNewFirstMessageUnconfirmed": {
+    "description": "New chat: the session was created but the first prompt did not confirm; the person is taken into that conversation"
+  },
   "telegramBotSettingsTitle": "Telegram bot",
   "telegramBotSettingsKeywords": "Telegram bot remote agent messages progress command chat ID token",
   "@settingsV3VoiceTyping": {

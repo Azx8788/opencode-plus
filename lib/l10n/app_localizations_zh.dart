@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -28502,6 +28503,13 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get channelsSettingsKeywords =>
       '消息渠道 机器人 Telegram QQ 官方 普通账号 OneBot LLBot 远程 Agent 接入';
+
+  @override
+  String get chatUiCouldNotConfirmCancel => '无法确认撤回结果。这条消息可能仍在等待发送，因此没有合并文字。';
+
+  @override
+  String get chatsNewFirstMessageUnconfirmed =>
+      '对话已创建，但首条消息未获确认。请在这里重新发送——它可能已经送达。';
 
   @override
   String get telegramBotSettingsTitle => 'Telegram 机器人';

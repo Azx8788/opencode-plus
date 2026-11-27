@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../domain/command_receipts.dart' show createCommandReceiptID;
 import '../domain/models.dart';
 
 /// One prompt drafted while the server was unreachable, waiting to send.
@@ -13,6 +14,18 @@ import '../domain/models.dart';
 /// moment the connection returned.
 class QueuedPrompt {
   final String id;
+
+  /// The protocol message ID this logical send is admitted under. It is
+  /// minted once, when the prompt is first recorded, and reused by every
+  /// retry of the same send: the server deduplicates admission on it, so a
+  /// lost acknowledgement cannot admit the prompt twice, and the transcript
+  /// can recognise the echoed message without comparing text.
+  ///
+  /// Null only for entries written before this field existed; those keep the
+  /// conservative "needs review" behaviour and never auto-delete on a text
+  /// match.
+  final String? messageID;
+
   final String profileID;
   final String sessionID;
   final String text;
@@ -40,6 +53,7 @@ class QueuedPrompt {
 
   const QueuedPrompt({
     required this.id,
+    this.messageID,
     required this.profileID,
     required this.sessionID,
     required this.text,
@@ -60,6 +74,7 @@ class QueuedPrompt {
   /// compatibility with existing callers.
   QueuedPrompt._snapshot(QueuedPrompt source)
     : id = source.id,
+      messageID = source.messageID,
       profileID = source.profileID,
       sessionID = source.sessionID,
       text = source.text,
@@ -88,10 +103,34 @@ class QueuedPrompt {
   QueuedPrompt withDispatchedAt(int? dispatchedAt) =>
       _copy(error: error, dispatchedAt: dispatchedAt);
 
+  /// The message ID this entry sends under, minting one the first time a
+  /// legacy entry needs it.
+  String get resolvedMessageID => messageID ?? createCommandReceiptID();
+
+  QueuedPrompt withMessageID(String messageID) => QueuedPrompt._snapshot(
+    QueuedPrompt(
+      id: id,
+      messageID: messageID,
+      profileID: profileID,
+      sessionID: sessionID,
+      text: text,
+      attachments: _attachments,
+      mentions: _mentions,
+      modelProviderID: modelProviderID,
+      modelID: modelID,
+      agent: agent,
+      variant: variant,
+      createdAt: createdAt,
+      error: error,
+      dispatchedAt: dispatchedAt,
+    ),
+  );
+
   QueuedPrompt _copy({required String? error, required int? dispatchedAt}) =>
       QueuedPrompt._snapshot(
         QueuedPrompt(
           id: id,
+          messageID: messageID,
           profileID: profileID,
           sessionID: sessionID,
           text: text,
@@ -118,6 +157,7 @@ class QueuedPrompt {
 
   Map<String, dynamic> toJson() => {
     'id': id,
+    'messageID': messageID,
     'profileID': profileID,
     'sessionID': sessionID,
     'text': text,
@@ -156,6 +196,7 @@ class QueuedPrompt {
     return QueuedPrompt._snapshot(
       QueuedPrompt(
         id: id,
+        messageID: value['messageID']?.toString(),
         profileID: profileID,
         sessionID: sessionID,
         text: value['text']?.toString() ?? '',

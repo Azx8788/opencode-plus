@@ -2,6 +2,14 @@ part of '../connection.dart';
 
 // Forms and the session inbox (OpenCode 2).
 
+/// What [ConnectionController.cancelInboxItem] achieved, with the text the
+/// item carried so the caller can return it to the person.
+class InboxCancelResult {
+  const InboxCancelResult({required this.outcome, this.text});
+  final Api2InboxCancel outcome;
+  final String? text;
+}
+
 /// [ConnectionController]'s forms and session inbox.
 mixin _ConnectionControllerFormsInbox on ChangeNotifier {
   ConnectionController get _self;
@@ -19,6 +27,30 @@ mixin _ConnectionControllerFormsInbox on ChangeNotifier {
 
   /// Bumps whenever the inbox slice of any session changes.
   int inboxRevision = 0;
+
+  /// Per-session event counters. A REST reconcile compares the counter it
+  /// started at with the current one instead of relying on a single global
+  /// revision: an event for another conversation used to invalidate this
+  /// session's reconcile, and an event for *this* one could be overtaken by a
+  /// read that started before it.
+  final Map<String, int> _inboxEpochs = {};
+
+  /// Items this client knows are no longer pending (cancelled or delivered).
+  /// A reconcile that started before the event must not put them back: the
+  /// strip would show a send that cannot happen and hide the real message.
+  final Map<String, Set<String>> _inboxTombstones = {};
+
+  /// Bounded: only the most recent removals need to survive one in-flight
+  /// read.
+  static const _maxInboxTombstones = 64;
+
+  void _noteInboxTombstone(String sessionID, String inboxID) {
+    final set = _inboxTombstones[sessionID] ??= <String>{};
+    set.add(inboxID);
+    if (set.length > _maxInboxTombstones) {
+      set.remove(set.first);
+    }
+  }
   final Set<String> _resolvedFormIDs = {};
   int _formRevision = 0;
   int _formRefreshGeneration = 0;
@@ -79,12 +111,16 @@ mixin _ConnectionControllerFormsInbox on ChangeNotifier {
   /// No-op on servers without an inbox.
   Future<void> refreshInbox(String sessionID) => _self._refreshInbox(sessionID);
 
-  /// Cancels a pending send. Returns its text so the composer can restore
-  /// it as a draft (cancel-back-to-composer is the edit affordance for
-  /// immutable server items). A 409 already-delivered rethrows after
-  /// dropping the item locally.
-  Future<String?> cancelInboxItem(String sessionID, String inboxID) =>
-      _self._cancelInboxItem(sessionID, inboxID);
+  /// Cancels a pending send and reports what that actually achieved.
+  ///
+  /// A `204` is not proof: the server answers it for an item it could not
+  /// cancel. Only a follow-up look separates "will not be delivered" from
+  /// "was delivered already", and the caller needs that to decide whether
+  /// the text may be merged into a new prompt.
+  Future<InboxCancelResult> cancelInboxItem(
+    String sessionID,
+    String inboxID,
+  ) => _self._cancelInboxItem(sessionID, inboxID);
 
   /// Flips a pending send between steer and queue delivery. A 409
   /// already-delivered drops the local item and rethrows for the toast.
@@ -200,7 +236,9 @@ extension _ConnectionControllerFormsInboxImpl on ConnectionController {
       ...Map<String, dynamic>.from(rawItem),
     });
     if (item == null) return;
+    _inboxTombstones[sessionID]?.remove(inboxID);
     (_inboxBySession[sessionID] ??= {})[inboxID] = item;
+    _inboxEpochs[sessionID] = (_inboxEpochs[sessionID] ?? 0) + 1;
     inboxRevision += 1;
     _notifyListeners();
   }
@@ -208,8 +246,17 @@ extension _ConnectionControllerFormsInboxImpl on ConnectionController {
   void _handleInboxRemoved(Map<String, dynamic> props) {
     final sessionID = props['sessionID']?.toString() ?? '';
     final inboxID = props['inboxID']?.toString() ?? '';
+    if (sessionID.isEmpty || inboxID.isEmpty) return;
+    // Recorded even when this client never held the item: a reconcile that
+    // already has it in flight would otherwise re-add what the server just
+    // dropped, and a cancelled send would look pending again.
+    _noteInboxTombstone(sessionID, inboxID);
+    _inboxEpochs[sessionID] = (_inboxEpochs[sessionID] ?? 0) + 1;
     final items = _inboxBySession[sessionID];
-    if (items == null || items.remove(inboxID) == null) return;
+    if (items == null || items.remove(inboxID) == null) {
+      _notifyListeners();
+      return;
+    }
     if (items.isEmpty) _inboxBySession.remove(sessionID);
     inboxRevision += 1;
     _notifyListeners();
@@ -219,8 +266,15 @@ extension _ConnectionControllerFormsInboxImpl on ConnectionController {
     final sessionID = props['sessionID']?.toString() ?? '';
     final inboxID = props['inboxID']?.toString() ?? '';
     final delivery = Api2Delivery.parse(props['delivery']);
+    if (sessionID.isEmpty || inboxID.isEmpty || delivery == null) return;
+    // An event for an item this client has not seen still means the set
+    // moved: bump the epoch so an older reconcile cannot overwrite it.
+    _inboxEpochs[sessionID] = (_inboxEpochs[sessionID] ?? 0) + 1;
     final item = _inboxBySession[sessionID]?[inboxID];
-    if (item == null || delivery == null) return;
+    if (item == null) {
+      _notifyListeners();
+      return;
+    }
     _inboxBySession[sessionID]![inboxID] = Api2InboxItem(
       id: item.id,
       sessionID: item.sessionID,
@@ -238,7 +292,10 @@ extension _ConnectionControllerFormsInboxImpl on ConnectionController {
     final currentApi = api;
     final generation = _generation;
     if (currentApi == null || !currentApi.capabilities.inbox) return;
-    final revisionAtStart = inboxRevision;
+    // This session's own counter, not the global revision: another
+    // conversation's event must not throw this read away, and this one's
+    // must not be overtaken by a read that started before it.
+    final epochAtStart = _inboxEpochs[sessionID] ?? 0;
     List<Api2InboxItem> items;
     try {
       items = await currentApi.inboxItems(sessionID);
@@ -248,10 +305,17 @@ extension _ConnectionControllerFormsInboxImpl on ConnectionController {
       return;
     }
     if (!_isCurrent(generation, currentApi) ||
-        revisionAtStart != inboxRevision) {
+        epochAtStart != (_inboxEpochs[sessionID] ?? 0)) {
+      // Events moved the set while this read ran. They are fresher; a
+      // follow-up reconcile keeps the strip from staying behind for good.
+      unawaited(_refreshInboxAfterEvents(sessionID, epochAtStart));
       return;
     }
-    final next = {for (final item in items) item.id: item};
+    final tombstones = _inboxTombstones[sessionID];
+    final next = {
+      for (final item in items)
+        if (tombstones == null || !tombstones.contains(item.id)) item.id: item,
+    };
     if (next.isEmpty) {
       if (_inboxBySession.remove(sessionID) == null) return;
     } else {
@@ -261,20 +325,115 @@ extension _ConnectionControllerFormsInboxImpl on ConnectionController {
     _notifyListeners();
   }
 
+  /// One bounded follow-up after a reconcile lost to events, so a session
+  /// whose events arrived mid-read still ends up reconciled.
+  Future<void> _refreshInboxAfterEvents(String sessionID, int lostEpoch) async {
+    // Two attempts: the first may lose again to a burst of events, but a
+    // strip that never reconciles is worse than one extra read.
+    for (var attempt = 0; attempt < 2; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      if (_disposed) return;
+      final epoch = _inboxEpochs[sessionID] ?? 0;
+      if (epoch == lostEpoch) return;
+      final currentApi = api;
+      final generation = _generation;
+      if (currentApi == null || !currentApi.capabilities.inbox) return;
+      List<Api2InboxItem> items;
+      try {
+        items = await currentApi.inboxItems(sessionID);
+      } catch (_) {
+        return;
+      }
+      if (!_isCurrent(generation, currentApi) ||
+          epoch != (_inboxEpochs[sessionID] ?? 0)) {
+        lostEpoch = epoch;
+        continue;
+      }
+      final tombstones = _inboxTombstones[sessionID];
+      final next = {
+        for (final item in items)
+          if (tombstones == null || !tombstones.contains(item.id))
+            item.id: item,
+      };
+      if (next.isEmpty) {
+        _inboxBySession.remove(sessionID);
+      } else {
+        _inboxBySession[sessionID] = next;
+      }
+      inboxRevision += 1;
+      _notifyListeners();
+      return;
+    }
+  }
+
   /// The body of [cancelInboxItem].
-  Future<String?> _cancelInboxItem(String sessionID, String inboxID) async {
-    final text = _inboxBySession[sessionID]?[inboxID]?.promptText;
+  Future<InboxCancelResult> _cancelInboxItem(
+    String sessionID,
+    String inboxID,
+  ) async {
+    final item = _inboxBySession[sessionID]?[inboxID];
+    final text = item?.promptText;
+    // Without a local copy of the item there is nothing to be sure about:
+    // the id may never have been pending here.
+    if (item == null) {
+      return InboxCancelResult(outcome: Api2InboxCancel.unknown, text: text);
+    }
     final currentApi = await _requireActionTransport();
     try {
       await currentApi.cancelInboxItem(sessionID, inboxID);
     } on ApiException catch (error) {
       if (error.statusCode == 409 || error.statusCode == 404) {
         _handleInboxRemoved({'sessionID': sessionID, 'inboxID': inboxID});
+        return InboxCancelResult(
+          outcome: error.statusCode == 409
+              ? Api2InboxCancel.delivered
+              : Api2InboxCancel.unknown,
+          text: text,
+        );
       }
       rethrow;
     }
-    _handleInboxRemoved({'sessionID': sessionID, 'inboxID': inboxID});
-    return text;
+    final outcome = await _confirmInboxCancel(sessionID, inboxID);
+    if (outcome == Api2InboxCancel.cancelled) {
+      _handleInboxRemoved({'sessionID': sessionID, 'inboxID': inboxID});
+    }
+    return InboxCancelResult(outcome: outcome, text: text);
+  }
+
+  /// What the cancel achieved, read from the server rather than from the
+  /// status code.
+  ///
+  /// An item still in the inbox was not cancelled. An item gone from the
+  /// inbox with a projected user message under the same ID was delivered.
+  /// Only "gone from the inbox and no message" is a cancel.
+  Future<Api2InboxCancel> _confirmInboxCancel(
+    String sessionID,
+    String inboxID,
+  ) async {
+    final currentApi = api;
+    if (currentApi == null) return Api2InboxCancel.unknown;
+    try {
+      final pending = await currentApi.inboxItems(sessionID);
+      if (pending.any((item) => item.id == inboxID)) {
+        return Api2InboxCancel.unknown;
+      }
+      String? cursor;
+      final seen = <String>{};
+      for (var page = 0; page < 20; page++) {
+        final read = await currentApi.messagePage(sessionID, cursor: cursor);
+        if (read.items.any(
+          (message) =>
+              message.info.id == inboxID && message.info.role == 'user',
+        )) {
+          return Api2InboxCancel.delivered;
+        }
+        cursor = read.nextCursor;
+        if (cursor == null || !seen.add(cursor)) break;
+      }
+      return Api2InboxCancel.cancelled;
+    } catch (_) {
+      return Api2InboxCancel.unknown;
+    }
   }
 
   /// The body of [setInboxDelivery].
