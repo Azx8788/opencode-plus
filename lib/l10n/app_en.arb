@@ -39223,6 +39223,14 @@
     "description": "Linux manager: supporting line of Storage."
   },
   "linuxMgrPackages": "Packages",
+  "linuxMgrLlbot": "LLBot one-click deployment",
+  "@linuxMgrLlbot": {
+    "description": "In-app Ubuntu manager: opens the managed LLBot installer and service controls"
+  },
+  "linuxMgrLlbotDetail": "Install, start and manage the local QQ protocol service",
+  "@linuxMgrLlbotDetail": {
+    "description": "In-app Ubuntu manager: LLBot deployment entry supporting text"
+  },
   "@linuxMgrPackages": {
     "description": "Linux manager: row for installed packages."
   },

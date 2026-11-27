@@ -79,7 +79,7 @@ server profile removes its Telegram token and local bot settings.
 
 The two QQ channels are off until you configure them, and each keeps only its
 own credentials. The official bot stores an AppID and client secret; the
-personal account stores the address and access token of an LLBot you run.
+personal account stores the address and access token of its OneBot service.
 Secrets go to Android secure storage; the allowlists, the on/off switch and the
 record of what was sent stay in app preferences.
 
@@ -90,17 +90,22 @@ carries and stores. The channel does not approve OpenCode permissions for you:
 a permission the platform or the console never granted is reported in the chat
 rather than retried.
 
-With the **personal QQ account**, the app connects outward to an LLBot that you
-install and run yourself. LLBot is not part of this app and is never bundled
-with it, so it, and Tencent as the account holder's platform, receive the
-prompts and replies the channel carries; their retention applies and neither is
-controlled by this app. The address and token you enter are the only
-credentials the app holds for it.
+With the **personal QQ account**, you can deploy LLBot into the built-in Ubuntu
+from the app or connect to an external OneBot service. One-click deployment
+downloads the pinned LLBot ARM64 runtime from its official GitHub release.
+It generates local WebUI and OneBot credentials and keeps them in private
+Ubuntu storage. LLBot authorization and QQ login records stay in that local
+deployment's data directory. Its console and OneBot listener bind to loopback.
+LLBot and Tencent receive the prompts and replies carried by this channel;
+their retention policies apply. The runtime is downloaded on demand, not
+included in the APK.
 
 Disabling a channel stops its connection. Removing its configuration deletes
 the stored credentials together with the de-duplication and delivery records
 for that account. None of this deletes anything already sent to Telegram,
 Tencent or your LLBot.
+Stopping the managed LLBot process preserves its local login state. Removing
+the channel configuration does not uninstall LLBot or erase that login state.
 
 On-device Termux setup writes a server password into the private Termux/Ubuntu
 environment so that the local server can restart. Protect access to both apps

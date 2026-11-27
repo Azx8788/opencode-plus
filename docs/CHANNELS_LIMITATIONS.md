@@ -26,7 +26,7 @@ credentials and approvals this repository does not have.
 | OneBot 11: private/group events, at/reply segments | Yes | Yes | **Not verified** |
 | OneBot 11: send with echo correlation and retcode checks | Yes | Yes | **Not verified** |
 | OneBot 11: heartbeat watchdog and reconnect | Yes | Yes | **Not verified** |
-| Android/PRoot hosting of a protocol side | No | n/a | **Blocked** — experimental, unsupported |
+| Built-in Ubuntu LLBot deployment: download, verify, install, configure, start/stop and embedded WebUI | Yes, official v8.3.2 Linux ARM64 runtime downloaded on demand | UI regressions use an injected controller | **Not verified** against a real QQ account; upstream authorisation and QQ sign-in still required |
 
 ## Platform limits the app cannot lift
 
@@ -46,11 +46,19 @@ credentials and approvals this repository does not have.
 
 **Personal QQ account**
 
-* The route depends on LLBot, which is GPL-2.0, runs outside this app, and is not
-  authorised by Tencent. Account risk is yours.
+* The route depends on a third-party implementation. LLBot is GPL-2.0 and runs
+  as a separate process, either in this app's built-in Ubuntu or on a manually
+  managed host. This route is not authorised by Tencent. Account risk is yours.
 * PMHQ mode is not offered: its licence and distribution boundary are unverified.
-* Android/PRoot hosting is not supported. A Linux ARM64 build existing upstream
-  does not mean it runs inside the app.
+* Managed Android/PRoot deployment is available for the official LLBot v8.3.2
+  Linux ARM64 ZIP, with bundled Node. It remains experimental: installation and
+  WebUI readiness do not verify QQ login, OneBot readiness or end-to-end replies.
+  The person must obtain an LLBot Auth Token at <https://auth.luckylillia.com>,
+  enter it in the local WebUI and scan QQ's QR code. The OneBot listener starts
+  after login at `ws://127.0.0.1:3001/`.
+* Generated WebUI and OneBot credentials are separate from upstream authorisation.
+  Deploying does not enable the relay. Importing a local connection edits only
+  the QQ form draft; its saved external configuration changes only on Save.
 * `ws://` to a remote host exposes the token and messages on the network; the UI
   warns and `wss://` is the supported choice off-LAN.
 
@@ -95,8 +103,8 @@ credentials and approvals this repository does not have.
 | --- | --- | --- | --- |
 | Telegram Bot API | Telegram platform terms | No | Telegram |
 | QQ Open Platform API | Tencent platform terms | No | Tencent |
-| LLBot | GPL-2.0 | **No** | You |
-| LLBot OneBot 11 plugin | GPL-2.0 | **No** | You |
+| LLBot | GPL-2.0 | **No** — managed runtime downloaded on demand | App-managed Ubuntu process or your own host |
+| LLBot OneBot 11 plugin | GPL-2.0 | **No** | Part of the chosen LLBot deployment |
 | OneBot 11 | Protocol specification | No code copied | n/a |
 
 No new Dart package was added for the channel work: the WebSocket, HTTP and JSON

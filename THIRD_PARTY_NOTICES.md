@@ -474,18 +474,23 @@ The complete corresponding source for the pinned versions is available from
 the upstream project URLs; if a source archive is needed, open an issue in
 this repository and it will be provided.
 
-## Messaging channels: external services, nothing bundled
+## Messaging channels and optional local LLBot runtime
 
-The Telegram, official QQ and OneBot 11 channels talk to services that are not
-part of this package. No code from any of them is copied into this repository,
-and none of them is packaged into the APK.
+The Telegram and official QQ channels use external services. The OneBot 11
+client can connect to an external service or to the optional local LLBot
+deployment. The APK contains our deployment scripts, not LLBot, Node or
+sign-proxy runtime binaries. Local deployment downloads an official LLBot
+release directly from upstream when the user chooses it.
 
 | Service | Role | Licence / terms | Distribution |
 | --- | --- | --- | --- |
 | Telegram Bot API | Telegram channel transport | Telegram platform terms | Remote service |
 | QQ Open Platform (v2 API and gateway) | Official QQ bot transport | Tencent platform terms | Remote service |
-| LLBot | Logs a personal QQ account in and exposes OneBot 11 | **GPL-2.0** (upstream project) | **Not distributed.** The user installs and runs it separately |
-| LLBot OneBot 11 plugin | Protocol adapter inside LLBot | **GPL-2.0** | **Not distributed.** Installed by the user |
+| LLBot | Logs a personal QQ account in and exposes OneBot 11 | **GPL-2.0** (upstream project) | Downloaded from the pinned official release when the user chooses local deployment; not in the APK |
+| LLBot OneBot 11 adapter | Protocol adapter inside LLBot | **GPL-2.0** | Part of that on-demand runtime |
+| Node.js v24.13.0 | Executes the downloaded LLBot JavaScript | Node's MIT notices plus its dependencies' terms; complete pinned notice source below | Included in the downloaded runtime, not the APK |
+| sign-proxy ARM64 native modules | LLBot authorization/signature component | No separate licence is declared in the inspected loader metadata; independent redistribution rights are not established here | Included in the official download; glibc and musl variants are extracted |
+| Runtime `node_modules` | LLBot's external JavaScript/WASM dependencies | Package metadata declares MIT, except `ieee754` (BSD-3-Clause); this is not a complete audit of bundled code | Existing notice files under `bin/llbot/` are preserved during extraction |
 | NapCat | Runs beside the QQ NT client and exposes OneBot 11 | **Limited Redistribution License** (custom, upstream) | **Not distributed.** The user installs and runs it separately |
 | SnowLuma | Bridges a desktop QQ client to OneBot 11 | **Source-available non-commercial licence + EULA** (upstream) | **Not distributed.** The user installs and runs it separately |
 | AstrBot | Agent chatbot platform that consumes OneBot 11 | **AGPL-3.0** (upstream) | **Not distributed.** A separate program, not a channel of this app |
@@ -494,9 +499,37 @@ and none of them is packaged into the APK.
 The OneBot 11 client in `lib/channels/providers/onebot11_provider.dart` was
 written against the published protocol: forward and reverse WebSocket, JSON
 actions, `echo` correlation, message segment arrays. It contains no source from
-LLBot, NapCat or SnowLuma, links none of their libraries and starts no
-third-party process. What was learned from them is recorded in
+LLBot, NapCat or SnowLuma and links none of their libraries. The separate local
+deployment controller installs and supervises an LLBot process inside Ubuntu.
+What was learned from them is recorded in
 [`docs/CHANNELS_PRIOR_ART.md`](docs/CHANNELS_PRIOR_ART.md).
+
+The local deployment targets LLBot v8.3.2, upstream source revision
+`dc2b2b90092ef0f571b5546878288b83fff1e436`, from
+https://github.com/LuckyLilliaDev/LuckyLilliaBot. The installer and any local
+runtime adjustments are published in this repository's `tool/` directory.
+The inspected release archive has dependency notice files, but no standalone
+LLBot GPL text, Node licence file or separate sign-proxy licence. We do not
+claim that extraction supplies notices which upstream omitted. The full
+LLBot GPL text matches [`LICENSES/GPL-2.0.txt`](LICENSES/GPL-2.0.txt) byte for
+byte. Node v24.13.0's complete primary and dependency notices are copied unchanged
+to [`tool/llbot_deploy_NODE_LICENSE.txt`](tool/llbot_deploy_NODE_LICENSE.txt) from
+its [pinned official LICENSE](https://raw.githubusercontent.com/nodejs/node/def0bdf8abee441cfcbf793a8dc24a6f3b899573/LICENSE).
+Verified URLs, hashes, native metadata and package versions are recorded in
+[`docs/LLBOT_RUNTIME_SOURCES.txt`](docs/LLBOT_RUNTIME_SOURCES.txt); deployable
+attribution text is in [`tool/llbot_deploy_NOTICES.txt`](tool/llbot_deploy_NOTICES.txt).
+`tool/llbot_deploy.py:patch_bundle` contains exact-match upstream excerpts
+from `src/main/config/index.ts`, `src/main/log.ts` and the OneBot WS/HTTP
+adapters. These upstream-derived excerpts retain GPL-2.0 terms. The
+OpenCode Plus modifications dated 2026-11-27 enforce the managed configuration
+and suppress sensitive log output, including the WebUI cache/stream;
+modifying a downloaded copy does not make the runtime our MIT code.
+
+The environment-management workflow was reviewed against
+[AstrBot Bubble Android App](https://github.com/MuFengDR/AstrBot-Bubble-Android-App)
+at `0d1abe6ed5b6b384ab3dd3c0b513079c5ad18b36` (BSD-3-Clause). Its installation
+and process-management approach informed this independent implementation;
+its code and separate downloaded installer are not bundled.
 
 PMHQ is deliberately absent: its licence and distribution boundary have not
 been verified, so it is neither offered nor documented as an option.

@@ -107,6 +107,9 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
+      - name: Local LLBot deployment tests
+        run: python3 -m unittest tool.tests.test_llbot_local tool.tests.test_llbot_deploy -v
+
       - name: Smoke and sanity tests
         # The whole suite: it takes well under a minute and the hand-picked
         # list this replaced silently skipped every test added after it was

@@ -90,3 +90,26 @@ mean handing the agent to another program.
 Nothing from these projects is copied into this repository. The OneBot 11 client
 here is written against the published protocol: forward and reverse WebSocket,
 JSON actions, `echo` correlation, message segment arrays.
+
+## Android environment deployment reference
+
+The user's one-click deployment example is
+[MuFengDR/AstrBot-Bubble-Android-App](https://github.com/MuFengDR/AstrBot-Bubble-Android-App),
+reviewed at `0d1abe6ed5b6b384ab3dd3c0b513079c5ad18b36`.
+Its `terminal_controller.dart` performs installation and process management;
+its bootstrap stages and verifies downloaded installers. Those are the useful
+patterns here: a deploy action must install and start the service, report real
+progress/failure and keep account data across restarts. A WebView link alone
+does not implement that flow.
+
+The reference's separately downloaded installer v0.1.7
+(`MuFengDR/AstrBot-Android-Scripts`, revision
+`6b4e555f5ef185e30b35c805e37a19907f58a1a2`) disables online NapCat installation.
+The app therefore does not copy that recipe. Its independent local installer
+uses LLBot's official v8.3.2 Linux ARM64 release, pinned by SHA-256, inside the
+existing built-in Ubuntu. LLBot authorization and QQ QR sign-in remain in the
+local console. The deployment controls are reachable from both the Ubuntu
+manager and personal-QQ settings.
+
+The reference app is BSD-3-Clause; its separate installer repository is not
+assumed to share that licence. No source from either is included here.

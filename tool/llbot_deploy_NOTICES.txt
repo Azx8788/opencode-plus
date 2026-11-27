@@ -1,0 +1,126 @@
+OpenCode Plus optional LLBot runtime: attribution and source references
+Verified 2026-11-27
+
+The app downloads the official LLBot artifact on the user's deployment action.
+LLBot, Node and sign-proxy runtime binaries are not included in the APK.
+Only bin/llbot/ is installed; the archive's CLI and PMHQ are not installed.
+Existing dependency notice files in that subtree are retained. The inspected
+archive has no standalone LLBot GPL text, Node LICENSE or separate sign-proxy
+license. This notice identifies that absence rather than claiming otherwise.
+
+LLBot / LuckyLilliaBot v8.3.2
+Upstream contributors: LuckyLilliaBot contributors; the distribution's
+package.json credits linyuchen as author.
+Source revision: dc2b2b90092ef0f571b5546878288b83fff1e436
+https://github.com/LuckyLilliaDev/LuckyLilliaBot/tree/dc2b2b90092ef0f571b5546878288b83fff1e436
+Upstream package license declaration: GPL-2.0.
+Complete license text:
+https://raw.githubusercontent.com/LuckyLilliaDev/LuckyLilliaBot/dc2b2b90092ef0f571b5546878288b83fff1e436/LICENSE
+License SHA-256: 8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643
+The repository's LICENSES/GPL-2.0.txt is an exact full copy (18092 bytes).
+Install that full text beside this notice as COPYING.LLBot.
+The upstream license and warranty disclaimer continue to apply to LLBot;
+local adjustments do not relicense upstream code under the app's MIT license.
+The exact-match excerpts in tool/llbot_deploy.py:patch_bundle derive from
+src/main/config/index.ts, src/main/log.ts, src/onebot11/connect/ws.ts and
+src/onebot11/connect/http.ts at the LLBot revision above and retain GPL-2.0.
+OpenCode Plus modifications, 2026-11-27: enforce managed configuration on reads
+and updates; suppress file/cache/WebUI-stream logs; remove received credential
+and raw request-body logging. This is a locally modified LLBot runtime, not an
+unmodified upstream build. Its generated llbot.js must also identify changes
+and their date. The independently written deployment orchestration and preload
+are separate from the upstream-derived excerpts and downloaded runtime.
+
+Official artifact:
+https://github.com/LuckyLilliaDev/LuckyLilliaBot/releases/download/v8.3.2/LuckyLillia-CLI-linux-arm64.zip
+Size: 88741224 bytes
+SHA-256: dd7e6bb405ed44a7120e767ac3b3ab169fe343386008c5017729804baa4a4c0f
+
+Node.js v24.13.0
+Official source revision: def0bdf8abee441cfcbf793a8dc24a6f3b899573
+Complete Node primary and dependency license notices:
+https://raw.githubusercontent.com/nodejs/node/def0bdf8abee441cfcbf793a8dc24a6f3b899573/LICENSE
+Complete file: 143310 bytes
+SHA-256: 537308465103a306d0e3eecf42632b4ff1b48aaaec044e9fc10a78c81fd00b34
+The complete unchanged file is bundled as tool/llbot_deploy_NODE_LICENSE.txt
+and copied to the managed deployment's notices/Node.LICENSE.
+The primary notices below are verbatim excerpts, not the complete dependency
+notice file. The stated version comes from the earlier bundled-runtime check;
+it is not proof that this binary is identical to an official Node.js build.
+
+Node.js is licensed for use as follows:
+
+"""
+Copyright Node.js contributors. All rights reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to
+deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.
+"""
+
+This license applies to parts of Node.js originating from the
+https://github.com/joyent/node repository:
+
+"""
+Copyright Joyent, Inc. and other Node contributors. All rights reserved.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to
+deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.
+"""
+
+The Node.js license applies to all parts of Node.js that are not externally
+maintained libraries.
+
+For the externally maintained libraries' full notices, use the complete
+version-pinned LICENSE source above, not just these primary excerpts.
+
+sign-proxy ARM64 native modules
+Loader package: @lucky-lillia/sign-proxy-loader
+Version: 0.1.0-20261007184501; private: true; no license field.
+https://raw.githubusercontent.com/LuckyLilliaDev/LuckyLilliaBot/dc2b2b90092ef0f571b5546878288b83fff1e436/src/main/qqProtocol/direct-lib/sign-proxy/sign-proxy.package.json
+Metadata SHA-256: a873a990ceaa062b436f8f747e8f46c0efa9a0b9044b25e2beced937a2aaf2a3
+Both sign-proxy.linux-arm64-glibc.node and sign-proxy.linux-arm64-musl.node
+are supplied inside the official LLBot download. A separate native-component
+license and complete implementation source were not established by this
+inspection. "private: true" is package metadata, not a license grant.
+No independent redistribution permission is asserted here.
+
+External modules extracted from bin/llbot/node_modules
+The following licenses are declarations in the downloaded package metadata:
+MIT: @borewit/text-codec 0.2.2; @tokenizer/inflate 0.4.1;
+@tokenizer/token 0.3.0; debug 4.4.3; file-type 22.0.2; ms 2.1.3;
+silk-wasm 3.7.1; strtok3 10.3.5; token-types 6.1.2;
+uint8array-extras 1.5.0; ws 8.21.3.
+BSD-3-Clause: ieee754 1.2.1.
+Read the existing license files in each module directory. @tokenizer/token
+does not include a standalone LICENSE in this archive. This inventory is not
+an exhaustive license audit of code bundled into llbot.js, WebUI or native/WASM
+components. It does not replace any component's own terms.

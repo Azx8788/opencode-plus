@@ -4,6 +4,12 @@ This project is in public alpha. Only the newest preview is supported.
 
 ## Unreleased integration
 
+  * The subagent draft catalogue accepts OpenCode V2's bare project arrays as
+    well as data envelopes. A read/parse failure no longer tells the person
+    that an otherwise working server must be connected first.
+  * LLBot can be installed and started from the built-in Ubuntu manager or QQ
+    settings, with a local console and connection settings handed back to the
+    QQ form. Account authorization and login still happen in LLBot's console.
   * Telegram supports one-time links, username setup and existing numeric IDs.
     Username setup saves the verified numeric ID before starting the relay.
   * Channel replies stay with the session that ran the turn. The relay can

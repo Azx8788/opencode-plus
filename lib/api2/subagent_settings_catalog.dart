@@ -28,10 +28,20 @@ class Api2SubagentSettingsCatalog {
       );
     }
     List<Map<String, dynamic>> rows(Object? value) {
-      if (value is! Map || value['data'] is! List || value['next'] != null) {
+      // V2 models use a data envelope, while /project also returns a bare
+      // array. Accept both complete forms, not partial/paginated catalogues.
+      final Object? data;
+      if (value is List) {
+        data = value;
+      } else if (value is Map && value['next'] == null) {
+        data = value['data'];
+      } else {
         throw const FormatException('Incomplete subagent catalogue');
       }
-      return (value['data'] as List).map((row) {
+      if (data is! List) {
+        throw const FormatException('Incomplete subagent catalogue');
+      }
+      return data.map((row) {
         if (row is! Map) throw const FormatException('Invalid catalogue entry');
         return Map<String, dynamic>.from(row);
       }).toList();

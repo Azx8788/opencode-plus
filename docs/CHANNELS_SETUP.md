@@ -14,7 +14,7 @@ This page is the user-facing walkthrough. For the design behind it, read
 消息渠道
   ├── Telegram                    (official Bot API, long polling)
   ├── QQ 官方机器人                (Tencent Open Platform)
-  └── QQ 普通账号（OneBot 11）      (LLBot you run yourself)
+  └── QQ 普通账号（OneBot 11）      (one-tap local LLBot or a manual service)
 ```
 
 ## Telegram
@@ -55,16 +55,32 @@ permission shows as unavailable rather than failing quietly.
 
 Settings → 消息渠道 → **QQ 普通账号（OneBot 11）**.
 
-1. Run LLBot on a Linux x64 machine and log the QQ account in.
-2. Enable its OneBot 11 plugin's **forward WebSocket** server and set an access
-   token.
-3. Enter the `ws://host:port` address, the token, and the QQ number it logs in.
-4. Fill the allowlists (QQ numbers and group numbers). Empty means nobody.
-5. Test connection, then enable and save.
+1. On Android ARM64 with built-in Ubuntu installed, choose **本机 LLBot 一键部署**
+   and press **一键部署并启动**. The app downloads the official LLBot v8.3.2
+   ARM64 runtime (about 89 MB, Node included), verifies it, installs it (about
+   172 MB), prepares random local credentials and starts the console.
+2. Copy the generated WebUI password on that page and open the embedded WebUI.
+   Obtain the separate upstream **LLBot Auth Token** from
+   <https://auth.luckylillia.com>, enter it in the WebUI, then scan the QQ QR code.
+3. Choose **使用本机连接** to return `ws://127.0.0.1:3001/` and the generated
+   OneBot access token to the form. The listener starts after QQ login; a ready
+   WebUI alone does not mean QQ is online. Confirm the QQ account number.
+4. Review the allowed QQ and group numbers. Import preserves existing allowlists;
+   empty means nobody. Import only edits the draft and leaves its relay disabled.
+5. Test connection, then explicitly enable and save. Until Save, the stored
+   endpoint and credentials remain unchanged.
 
-The app connects out to LLBot; nothing listens on the phone. Prefer `wss://` or a
-private network — a plain `ws://` address to a remote host shows a warning
-because the token would travel unencrypted.
+The deployment page supports progress, failure/retry, refresh, stop and start.
+Leaving it does not cancel the shared deployment operation while the app's
+environment stays running. The same management page is also available under
+This phone → Linux environment manager. Open it from the QQ form when you want
+to import its connection.
+
+Manual/remote LLBot, NapCat and SnowLuma are still supported: run the service,
+log the QQ account in, configure OneBot 11 and its access token, then enter the
+forward address or select the reverse listener. Prefer `wss://` or a private
+network for remote endpoints. Managed local WebUI and OneBot listen only on
+loopback; Android may stop their processes.
 
 ## Talking to the agent
 

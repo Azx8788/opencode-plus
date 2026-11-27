@@ -19,3 +19,6 @@ docs/design/ui-ledger/navigation.md merge=ours
 # GitHub's language bar: count the app, not the QA scripts, demo video or docs.
 tool/** linguist-detectable=false
 docs/** linguist-documentation
+
+# Keep the hash-verified upstream Node license byte-for-byte, including indentation.
+tool/llbot_deploy_NODE_LICENSE.txt whitespace=-space-before-tab

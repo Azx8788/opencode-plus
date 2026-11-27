@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'manager_agent_screen.dart';
 
 import '../../../builtin/builtin_server.dart' show looksLikeInAppServer;
+import '../../../builtin/llbot_deployment.dart';
 import '../../../channels/channel_capabilities.dart';
 import '../../../channels/channel_config.dart';
 import '../../../channels/channel_hub.dart';
@@ -135,8 +136,8 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
             title: _text('QQ personal account', 'QQ 普通账号'),
             supporting: TextSpan(
               text: _text(
-                'LLBot + OneBot 11, self-hosted',
-                'LLBot + OneBot 11，自行部署',
+                'One-tap local LLBot, or an existing OneBot 11 service',
+                '本机 LLBot 一键部署，或连接已有 OneBot 11 服务',
               ),
             ),
             leading: KitRow.icon(context, AppIconography.terminal),
@@ -170,8 +171,8 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
           SizedBox(height: tokens.space4),
           KitGroupNote(
             message: _text(
-              'Telegram and the official QQ bot are platform-authorised. A QQ personal account goes through a third-party implementation you run yourself: OpenCode Plus does not bundle it, and the QQ platform does not authorise it.',
-              'Telegram 与 QQ 官方机器人是平台授权渠道。QQ 普通账号依赖你自行部署的第三方实现：OpenCode Plus 不会打包它，腾讯平台也未授权该接入方式。',
+              'Telegram and the official QQ bot are platform-authorised. A QQ personal account uses a third-party implementation: local LLBot is downloaded on demand into built-in Ubuntu; remote services can also be configured. The QQ platform does not authorise this route.',
+              'Telegram 与 QQ 官方机器人是平台授权渠道。QQ 普通账号使用第三方实现：本机 LLBot 按需下载到内置 Ubuntu，也可配置远程服务。腾讯平台未授权该接入方式。',
             ),
           ),
         ],
@@ -628,15 +629,22 @@ class _OfficialQqScreenState extends State<OfficialQqScreen> {
   };
 }
 
-/// The personal-QQ channel: an LLBot the person runs, spoken to over OneBot 11.
+/// The personal-QQ channel: managed local LLBot or an existing OneBot service.
 class OneBot11Screen extends StatefulWidget {
-  const OneBot11Screen({super.key, required this.controller});
+  const OneBot11Screen({
+    super.key,
+    required this.controller,
+    this.llbotDeployment,
+  });
 
   final ConnectionController controller;
+  final LlbotDeployment? llbotDeployment;
 
   @override
   State<OneBot11Screen> createState() => _OneBot11ScreenState();
 }
+
+typedef _OneBotCredentialTarget = (OneBotBackend, OneBotTransport, String, int);
 
 class _OneBot11ScreenState extends State<OneBot11Screen> {
   late final ChannelHub _hub = widget.controller.channels;
@@ -657,6 +665,14 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
   bool _replacingToken = false;
   bool _hasToken = false;
   bool _busy = false;
+  bool _loaded = false;
+  String? _localToken;
+  _OneBotCredentialTarget? _localTokenTarget;
+  _OneBotCredentialTarget? _typedTokenTarget;
+  _OneBotCredentialTarget? _savedTokenTarget;
+  bool _savedTokenLoaded = false;
+  bool _mustReplaceToken = false;
+  int _tokenRevision = 0;
   String? _notice;
   String? _error;
   String? _loadedFor;
@@ -681,6 +697,9 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
     final config = _hub.oneBotConfig;
     if (_loadedFor == config.webSocketUrl && _url.text.isNotEmpty) return;
     _loadedFor = config.webSocketUrl;
+    _backend = config.backend;
+    _transport = config.transport;
+    _port.text = '${config.listenPort}';
     _url.text = config.webSocketUrl;
     _selfId.text = config.expectedSelfId;
     _users.text = config.allowedUsers.join(', ');
@@ -689,11 +708,17 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
     _allowDirect = config.allowDirect;
     _allowGroup = config.allowGroup;
     _requireMention = config.requireMentionInGroups;
+    _savedTokenTarget = _credentialTarget;
+    final tokenRevision = ++_tokenRevision;
+    _loaded = true;
     setState(() {});
     unawaited(
       _hub.config.readOneBot11Token().then((value) {
-        if (!mounted) return;
-        setState(() => _hasToken = value != null && value.isNotEmpty);
+        if (!mounted || tokenRevision != _tokenRevision) return;
+        setState(() {
+          _hasToken = value != null && value.isNotEmpty;
+          _savedTokenLoaded = true;
+        });
       }),
     );
   }
@@ -725,10 +750,111 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
     requireMentionInGroups: _requireMention,
   );
 
+  _OneBotCredentialTarget get _credentialTarget => (
+    _backend,
+    _transport,
+    _url.text.trim(),
+    int.tryParse(_port.text.trim()) ?? 0,
+  );
+
+  String get _replacementTokenHint => _text(
+    'Enter a token for this connection, or import the local connection again.',
+    '请填写当前连接的 Token，或重新导入本机连接。',
+  );
+
+  bool get _needsReplacementToken =>
+      _mustReplaceToken ||
+      (_credentialTarget != _savedTokenTarget &&
+          (!_savedTokenLoaded || _hasToken));
+
+  // Endpoint edits discard credentials entered for another target. The same
+  // checks also run at Test/Save, independent of field callbacks.
+  void _invalidateChangedCredentials() {
+    final target = _credentialTarget;
+    if ((_localToken != null && _localTokenTarget != target) ||
+        (_token.text.isNotEmpty && _typedTokenTarget != target)) {
+      _tokenRevision++;
+      _localToken = null;
+      _localTokenTarget = null;
+      _typedTokenTarget = null;
+      _token.clear();
+      _mustReplaceToken = true;
+      _replacingToken = true;
+    }
+    if (_needsReplacementToken) _notice = _replacementTokenHint;
+  }
+
+  void _replaceToken() {
+    _tokenRevision++;
+    // An empty replacement must never fall back to an unrelated saved token.
+    _mustReplaceToken = true;
+    _localToken = null;
+    _localTokenTarget = null;
+    _typedTokenTarget = null;
+    _token.clear();
+    _replacingToken = true;
+  }
+
+  String? _candidateAccessToken() {
+    final target = _credentialTarget;
+    if (_localToken != null) {
+      if (_localTokenTarget != target) {
+        throw FormatException(_replacementTokenHint);
+      }
+      return _localToken;
+    }
+    if (_replacingToken && _token.text.trim().isNotEmpty) {
+      if (_typedTokenTarget != target) {
+        throw FormatException(_replacementTokenHint);
+      }
+      return _token.text;
+    }
+    if (_needsReplacementToken) {
+      throw FormatException(_replacementTokenHint);
+    }
+    return null;
+  }
+
+  Future<void> _openLocalLlbot() async {
+    if (_busy || !_loaded) return;
+    final connection = await Navigator.of(context).push<LlbotLocalConnection>(
+      KitPageRoute<LlbotLocalConnection>(
+        builder: (_) => LocalLlbotScreen(
+          deployment: widget.llbotDeployment,
+          returnConnection: true,
+        ),
+      ),
+    );
+    if (!mounted || connection == null) return;
+    KitRedact.registerKnownSecret(connection.accessToken);
+    KitRedact.registerKnownSecret(connection.webUiPassword);
+    setState(() {
+      _tokenRevision++;
+      _backend = OneBotBackend.llbot;
+      _transport = OneBotTransport.forward;
+      _url.text = connection.webSocketUrl;
+      _selfId.text = connection.accountId ?? '';
+      // Keep generated credentials in the draft, never in the secret input or
+      // secure storage until the person presses the normal Save button.
+      _localToken = connection.accessToken;
+      _localTokenTarget = _credentialTarget;
+      _typedTokenTarget = null;
+      _mustReplaceToken = false;
+      _token.clear();
+      _replacingToken = false;
+      _enabled = false;
+      _error = null;
+      _notice = _text(
+        'Local connection filled in, not saved. Review QQ sign-in and the allowlists, then enable and save when ready.',
+        '本机连接已填入，尚未保存。确认 QQ 登录和允许列表后，按需启用并保存。',
+      );
+    });
+  }
+
   String _backendHint(OneBotBackend backend) => switch (backend) {
     OneBotBackend.llbot => _text(
-      'LLBot on a Linux machine. Its OneBot 11 plugin exposes a forward WebSocket, usually on port 3001.',
-      'LLBot 运行在 Linux 机器上，其 OneBot 11 插件提供正向 WebSocket，通常监听 3001 端口。',
+      'Deploy LLBot in built-in Ubuntu above, then use its local connection. For a manually managed Linux host, enter its OneBot 11 address (usually port 3001).',
+      '可在上方一键部署到内置 Ubuntu，再使用本机连接；也可手动填写其他 Linux 主机的 OneBot 11 地址（通常为 3001 端口）。',
     ),
     OneBotBackend.napcat => _text(
       'NapCat logs in the QQ NT client. Its WebUI is on port 6099; add a WebSocket client there that points at this phone.',
@@ -844,14 +970,20 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
       _notice = null;
     });
     try {
-      await _hub.saveOneBot11(
-        _candidate(),
-        accessToken: _replacingToken ? _token.text : null,
-      );
-      _token.clear();
-      _replacingToken = false;
+      final accessToken = _candidateAccessToken();
+      await _hub.saveOneBot11(_candidate(), accessToken: accessToken);
       if (mounted) {
         setState(() {
+          _tokenRevision++;
+          if (accessToken != null) _hasToken = true;
+          _savedTokenTarget = _credentialTarget;
+          _savedTokenLoaded = true;
+          _localToken = null;
+          _localTokenTarget = null;
+          _typedTokenTarget = null;
+          _mustReplaceToken = false;
+          _token.clear();
+          _replacingToken = false;
           _notice = _text('OneBot 11 settings saved.', 'OneBot 11 设置已保存。');
         });
       }
@@ -881,7 +1013,7 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
     try {
       final notice = await _hub.testOneBot11(
         candidate: _candidate(),
-        accessToken: _replacingToken ? _token.text : null,
+        accessToken: _candidateAccessToken(),
       );
       if (mounted) setState(() => _notice = notice);
     } on FormatException catch (error) {
@@ -909,6 +1041,7 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
     });
     try {
       await _hub.clearOneBot11();
+      if (!mounted) return;
       _url.clear();
       _token.clear();
       _selfId.clear();
@@ -916,7 +1049,14 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
       _groups.clear();
       _enabled = false;
       _hasToken = false;
+      _tokenRevision++;
+      _savedTokenLoaded = true;
+      _savedTokenTarget = _credentialTarget;
       _replacingToken = false;
+      _localToken = null;
+      _localTokenTarget = null;
+      _typedTokenTarget = null;
+      _mustReplaceToken = false;
       _loadedFor = null;
       if (mounted) {
         setState(() {
@@ -951,11 +1091,19 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
         children: [
           KitText(
             _text(
-              'Connect to a OneBot 11 service you run yourself. The app does not install or start the service.',
-              '连接你自行运行的 OneBot 11 服务。App 不会安装或启动协议端。',
+              'Start with one-tap LLBot deployment in this phone’s built-in Ubuntu, then sign in to QQ in the embedded WebUI. You can also connect an existing LLBot, NapCat or SnowLuma service below.',
+              '推荐先在本机内置 Ubuntu 一键部署 LLBot，再到内嵌 WebUI 登录 QQ。也可在下方连接已有的 LLBot、NapCat 或 SnowLuma 服务。',
             ),
             role: KitTextRole.body,
           ),
+          if (platformCapabilities.isAndroid) ...[
+            SizedBox(height: tokens.space3),
+            KitButton.secondary(
+              key: const ValueKey('onebot-local-llbot'),
+              label: _text('One-tap local LLBot deployment', '本机 LLBot 一键部署'),
+              onPressed: _busy || !_loaded ? null : _openLocalLlbot,
+            ),
+          ],
           SizedBox(height: tokens.space3),
           KitText(
             '${_text('Status', '状态')}：${_stateText(snapshot.state, snapshot.enabled)}',
@@ -974,16 +1122,6 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
               tone: KitTextTone.attention,
             ),
           ],
-          if (platformCapabilities.isAndroid) ...[
-            SizedBox(height: tokens.space3),
-            KitButton.secondary(
-              key: const ValueKey('onebot-local-llbot'),
-              label: _text('Local LLBot console', '本机 LLBot 管理页'),
-              onPressed: () => Navigator.of(context).push<void>(
-                KitPageRoute<void>(builder: (_) => const LocalLlbotScreen()),
-              ),
-            ),
-          ],
           SizedBox(height: tokens.space5),
           KitSegmented<OneBotBackend>(
             key: const ValueKey('onebot-backend'),
@@ -995,7 +1133,10 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
             selected: _backend,
             onChanged: _busy
                 ? null
-                : (value) => setState(() => _backend = value),
+                : (value) => setState(() {
+                    _backend = value;
+                    _invalidateChangedCredentials();
+                  }),
             disabledReason: _busy ? _text('Saving', '正在保存') : null,
             semanticsLabel: _text('Protocol implementation', '协议端'),
           ),
@@ -1017,7 +1158,10 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
             selected: _transport,
             onChanged: _busy
                 ? null
-                : (value) => setState(() => _transport = value),
+                : (value) => setState(() {
+                    _transport = value;
+                    _invalidateChangedCredentials();
+                  }),
             disabledReason: _busy ? _text('Saving', '正在保存') : null,
             semanticsLabel: _text('Connection direction', '连接方向'),
           ),
@@ -1027,12 +1171,17 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
               key: const ValueKey('onebot-url'),
               label: _text('WebSocket address', 'WebSocket 地址'),
               controller: _url,
+              onChanged: (_) => setState(_invalidateChangedCredentials),
               enabled: !_busy,
               disabledReason: _busy ? _text('Saving', '正在保存') : null,
-              hint: 'ws://192.168.1.10:3001',
+              hint:
+                  _backend == OneBotBackend.llbot &&
+                      platformCapabilities.isAndroid
+                  ? 'ws://127.0.0.1:3001/'
+                  : 'ws://192.168.1.10:3001',
               helper: _text(
-                'The forward WebSocket server the implementation exposes.',
-                '协议端提供的正向 WebSocket 服务地址。',
+                'For local deployment, choose “Use local connection” on the deployment page. For a remote service, enter its forward WebSocket address.',
+                '本机部署请在部署页选择「使用本机连接」；远程服务请填写它提供的正向 WebSocket 地址。',
               ),
             ),
             if (insecure) ...[
@@ -1051,6 +1200,7 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
               label: _text('Listening port', '监听端口'),
               kind: KitFieldKind.number,
               controller: _port,
+              onChanged: (_) => setState(_invalidateChangedCredentials),
               enabled: !_busy,
               disabledReason: _busy ? _text('Saving', '正在保存') : null,
               hint: '8082',
@@ -1069,19 +1219,43 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
             ),
           ],
           SizedBox(height: tokens.space3),
-          KitField.secret(
-            key: const ValueKey('onebot-token'),
-            label: _text('Access token', 'Access Token'),
-            controller: _token,
-            saved: _hasToken && !_replacingToken,
-            onReplace: () => setState(() => _replacingToken = true),
-            enabled: !_busy,
-            disabledReason: _busy ? _text('Saving', '正在保存') : null,
-            helper: _text(
-              'Sent as an Authorization: Bearer header, never in the URL.',
-              '通过 Authorization: Bearer 请求头发送，不放在 URL 中。',
+          if (_localToken != null)
+            KitRow(
+              key: const ValueKey('onebot-local-token'),
+              title: _text('Access token', 'Access Token'),
+              supporting: TextSpan(
+                text: _text(
+                  'Generated local token · pending save',
+                  '已填入本机随机 Token · 待保存',
+                ),
+              ),
+              trailing: KitButton.tertiary(
+                key: const ValueKey('onebot-replace-local-token'),
+                label: _text('Replace', '替换'),
+                onPressed: _busy ? null : () => setState(_replaceToken),
+              ),
+            )
+          else
+            KitField.secret(
+              key: const ValueKey('onebot-token'),
+              label: _text('Access token', 'Access Token'),
+              controller: _token,
+              saved: _hasToken && !_replacingToken && !_needsReplacementToken,
+              onReplace: () => setState(_replaceToken),
+              onChanged: (_) {
+                _tokenRevision++;
+                _replacingToken = true;
+                _typedTokenTarget = _credentialTarget;
+              },
+              enabled: !_busy,
+              disabledReason: _busy ? _text('Saving', '正在保存') : null,
+              helper: _needsReplacementToken
+                  ? _replacementTokenHint
+                  : _text(
+                      'Sent as an Authorization: Bearer header, never in the URL.',
+                      '通过 Authorization: Bearer 请求头发送，不放在 URL 中。',
+                    ),
             ),
-          ),
           SizedBox(height: tokens.space3),
           KitField(
             key: const ValueKey('onebot-self-id'),
@@ -1174,7 +1348,11 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
                 : (value) => setState(() => _enabled = value),
           ),
           if (_error != null)
-            KitNotice(message: _error!, tone: AppStatusTone.failure),
+            KitNotice(
+              key: const ValueKey('onebot-error'),
+              message: _error!,
+              tone: AppStatusTone.failure,
+            ),
           if (_notice != null)
             KitNotice(message: _notice!, tone: AppStatusTone.ok),
           KitButton.primary(
@@ -1210,8 +1388,8 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
           SizedBox(height: tokens.space3),
           KitGroupNote(
             message: _text(
-              'Enable the protocol service’s OneBot 11 WebSocket and set an access token. Use forward when the service listens, or reverse when it dials this phone. LLBot (GPL-2.0), NapCat and SnowLuma are not bundled. Running LLBot in this phone’s Linux is experimental; start it separately before opening its console.',
-              '在协议端开启 OneBot 11 WebSocket 并设置 Access Token；协议端监听时选正向，协议端主动连入时选反向。三者都不随本应用分发（LLBot 为 GPL-2.0）。本机 Linux 运行 LLBot 仍是试验功能，请先单独启动，再打开管理页。',
+              'Local deployment downloads LLBot (GPL-2.0) on demand and configures a loopback-only, token-protected OneBot connection. For manual LLBot, NapCat or SnowLuma, enable OneBot 11 and set an access token yourself; choose forward when the service listens or reverse when it dials this phone. Android may stop the local process; a ready WebUI is not proof that QQ is online.',
+              '本机部署按需下载 LLBot（GPL-2.0），并配置仅监听回环地址、带 Token 的 OneBot 连接。手动部署的 LLBot、NapCat 或 SnowLuma 仍需自行开启 OneBot 11 并设置 Token；协议端监听时选正向，主动连入时选反向。Android 可能停止本机进程，WebUI 就绪不代表 QQ 在线。',
             ),
           ),
         ],

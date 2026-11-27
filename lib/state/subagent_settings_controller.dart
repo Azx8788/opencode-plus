@@ -30,6 +30,7 @@ class SubagentSettingsController extends ChangeNotifier {
   SubagentSettingsCatalog? catalog;
   SubagentSettingsFailure? error;
   bool catalogUnavailable = false;
+  bool catalogReadFailed = false;
   bool loading = false;
   bool saving = false;
   bool _disposed = false;
@@ -65,6 +66,7 @@ class SubagentSettingsController extends ChangeNotifier {
     catalog = null;
     loading = false;
     catalogUnavailable = false;
+    catalogReadFailed = false;
     _read();
     _notify();
   }
@@ -148,6 +150,7 @@ class SubagentSettingsController extends ChangeNotifier {
     final generation = ++_generation;
     catalog = null;
     catalogUnavailable = false;
+    catalogReadFailed = false;
     loading = true;
     _notify();
     try {
@@ -157,9 +160,12 @@ class SubagentSettingsController extends ChangeNotifier {
       final value = await loadCatalog(selected);
       if (!_current(generation)) return;
       catalog = value;
-    } catch (_) {
+    } catch (failure) {
       if (!_current(generation)) return;
       catalogUnavailable = true;
+      catalogReadFailed =
+          failure is! SubagentSettingsException ||
+          failure.reason != SubagentSettingsFailure.unavailable;
       _read();
     } finally {
       if (_current(generation)) {

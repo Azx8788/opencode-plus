@@ -1,0 +1,65 @@
+LLBot 本机部署：来源与许可核对
+核对日期：2026-11-27。仅检查公开源码、许可文本和已有发行包；没有运行程序。
+
+1. 分发范围
+APK 包含本项目的安装器、预加载脚本和声明；不包含 LLBot/Node/sign-proxy 二进制。
+用户选择部署时，直接从官方上游下载以下固定发行包，仅提取 bin/llbot/。
+发行包里的 CLI/PMHQ 不安装。这里不为未声明许可的组件推定再分发权限。
+
+2. LLBot v8.3.2
+源码提交：dc2b2b90092ef0f571b5546878288b83fff1e436
+发行包：https://github.com/LuckyLilliaDev/LuckyLilliaBot/releases/download/v8.3.2/LuckyLillia-CLI-linux-arm64.zip
+包大小：88741224 字节
+包 SHA-256：dd7e6bb405ed44a7120e767ac3b3ab169fe343386008c5017729804baa4a4c0f
+源码：https://github.com/LuckyLilliaDev/LuckyLilliaBot/tree/dc2b2b90092ef0f571b5546878288b83fff1e436
+许可原文：https://raw.githubusercontent.com/LuckyLilliaDev/LuckyLilliaBot/dc2b2b90092ef0f571b5546878288b83fff1e436/LICENSE
+许可：源码 package.json 声明 GPL-2.0；LICENSE 是 GPL 第 2 版全文。
+许可 SHA-256：8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643
+本仓库 LICENSES/GPL-2.0.txt 与该原文逐字节相同，18092 字节，可直接作为完整许可副本。
+发行包 package.json 的作者字段是 linyuchen；源码归 LuckyLilliaBot 贡献者。
+
+3. Node.js
+已有预检记录随包 Node 版本为 v24.13.0；本次没有执行它。
+随包 node SHA-256：a2085465bf4a45b1599902cafe2db010a47cd3f17e6335c04d8dede3ceae3806
+Node 官方 v24.13.0 标签指向提交：def0bdf8abee441cfcbf793a8dc24a6f3b899573
+完整许可/依赖声明：https://raw.githubusercontent.com/nodejs/node/def0bdf8abee441cfcbf793a8dc24a6f3b899573/LICENSE
+该文件大小：143310 字节
+该文件 SHA-256：537308465103a306d0e3eecf42632b4ff1b48aaaec044e9fc10a78c81fd00b34
+其中包括 Node.js contributors 和 Joyent 的 MIT 声明，以及内置第三方库的完整声明。
+tool/llbot_deploy_NOTICES.txt 收录两段主许可及完整原文链接，不冒充完整依赖声明。
+完整原文已按上述摘要校验，原样收录在 tool/llbot_deploy_NODE_LICENSE.txt。
+LLBot 的构建脚本从 LLOneBot/exe 下载 Node；版本号不构成与 Node 官方构建逐字节等同的证明。
+构建来源：https://github.com/LuckyLilliaDev/LuckyLilliaBot/blob/dc2b2b90092ef0f571b5546878288b83fff1e436/.github/workflows/publish.yml#L117-L136
+
+4. sign-proxy 原生组件
+元数据：https://raw.githubusercontent.com/LuckyLilliaDev/LuckyLilliaBot/dc2b2b90092ef0f571b5546878288b83fff1e436/src/main/qqProtocol/direct-lib/sign-proxy/sign-proxy.package.json
+name=@lucky-lillia/sign-proxy-loader；version=0.1.0-20261007184501；private=true。
+没有 license 字段；private=true 也不是许可或禁止使用的声明。
+元数据 SHA-256：a873a990ceaa062b436f8f747e8f46c0efa9a0b9044b25e2beced937a2aaf2a3
+发行包 glibc 模块 SHA-256：db688c11c754058ca8dcb7404036a80d85daac6961124c29b4aa11699fa4f154
+发行包 musl 模块 SHA-256：07571b560f0d339a8e151e254e733ab28535b9de456d45adf9ad003482d9b380
+模块位于 bin/llbot/sign-proxy.linux-arm64-{glibc,musl}.node。
+检查范围内没有单独原生组件许可或其完整实现源码；不能据根目录 GPL 自动承诺其再分发权。
+
+5. 实际提取的 node_modules（名称、版本、包元数据声明）
+MIT：@borewit/text-codec 0.2.2；@tokenizer/inflate 0.4.1；@tokenizer/token 0.3.0；
+debug 4.4.3；file-type 22.0.2；ms 2.1.3；silk-wasm 3.7.1；strtok3 10.3.5；
+token-types 6.1.2；uint8array-extras 1.5.0；ws 8.21.3。
+BSD-3-Clause：ieee754 1.2.1。
+现有提取逻辑保留这些目录中已有的许可文件；@tokenizer/token 未附独立 LICENSE。
+清单只描述发行包可见模块，不是对 llbot.js、WebUI 或原生/WASM 内置代码的完整许可审计。
+
+6. 安装声明接线与本地修改
+将 tool/llbot_deploy_NOTICES.txt 和现有 LICENSES/GPL-2.0.txt 加入 APK 资源，
+在部署时复制到 /root/.oc-builtin/llbot/NOTICES.txt 和 COPYING.LLBot。
+这些文件位于已发布运行树之外，不改变运行树摘要；安装重试和已有安装也应更新声明。
+完整 Node 声明随 APK 安装资源提供，复制到 notices/Node.LICENSE，不需部署时额外联网下载。
+不要将两段 Node 主许可误标为其全部依赖许可，也不要声称上游 ZIP 已附这些文件。
+tool/llbot_deploy.py:patch_bundle 已含上游精确匹配片段，来源为以上 LLBot 提交的
+src/main/config/index.ts、src/main/log.ts、src/onebot11/connect/ws.ts 和 http.ts。
+OpenCode Plus 在 2026-11-27 的修改：强制托管配置，关闭日志缓存/SSE，去除凭据及请求正文日志。
+上游片段继续适用 GPL-2.0。修改后的 llbot.js 已包含日期与改动说明，辅助脚本头部注明片段来源。
+托管补丁版本：oc-managed-v2。
+修改后 llbot.js SHA-256：a578d1d333795de38d14336a21dd47539d3aeff91e90ba9648fe4941ecfce122。
+若未来镜像或分发修改后的运行二进制，另核对 GPL 第 1–3 条的源码/许可交付及原生组件权利；
+本次来源链接不是向第三方分发二进制时完整对应源码义务的替代承诺。

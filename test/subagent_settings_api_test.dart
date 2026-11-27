@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:opencode_mobile/api2/client.dart';
 import 'package:opencode_mobile/api2/gateway.dart';
 import 'package:opencode_mobile/api2/subagent_settings_catalog.dart';
@@ -80,6 +81,34 @@ void main() {
     await server.close(force: true);
   });
 
+  Future<ConnectionController> settingsConnection() async {
+    final profile = subagentProfile('one');
+    SharedPreferences.setMockInitialValues({
+      'oc.profiles': jsonEncode([profile, subagentProfile('two')]),
+      'oc.activeProfile': 'two',
+    });
+    FlutterSecureStorage.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final store = ProfileStore(prefs: prefs);
+    // Production bootstrap loads profiles before exposing settings. Merely
+    // seeding preferences leaves the in-memory identity catalogue empty.
+    await store.load();
+    final controller =
+        ConnectionController(
+            store,
+            isIsolated: true,
+            backgroundLive: BackgroundLiveController(
+              preferences: prefs,
+              invoke: (_, [arguments]) async => const {},
+            ),
+          )
+          ..adoptConnectedProfileForTesting(store.profiles.first)
+          ..api = Api2Gateway(client: client)
+          ..status = StreamStatus.connected;
+    addTearDown(controller.dispose);
+    return controller;
+  }
+
   test(
     'only existing read-only routes run; all models and exact variants are retained',
     () async {
@@ -120,6 +149,56 @@ void main() {
         Api2SubagentSettingsCatalog(client).load(),
         throwsFormatException,
       );
+    },
+  );
+
+  test('live V2 model envelope and bare project array are accepted', () async {
+    projectResponse = (projectResponse as Map)['data'];
+    final controller = await settingsConnection();
+    final result = await controller.readSubagentDraftCatalog(
+      subagentServer('one'),
+    );
+    expect(result.models.map((m) => m.id), ['old-model', 'new-model']);
+    expect(result.projects.single.id, 'project-one');
+    expect(result.projects.single.directory, '/work/project');
+    expect(requests.map((r) => r.uri.path).toSet(), {
+      '/api/model',
+      '/api/project',
+    });
+    expect(requests.map((r) => r.method).toSet(), {'GET'});
+  });
+
+  test(
+    'complete bare arrays may also be empty without being a failure',
+    () async {
+      modelResponse = [];
+      projectResponse = [];
+      final result = await Api2SubagentSettingsCatalog(client).load();
+      expect(result.models, isEmpty);
+      expect(result.projects, isEmpty);
+    },
+  );
+
+  test(
+    'invalid bare project entries are not a successful empty catalogue',
+    () async {
+      for (final value in [
+        [null],
+        [{}],
+        [
+          {'id': ''},
+        ],
+        [
+          {'id': 'same'},
+          {'id': 'same'},
+        ],
+      ]) {
+        projectResponse = value;
+        await expectLater(
+          Api2SubagentSettingsCatalog(client).load(),
+          throwsFormatException,
+        );
+      }
     },
   );
 
@@ -184,25 +263,7 @@ void main() {
   });
 
   test('the settings connection only reads the exact live catalogue', () async {
-    final profile = subagentProfile('one');
-    SharedPreferences.setMockInitialValues({
-      'oc.profiles': jsonEncode([profile, subagentProfile('two')]),
-      'oc.activeProfile': 'two',
-    });
-    final prefs = await SharedPreferences.getInstance();
-    final controller =
-        ConnectionController(
-            ProfileStore(prefs: prefs),
-            isIsolated: true,
-            backgroundLive: BackgroundLiveController(
-              preferences: prefs,
-              invoke: (_, [arguments]) async => const {},
-            ),
-          )
-          ..adoptConnectedProfileForTesting(ServerProfile.fromJson(profile))
-          ..api = Api2Gateway(client: client)
-          ..status = StreamStatus.connected;
-    addTearDown(controller.dispose);
+    final controller = await settingsConnection();
     await expectLater(
       controller.readSubagentDraftCatalog(subagentServer('two')),
       throwsA(
@@ -220,5 +281,45 @@ void main() {
     );
     expect(catalog.models, hasLength(2));
     expect(requests.map((r) => r.method).toSet(), {'GET'});
+  });
+
+  test(
+    'a disconnected gateway cannot read even the matching catalogue',
+    () async {
+      final controller = await settingsConnection();
+      controller.status = StreamStatus.disconnected;
+      await expectLater(
+        controller.readSubagentDraftCatalog(subagentServer('one')),
+        throwsA(
+          isA<SubagentSettingsException>().having(
+            (e) => e.reason,
+            'reason',
+            SubagentSettingsFailure.unavailable,
+          ),
+        ),
+      );
+      expect(requests, isEmpty);
+    },
+  );
+
+  test('a profile switch during a read rejects the old catalogue', () async {
+    final controller = await settingsConnection();
+    gate = Completer<void>();
+    bothRequested = Completer<void>();
+    final result = controller.readSubagentDraftCatalog(subagentServer('one'));
+    final rejected = expectLater(
+      result,
+      throwsA(
+        isA<SubagentSettingsException>().having(
+          (e) => e.reason,
+          'reason',
+          SubagentSettingsFailure.staleTarget,
+        ),
+      ),
+    );
+    await bothRequested!.future;
+    controller.adoptConnectedProfileForTesting(controller.store.profiles.last);
+    gate!.complete();
+    await rejected;
   });
 }

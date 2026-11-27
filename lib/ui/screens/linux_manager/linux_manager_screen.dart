@@ -19,6 +19,7 @@ import '../../../builtin/linux_manager/linux_manager.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../app_iconography.dart';
 import '../../kit/kit.dart';
+import '../settings/local_llbot_screen.dart';
 import 'linux_manager_common.dart';
 import 'linux_packages_page.dart';
 import 'linux_ports_page.dart';
@@ -145,6 +146,15 @@ class _LinuxManagerScreenState extends ConsumerState<LinuxManagerScreen> {
                 supportingMaxLines: 2,
                 trailing: const KitChevron(),
                 onTap: () => _open(const LinuxPackagesPage(), 'linux-packages'),
+              ),
+              KitRow(
+                key: const ValueKey('linux-row-llbot'),
+                leading: icon(AppIconography.package),
+                title: l10n.linuxMgrLlbot,
+                supporting: TextSpan(text: l10n.linuxMgrLlbotDetail),
+                supportingMaxLines: 2,
+                trailing: const KitChevron(),
+                onTap: () => _open(const LocalLlbotScreen(), 'linux-llbot'),
               ),
               KitRow(
                 key: const ValueKey('linux-row-repair'),

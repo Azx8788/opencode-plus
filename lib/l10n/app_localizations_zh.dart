@@ -30655,6 +30655,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get linuxMgrPackages => '软件包';
 
   @override
+  String get linuxMgrLlbot => 'LLBot 一键部署';
+
+  @override
+  String get linuxMgrLlbotDetail => '安装、启动并管理本机 QQ 协议服务';
+
+  @override
   String get linuxMgrPackagesDetail => '已安装的软件：安装、移除和更新';
 
   @override

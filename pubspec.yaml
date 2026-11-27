@@ -139,6 +139,11 @@ flutter:
     # The one-shot, read-only usage check the app runs on a saved computer
     # through OpenCode's terminal API (lib/state/computer_usage_source.dart).
     - tool/quota/read_once.mjs
+    # One-click, pinned LLBot deployment in the app's own Ubuntu.
+    - tool/llbot_deploy.py
+    - tool/llbot_deploy_guard.mjs
+    - tool/llbot_deploy_NOTICES.txt
+    - tool/llbot_deploy_NODE_LICENSE.txt
   fonts:
     # Phosphor 2.1.0 artwork (MIT), native IconData for Flutter 3.47.2.
     - family: AppPhosphorRegular

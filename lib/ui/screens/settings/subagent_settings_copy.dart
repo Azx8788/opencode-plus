@@ -37,6 +37,12 @@ class SubagentSettingsCopy {
         'Saved choices are kept; this page does not connect or start a server.',
     '请先连接这台 OpenCode V2 服务器以读取模型和项目目录。已保存的选择会保留，此页不会自动连接或启动服务器。',
   );
+  String get catalogueReadFailed => text(
+    'Could not read the model and project catalogue, or the connection changed '
+        'during the read. Saved choices are kept. Refresh to try again; '
+        'this does not necessarily mean the server is disconnected.',
+    '模型与项目目录读取失败，或读取期间连接已变化。已保存的选择会保留，请刷新重试；这不一定表示服务器未连接。',
+  );
   String get noServers =>
       text('No saved OpenCode V2 server', '尚未保存 OpenCode V2 服务器');
   String get planned => text('Planned rules — not active yet', '计划规则，尚未生效');

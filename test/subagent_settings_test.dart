@@ -532,11 +532,40 @@ void main() {
         offline.updateServers([server]);
         await offline.refresh();
         expect(offline.catalogUnavailable, isTrue);
+        expect(offline.catalogReadFailed, isTrue);
         expect(offline.projects.single.id, 'project-one');
         offline.selectProject('project-one');
         expect(offline.snapshot!.pool.candidates, [
           subagentCandidate('retired'),
         ]);
+      },
+    );
+
+    test(
+      'no live connection is distinct from a failed catalogue read',
+      () async {
+        var connected = false;
+        final reader = SubagentSettingsController(
+          store: store,
+          loadCatalog: (_) async {
+            if (!connected) {
+              throw const SubagentSettingsException(
+                SubagentSettingsFailure.unavailable,
+              );
+            }
+            return subagentCatalog();
+          },
+        );
+        addTearDown(reader.dispose);
+        reader.updateServers([server]);
+        await reader.refresh();
+        expect(reader.catalogUnavailable, isTrue);
+        expect(reader.catalogReadFailed, isFalse);
+        connected = true;
+        await reader.refresh();
+        expect(reader.catalogUnavailable, isFalse);
+        expect(reader.catalogReadFailed, isFalse);
+        expect(reader.catalog, isNotNull);
       },
     );
   });

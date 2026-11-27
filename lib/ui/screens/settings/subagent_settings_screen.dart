@@ -258,7 +258,9 @@ class SubagentSettingsPage extends StatelessWidget {
               if (controller.catalogUnavailable)
                 KitNotice(
                   key: const ValueKey('subagents-catalogue-unavailable'),
-                  message: copy.unavailable,
+                  message: controller.catalogReadFailed
+                      ? copy.catalogueReadFailed
+                      : copy.unavailable,
                 ),
               KitButton.secondary(
                 key: const ValueKey('subagents-refresh'),

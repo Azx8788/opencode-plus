@@ -40,8 +40,11 @@ of losing its servers and its Ubuntu.
   [docs/CHANNELS_MANAGER.md](docs/CHANNELS_MANAGER.md).
 - **Three message channels on one engine**: Telegram, an official QQ bot from
   the Tencent Open Platform, and a personal QQ account through LLBot, NapCat or
-  SnowLuma — a OneBot 11 implementation you run yourself, connected in either
-  direction. Same commands, same allowlists, same session isolation, same
+  SnowLuma. On Android, **This phone → Linux → LLBot one-click deployment**
+  installs and starts LLBot in the built-in Ubuntu; the same entry is available
+  from personal-QQ settings. Authorization and QQ login happen in its local
+  console. External OneBot services still support either connection direction.
+  Same commands, same allowlists, same session isolation, same
   delivery rules; each channel keeps its own configuration, capabilities and
   limits. See [docs/CHANNELS.md](docs/CHANNELS.md),
   [docs/QQ_CHANNELS.md](docs/QQ_CHANNELS.md),
@@ -300,7 +303,10 @@ iOS 与桌面工程、多语言（仅中英）、Shorebird 热更新、文档站
 
 消息渠道在「设置 → 对话 → 消息渠道」统一管理：Telegram、QQ 官方机器人、
 QQ 普通账号（LLBot + OneBot 11）共用同一套指令、白名单、会话隔离与投递规则，
-各自保留独立配置、能力声明和平台限制。详见
+各自保留独立配置、能力声明和平台限制。
+可在「此手机 → Linux → LLBot 一键部署」或 QQ 普通账号页安装并启动本机 LLBot，
+随后在内置管理页完成授权和扫码登录；仍可连接自行部署的 OneBot 服务。
+详见
 [docs/CHANNELS.md](docs/CHANNELS.md)、[docs/QQ_CHANNELS.md](docs/QQ_CHANNELS.md)
 与 [docs/CHANNELS_LIMITATIONS.md](docs/CHANNELS_LIMITATIONS.md)。
 

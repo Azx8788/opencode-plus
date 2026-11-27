@@ -32513,6 +32513,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get linuxMgrPackages => 'Packages';
 
   @override
+  String get linuxMgrLlbot => 'LLBot one-click deployment';
+
+  @override
+  String get linuxMgrLlbotDetail =>
+      'Install, start and manage the local QQ protocol service';
+
+  @override
   String get linuxMgrPackagesDetail =>
       'Installed software: install, remove and update';
 

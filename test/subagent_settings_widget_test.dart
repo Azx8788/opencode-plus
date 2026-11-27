@@ -210,6 +210,43 @@ void main() {
   );
 
   testWidgets(
+    'catalogue errors do not claim the server is disconnected and refresh recovers',
+    (tester) async {
+      var readFailed = true;
+      controller.dispose();
+      controller = SubagentSettingsController(
+        store: store,
+        loadCatalog: (_) async {
+          if (readFailed) {
+            throw const FormatException('Invalid project catalogue');
+          }
+          return subagentCatalog();
+        },
+      );
+      controller.updateServers([server]);
+      await controller.refresh();
+      await mount(tester, locale: const Locale('zh'), width: 320, scale: 1.5);
+      expect(find.textContaining('模型与项目目录读取失败'), findsOneWidget);
+      expect(find.textContaining('请先连接这台'), findsNothing);
+      expect(tester.takeException(), isNull);
+      readFailed = false;
+      await tapRow(tester, 'subagents-refresh');
+      expect(
+        find.byKey(const ValueKey('subagents-catalogue-unavailable')),
+        findsNothing,
+      );
+      expect(controller.catalog, isNotNull);
+      await openPool(tester);
+      expect(
+        find.byKey(ValueKey('subagents-candidate-${high.key}')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
     'a project can save an explicit empty pool then restore inheritance',
     (tester) async {
       await store.save(

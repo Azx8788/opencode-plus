@@ -51446,6 +51446,18 @@ abstract class AppLocalizations {
   /// **'Packages'**
   String get linuxMgrPackages;
 
+  /// In-app Ubuntu manager: opens the managed LLBot installer and service controls
+  ///
+  /// In en, this message translates to:
+  /// **'LLBot one-click deployment'**
+  String get linuxMgrLlbot;
+
+  /// In-app Ubuntu manager: LLBot deployment entry supporting text
+  ///
+  /// In en, this message translates to:
+  /// **'Install, start and manage the local QQ protocol service'**
+  String get linuxMgrLlbotDetail;
+
   /// Linux manager: supporting line of Packages.
   ///
   /// In en, this message translates to:

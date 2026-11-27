@@ -1,34 +1,34 @@
-LLBot 手机版 Ubuntu 手动部署入口
-版本：LLBot v8.3.2 ARM64。本说明对应授权阶段，只开放本机 WebUI，不开放 OneBot，也不设常驻自启。
+LLBot 手机版内置 Ubuntu 一键部署
 
-准备情况
-仓库已有 tool/llbot_local.py 和 tool/llbot_local_guard.mjs。运行副本是手机上已准备并验证的
-~/.local/share/oc-plus/qq-onebot-poc/llbot/v8.3.2/runtime-local-v1/ 。
-脚本按整个运行副本的文件摘要校验，不下载、不更新、不改系统 Node 或原 NapCat；需要 Linux ARM64 和 Python 3.11+。
+运行环境
+LLBot v8.3.2 官方 Linux ARM64 ZIP，自带 Node。按需下载约 89 MB，安装后运行环境约 172 MB；下载包与运行数据还需要额外空间。
+协议端不预装在 APK 中。先在 App 设置中完成内置 Ubuntu 安装；不支持的设备会显示原因。
 
-以下命令在 /root/projects/opencode-plus 运行。
+部署入口
+设置 → 消息渠道 → QQ 普通账号 → 本机 LLBot 一键部署 → 一键部署并启动。
+App 实际执行下载、校验、安装、配置和启动；页面展示阶段进度、失败与重试，并提供刷新状态、停止和启动。
+仅打开页面只检查状态，不安装、不启动。离开页面不会取消共享控制器中的操作，App 环境运行期间会继续。
+「本机 → Linux 环境管理」也提供同一管理页入口；此独立入口管理服务，连接导入在 QQ 表单入口完成。
 
-先检查和离线自检（不用账号）：
-python3 -B tool/llbot_local.py check
-python3 -B tool/llbot_local.py smoke
+授权与 QQ 登录（必须由本人完成）
+1. 等待「本机管理页已就绪」。页面可以查看或复制自动生成的高强度随机 WebUI 密码。
+2. 点「打开 WebUI · QQ 登录」，在内嵌的 http://127.0.0.1:3080/ 中使用该密码登录。
+3. 本人从 https://auth.luckylillia.com 获取上游 LLBot Auth Token，并在本机 WebUI 中填写。
+4. 在 WebUI 继续 QQ 二维码登录。App 不会代办上游授权或扫码。
+上游 LLBot Auth Token、本机 WebUI 密码、OneBot Access Token 是三种不同凭据；App 只自动生成后两种。
+部署页提供授权网址的复制入口。内嵌本机管理页严格限制同一 HTTP origin，不打开外部链接。
+不要把密码、任何 Token 或 QQ 二维码发送到聊天中。
 
-开始授权阶段时，在你自己的交互终端首次设置 WebUI 密码：
-python3 -B tool/llbot_local.py init-webui
+使用本机连接
+QQ 登录后才会启动带 Token 的 OneBot 正向 WebSocket：ws://127.0.0.1:3001/，路径为根路径 /，不是 /ws。
+从 QQ 表单进入部署页后，显式点「使用本机连接」，才会把本机地址和 Token 填回表单。
+此时只是未保存的草稿；保留已有允许用户/群列表，草稿中的渠道开关保持关闭。检查预期 QQ 账号，按需调整允许列表，测试连接，再自行启用并保存。
+打开页面、部署或打开 WebUI 都不会替换原有远程端点及凭据，也不会自动启用消息转发。只有正常保存才写入 QQ 渠道配置。
+手动或远程 LLBot、NapCat、SnowLuma 仍可在 QQ 表单中设置；原有正向和反向选项保留。
 
-输入不回显，不覆盖已有密码。LLBot 在私有状态目录保留 WebUI 密码文件；不用于 QQ 登录，也不是 OneBot Token。
-不要把 WebUI 密码、LLBot Auth Token、QQ 二维码或 OneBot Token 发给聊天。
-
-准备好之后前台启动：
-python3 -B tool/llbot_local.py run
-
-等终端提示 WebUI 就绪，再在 OpenCode Plus 打开「设置 → 消息渠道 → QQ 普通账号 → 本机 LLBot 管理页」。
-管理页通过现有的内置网页预览打开 127.0.0.1:3080，不跳系统浏览器，也不会替你启动 LLBot。若没启动，页面会提示启动后重试。
-本机管理页不打开外链；已有 LLBot Auth Token 时只在内置管理页中填写。
-这时只验证管理界面和由本人进行的 LLBot 授权及测试 QQ 扫码。run 可访问授权服务及 QQ，若状态目录已有会话，可能尝试恢复；本轮尚未执行。安装目录与 deployment/ 状态目录分开，启动器不输出进程原始日志。PRoot 及 Node 的权限选项不是原生组件的完整安全沙箱。
-
-另一终端查看状态、停止，或在原终端按 Ctrl+C：
-python3 -B tool/llbot_local.py status
-python3 -B tool/llbot_local.py stop
-
-仅允许 127.0.0.1:3080，若占用就报错，不换端口，不开放公网。状态写「WebUI 已就绪」不代表 QQ 在线。
-本机授权和登录实测通过后，再另行启用 127.0.0.1:13001 的带 Token 正向 WebSocket，验收 OneBot 调用、私聊/群聊、App 最终答复回传和重连。不要预先启用 OneBot 或替换旧端点。
+运行与验收
+本机 WebUI 只监听 127.0.0.1:3080，OneBot 只监听 127.0.0.1:3001；不会自动换成公网地址。
+「管理页已就绪」不代表 QQ 在线，也不代表 OneBot 已开始监听或消息回传通过验收。
+如果 WebUI 无法连接，回到部署页刷新状态，必要时启动或重试；停止按钮停止托管服务。
+Android 可能终止后台进程，本功能不保证常驻在线。PRoot 不是原生组件的完整安全沙箱。
+真实上游授权、QQ 登录、OneBot 调用、私聊/群聊、App 最终答复回传和重连仍需本人在设备上验收。UI 自动测试使用假部署控制器，不执行真实部署或账号登录。

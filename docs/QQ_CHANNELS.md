@@ -10,7 +10,7 @@ separate connection state; neither is described as a version of the other.
 | Account | A bot created on the QQ Open Platform | A real QQ account |
 | Transport | Official gateway WebSocket + HTTPS OpenAPI | OneBot 11 forward WebSocket to LLBot |
 | Authorised by Tencent | Yes, within the approved scenes | No |
-| Runs where | Inside the app | In LLBot, which you run yourself |
+| Runs where | Inside the app | In managed LLBot in built-in Ubuntu, or a manually managed OneBot service |
 | Configuration | AppID + ClientSecret | WebSocket URL + access token + expected QQ number |
 | Licence | Tencent platform terms | LLBot and its OneBot plugin are GPL-2.0 |
 
@@ -110,18 +110,50 @@ from each project.
 
 | Implementation | Where it runs | Console | OneBot 11 |
 | --- | --- | --- | --- |
-| LLBot | Linux x64, headless | — | Forward WS, usually 3001 |
+| LLBot | Built-in Ubuntu on Android ARM64; manual Linux hosts also supported | Local managed WebUI: 3080 | Managed forward WS: `ws://127.0.0.1:3001/`, available after QQ login |
 | NapCat | Next to the QQ NT client | 6099 | HTTP 3000, WS server 3001, WS client dials a URL |
 | SnowLuma | Windows x64 or Linux x64/arm64 | 5099 | HTTP 3000, WS 3001, WS server and client |
 
-None of them is bundled. Running the protocol service under Android/PRoot is
-still experimental.
+The protocol binaries are not bundled in the APK. The built-in deployment flow
+downloads the official LLBot v8.3.2 Linux ARM64 ZIP on demand, including Node
+(about 89 MB download and 172 MB installed runtime). Android/PRoot hosting
+remains experimental and is not a guarantee of background availability.
 
 This route logs a real QQ account in through a third-party implementation. It is
 not authorised by Tencent, it can get an account restricted, and it is **not
 bundled with the app**. You run it; you own the consequences.
 
-### 2.1 Deploy LLBot (Linux x64, headless)
+### 2.1 One-tap local LLBot deployment (Android ARM64)
+
+1. Complete the app's built-in Ubuntu setup.
+2. Settings → 消息渠道 → QQ 普通账号 → **本机 LLBot 一键部署** →
+   **一键部署并启动**. The app downloads, verifies, installs, configures and
+   starts LLBot. Progress and failures are visible, with retry, status refresh,
+   stop and start controls. Opening the page alone only checks status.
+3. When **本机管理页已就绪** appears, copy the generated **WebUI password**
+   and open the embedded WebUI at `http://127.0.0.1:3080/`.
+4. Obtain an **LLBot Auth Token** yourself from
+   <https://auth.luckylillia.com>, enter it in the local WebUI, then scan the QQ
+   QR code. The upstream Auth Token is distinct from the generated WebUI
+   password and OneBot access token. The app does not obtain authorisation or
+   sign in to QQ on your behalf.
+5. Return and choose **使用本机连接** to fill the QQ form with the generated
+   token and `ws://127.0.0.1:3001/` (root path, not `/ws`). The OneBot listener
+   starts after QQ login. Check the expected account and the allowed user/group
+   lists, test the connection, then explicitly enable and save when ready.
+
+The deployment controller continues its operation when you leave the page,
+while the app environment remains running. Deployment and opening the WebUI do
+not change saved channel credentials or enable the relay. Importing a local
+connection changes only the form draft, preserves its allowlists, and leaves
+the draft relay disabled until you choose to enable it. Ordinary **Save** is
+required to replace a saved external connection.
+
+The standalone entry under This phone → Linux environment manager manages the
+same service. To import its connection, open the deployment page from the QQ
+form. See [the local deployment runbook](QQ_LOCAL_DEPLOYMENT_RUNBOOK.txt).
+
+### 2.1.1 Manual or remote LLBot (Linux x64, headless)
 
 1. Prepare a Linux x64 host (a small VPS, a home server, a container). Headless
    is enough; no desktop session is needed.
@@ -141,18 +173,19 @@ Notes:
   no code from them is copied into this repository or packaged into the APK.
 * PMHQ mode is not offered: its licence and distribution boundary have not been
   verified.
-* An Android/PRoot deployment of the protocol side is an experiment, not a
-  supported configuration. A Linux ARM64 build existing upstream does not mean
-  it runs inside this app.
+* Built-in deployment is for the official Linux ARM64 runtime. Android can stop
+  its process; console readiness does not establish QQ login or message delivery.
 
 ### 2.2 Configure the app
 
 Settings → 消息渠道 → **QQ 普通账号（OneBot 11）**:
 
-On Android, **本机 LLBot 管理页** opens the running local LLBot console inside
-the app at `http://127.0.0.1:3080/`. It doesn't start LLBot, open an external
-browser, or change the OneBot connection below. See
-[the local enrollment runbook](QQ_LOCAL_DEPLOYMENT_RUNBOOK.txt).
+On Android, **本机 LLBot 一键部署** is the managed local workflow above.
+The embedded WebUI is offered after the managed console is ready and restricts
+navigation to `http://127.0.0.1:3080/`; it does not open external links. Obtain
+the upstream Auth Token separately using the authorisation-site address shown
+on the deployment page. Manual LLBot, NapCat and SnowLuma remain available in
+the form below.
 
 | Field | Meaning |
 | --- | --- |

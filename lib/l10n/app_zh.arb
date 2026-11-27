@@ -6109,6 +6109,8 @@
   "linuxMgrStorage": "存储",
   "linuxMgrStorageDetail": "空间去向，以及清理缓存",
   "linuxMgrPackages": "软件包",
+  "linuxMgrLlbot": "LLBot 一键部署",
+  "linuxMgrLlbotDetail": "安装、启动并管理本机 QQ 协议服务",
   "linuxMgrPackagesDetail": "已安装的软件：安装、移除和更新",
   "linuxMgrRepair": "修复 Linux",
   "linuxMgrRepairDetail": "检查 Linux、OpenCode 和你的工具，并修复损坏的部分。不会影响你的项目。",
