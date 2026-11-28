@@ -11,6 +11,13 @@ on:
         type: boolean
         required: false
         default: false
+      test_scope:
+        description: "Tests for this manual build (ignored when package_only is true)"
+        type: choice
+        default: full
+        options:
+          - full
+          - channels
 
 permissions:
   contents: write
@@ -20,12 +27,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The three verification jobs run side by side: none needs another's output,
-  # and serialising them (the native tests used to gate the APK build) made a
-  # run wait ~9 minutes for work that can happen at the same time. A tag's
-  # release is still refused unless every one of them passed (see `release`).
+  # Native tests, Flutter verification and packaging run side by side. Only
+  # the full verification path can publish a release. The channels selection
+  # is for installable test artifacts, not for bypassing release checks.
   native:
-    if: ${{ inputs.package_only != true }}
+    if: ${{ inputs.package_only != true && inputs.test_scope != 'channels' }}
     # The Storage Access Framework root is the app's own directory, and the
     # rules that decide whether a file manager may enter it are the platform's,
     # not this app's: the picker hides a root without FLAG_SUPPORTS_IS_CHILD,
@@ -110,17 +116,26 @@ jobs:
       - name: Local QQ deployment tests
         run: python3 -m unittest tool.tests.test_llbot_local tool.tests.test_llbot_deploy tool.tests.test_snowluma_launcher -v
 
+      - name: Message channel and send pipeline regression tests
+        if: ${{ inputs.test_scope == 'channels' }}
+        run: |
+          flutter test --no-pub \
+            test/channels \
+            test/telegram_bot_contract_test.dart \
+            test/telegram_bot_relay_test.dart \
+            test/send_pipeline_reliability_test.dart \
+            test/snowluma_deployment_test.dart \
+            test/snowluma_release_test.dart
+
       - name: Smoke and sanity tests
-        # The whole suite: it takes well under a minute and the hand-picked
-        # list this replaced silently skipped every test added after it was
-        # written (the native-string pairing and the release-tooling checks
-        # among them).
+        if: ${{ inputs.test_scope != 'channels' }}
+        # Full builds also cover new test files outside the focused list.
         run: |
           python3 tool/prepare_usage_qa_fonts.py
           flutter test
 
       - name: Upload conversation layout captures
-        if: always()
+        if: ${{ always() && inputs.test_scope != 'channels' }}
         uses: actions/upload-artifact@v4
         with:
           name: conversation-layout-${{ github.sha }}
@@ -129,7 +144,7 @@ jobs:
           retention-days: 7
 
       - name: Upload local usage layout captures
-        if: always()
+        if: ${{ always() && inputs.test_scope != 'channels' }}
         uses: actions/upload-artifact@v4
         with:
           name: usage-layout-${{ github.sha }}
@@ -138,7 +153,7 @@ jobs:
           retention-days: 7
 
       - name: Upload memory layout captures
-        if: always()
+        if: ${{ always() && inputs.test_scope != 'channels' }}
         uses: actions/upload-artifact@v4
         with:
           name: memory-layout-${{ github.sha }}
@@ -147,7 +162,7 @@ jobs:
           retention-days: 7
 
       - name: Upload elapsed and request timeline captures
-        if: always()
+        if: ${{ always() && inputs.test_scope != 'channels' }}
         uses: actions/upload-artifact@v4
         with:
           name: timing-layout-${{ github.sha }}
@@ -327,7 +342,7 @@ jobs:
   # review, and a draft is invisible on the public Releases page, so a finished
   # tag build looked exactly like a build that produced no install package.
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && inputs.package_only != true && inputs.test_scope != 'channels' }}
     needs: [native, verify, package]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -394,7 +409,7 @@ jobs:
   # One rolling prerelease holds the newest main APK under a fixed file name,
   # so it is replaced instead of piling up, and it stays out of "Latest".
   dev-release:
-    if: ${{ github.ref == 'refs/heads/main' && inputs.package_only != true }}
+    if: ${{ github.ref == 'refs/heads/main' && inputs.package_only != true && inputs.test_scope != 'channels' }}
     needs: [native, verify, package]
     runs-on: ubuntu-latest
     timeout-minutes: 15

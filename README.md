@@ -122,6 +122,12 @@ The run summary of the `package` job also prints the file name, size and
 SHA256 of what it built, so a run answers "is there an APK" without opening
 the Releases page.
 
+For a manual message-channel build, select `test_scope: channels` and leave
+`package_only` unchecked. This runs static analysis, Telegram and QQ channel
+tests, local QQ deployment tests, and send-pipeline regressions. It uploads an
+APK artifact without publishing a release. The default `full` mode keeps the
+complete checks; `package_only` skips verification entirely.
+
 Their `versionCode` is `100000 + run_number`, so a build made *after* a release
 carries a higher code and will refuse to be replaced by that release; uninstall
 it first, or install a build made later than it.
