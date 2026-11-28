@@ -230,6 +230,27 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
     }
   }
 
+  Future<void> _reconnect() async {
+    if (_busy || _bridge.isPairing) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _notice = null;
+    });
+    try {
+      await _bridge.reconnect();
+    } on Object {
+      if (mounted) {
+        _error = _text(
+          'Could not restart Telegram receiving.',
+          '无法重启 Telegram 接收连接。',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   String _phaseText(TelegramBotPhase phase) => switch (phase) {
     TelegramBotPhase.disabled => _text('Off', '已关闭'),
     TelegramBotPhase.needsSetup => _text(
@@ -296,6 +317,19 @@ class _TelegramBotScreenState extends State<TelegramBotScreen> {
               role: KitTextRole.caption,
               tone: KitTextTone.attention,
             ),
+            KitText(
+              _text(
+                'Token verification checks short API requests. Receiving messages uses a separate polling connection.',
+                'Token 验证检查的是短请求；消息接收使用单独的轮询连接。',
+              ),
+              role: KitTextRole.caption,
+            ),
+            if (snapshot.enabled && localServer)
+              KitButton.secondary(
+                key: const ValueKey('telegram-bot-reconnect'),
+                label: _text('Reconnect receiving', '重新连接消息接收'),
+                onPressed: busy ? null : _reconnect,
+              ),
           ],
           if (snapshot.awaitingUsername case final name? when snapshot.enabled)
             KitNotice(

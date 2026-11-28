@@ -80,8 +80,10 @@ class TelegramProvider extends ChannelProviderBase {
   bool _running = false;
   int _generation = 0;
   HttpClient? _http;
+  Completer<void>? _retryWait;
   Future<void>? _offsetWrite;
   int _consecutiveFailures = 0;
+  late Duration _receiveWait = pollTimeout;
   String? _botUsername;
 
   /// The bot's @username once `getMe` has answered, used to recognise a
@@ -93,7 +95,13 @@ class TelegramProvider extends ChannelProviderBase {
   int? offset;
 
   @override
-  Future<void> connect() async {
+  Future<void> connect() async => _startReceiving(prepareBot: true);
+
+  /// Reopens an already configured receiver without changing its webhook,
+  /// command menu, offset or adapted polling wait.
+  void resumeReceiving() => _startReceiving(prepareBot: false);
+
+  void _startReceiving({required bool prepareBot}) {
     if (isClosed) return;
     if (token.isEmpty || (chatId.isEmpty && onBindPrivateUser == null)) {
       publishStatus(
@@ -105,8 +113,11 @@ class TelegramProvider extends ChannelProviderBase {
     }
     if (_running) return;
     _running = true;
+    // A manual reconnect must not inherit the previous attempt's backoff.
+    _consecutiveFailures = 0;
+    if (prepareBot) _receiveWait = pollTimeout;
     final generation = ++_generation;
-    unawaited(_pollLoop(generation));
+    unawaited(_pollLoop(generation, prepareBot: prepareBot));
   }
 
   @override
@@ -115,6 +126,8 @@ class TelegramProvider extends ChannelProviderBase {
     _generation++;
     _http?.close(force: true);
     _http = null;
+    final retry = _retryWait;
+    if (retry != null && !retry.isCompleted) retry.complete();
     try {
       await _offsetWrite;
     } on Object {
@@ -125,86 +138,133 @@ class TelegramProvider extends ChannelProviderBase {
     }
   }
 
-  Future<void> _pollLoop(int generation) async {
-    publishStatus(ProviderState.connecting, clearError: true);
-    final setup = HttpClient()..connectionTimeout = const Duration(seconds: 10);
-    _http = setup;
-    try {
-      await _prepareBot(setup, generation);
-    } finally {
-      if (identical(_http, setup)) _http = null;
-      setup.close(force: true);
-    }
-    while (_running && generation == _generation && !isClosed) {
-      final http = HttpClient()
+  Future<void> _pollLoop(int generation, {required bool prepareBot}) async {
+    publishStatus(
+      ProviderState.connecting,
+      clearError: true,
+      consecutiveFailures: 0,
+    );
+    if (prepareBot) {
+      final setup = HttpClient()
         ..connectionTimeout = const Duration(seconds: 10);
-      _http = http;
+      _http = setup;
       try {
-        final updates = await readUpdates(
-          client: http,
-          offset: offset,
-          wait: pollTimeout,
-        );
-        if (!_running || generation != _generation) break;
-        if (status.state != ProviderState.online) {
-          publishStatus(ProviderState.online, clearError: true);
-        }
-        _consecutiveFailures = 0;
-        for (final (updateID, message) in updates) {
+        await _prepareBot(setup, generation);
+      } finally {
+        if (identical(_http, setup)) _http = null;
+        setup.close(force: true);
+      }
+    }
+    // Keep a healthy TLS connection between polls. Some mobile gateways cut
+    // off a quiet long poll even while getMe/getChat continue to work. Retain
+    // a shorter positive wait after a transport failure, without resetting
+    // the offset or introducing a second receiver.
+    HttpClient? pollingClient;
+    try {
+      while (_running && generation == _generation && !isClosed) {
+        final http = pollingClient ??= HttpClient()
+          ..connectionTimeout = const Duration(seconds: 10);
+        _http = http;
+        try {
+          final updates = await readUpdates(
+            client: http,
+            offset: offset,
+            wait: _receiveWait,
+          );
           if (!_running || generation != _generation) break;
-          if (offset != null && updateID < offset!) continue;
-          // Advance before dispatch: a process death cannot replay a prompt
-          // whose delivery to OpenCode may already have succeeded.
-          final write = _offsetWrite = onOffset?.call(updateID + 1);
-          try {
-            await write;
-          } finally {
-            if (identical(_offsetWrite, write)) _offsetWrite = null;
+          if (status.state != ProviderState.online) {
+            publishStatus(
+              ProviderState.online,
+              clearError: true,
+              consecutiveFailures: 0,
+            );
           }
-          if (!_running || generation != _generation) break;
-          offset = updateID + 1;
-          if (message == null ||
-              !telegramPrivateMessageAllowed(
-                allowedUserID: chatId.isEmpty ? message.senderId : chatId,
-                chatType: message.extensions['chat_type'],
-                senderID: message.senderId,
-                chatID: message.conversationId,
-                senderIsBot: message.extensions['sender_is_bot'] != false,
-              )) {
-            continue;
-          }
-          if (chatId.isEmpty) {
-            if (await onBindPrivateUser?.call(message) != true) {
-              continue;
+          _consecutiveFailures = 0;
+          for (final (updateID, message) in updates) {
+            if (!_running || generation != _generation) break;
+            if (offset != null && updateID < offset!) continue;
+            // Advance before dispatch: a process death cannot replay a prompt
+            // whose delivery to OpenCode may already have succeeded.
+            final write = _offsetWrite = onOffset?.call(updateID + 1);
+            try {
+              await write;
+            } finally {
+              if (identical(_offsetWrite, write)) _offsetWrite = null;
             }
             if (!_running || generation != _generation) break;
-            _chatId = message.senderId;
+            offset = updateID + 1;
+            if (message == null ||
+                !telegramPrivateMessageAllowed(
+                  allowedUserID: chatId.isEmpty ? message.senderId : chatId,
+                  chatType: message.extensions['chat_type'],
+                  senderID: message.senderId,
+                  chatID: message.conversationId,
+                  senderIsBot: message.extensions['sender_is_bot'] != false,
+                )) {
+              continue;
+            }
+            if (chatId.isEmpty) {
+              if (await onBindPrivateUser?.call(message) != true) {
+                continue;
+              }
+              if (!_running || generation != _generation) break;
+              _chatId = message.senderId;
+            }
+            emitMessage(message);
           }
-          emitMessage(message);
+        } on Object catch (error) {
+          if (!_running || generation != _generation || isClosed) break;
+          _consecutiveFailures = (_consecutiveFailures + 1).clamp(1, 6);
+          var text = error is TelegramFailure
+              ? error.message
+              : '处理 Telegram 接收消息时失败，正在重试。';
+          if (error is TelegramFailure && error.canShortenPoll) {
+            final wait = _receiveWait;
+            final shorter = wait > const Duration(seconds: 10)
+                ? const Duration(seconds: 10)
+                : wait > const Duration(seconds: 5)
+                ? const Duration(seconds: 5)
+                : wait;
+            if (shorter < wait) {
+              _receiveWait = shorter;
+              text += ' 将改用 ${shorter.inSeconds} 秒等待重试接收。';
+            }
+          }
+          publishStatus(
+            ProviderState.reconnecting,
+            lastError: text,
+            consecutiveFailures: _consecutiveFailures,
+          );
+          // Release the failed socket before waiting. Disabling/reconnecting
+          // wakes this wait so an old generation cannot wake up and poll again.
+          if (identical(_http, http)) _http = null;
+          http.close(force: true);
+          pollingClient = null;
+          final milliseconds = ((1 << _consecutiveFailures).clamp(5, 60) * 1000)
+              .clamp(0, maxBackoff.inMilliseconds);
+          await _waitToRetry(Duration(milliseconds: milliseconds));
         }
-      } on Object catch (error) {
-        if (!_running || generation != _generation || isClosed) break;
-        _consecutiveFailures = (_consecutiveFailures + 1).clamp(1, 6);
-        final text = error is TelegramFailure
-            ? error.message
-            : '与 Telegram 的连接中断，正在重试。';
-        publishStatus(
-          ProviderState.reconnecting,
-          lastError: text,
-          consecutiveFailures: _consecutiveFailures,
-        );
-        final seconds = (1 << _consecutiveFailures).clamp(
-          5,
-          maxBackoff.inSeconds,
-        );
-        await Future<void>.delayed(Duration(seconds: seconds));
-      } finally {
-        if (identical(_http, http)) _http = null;
-        http.close(force: true);
       }
+    } finally {
+      if (identical(_http, pollingClient)) _http = null;
+      pollingClient?.close(force: true);
     }
     if (generation == _generation && !isClosed) {
       publishStatus(ProviderState.disabled, detail: '已停止轮询');
+    }
+  }
+
+  Future<void> _waitToRetry(Duration duration) async {
+    final done = Completer<void>();
+    _retryWait = done;
+    final timer = Timer(duration, () {
+      if (!done.isCompleted) done.complete();
+    });
+    try {
+      await done.future;
+    } finally {
+      timer.cancel();
+      if (identical(_retryWait, done)) _retryWait = null;
     }
   }
 
@@ -248,17 +308,16 @@ class TelegramProvider extends ChannelProviderBase {
     final result = await _request(
       'getUpdates',
       {
-        'timeout': '${wait.inSeconds}',
-        'allowed_updates': '["message"]',
-        if (offset != null) 'offset': '$offset',
+        'timeout': wait.inSeconds,
+        'allowed_updates': ['message'],
+        'offset': ?offset,
       },
-      get: true,
       timeout: wait + const Duration(seconds: 10),
       client: client,
     );
     final items = result['result'];
     if (items is! List) {
-      throw const TelegramFailure('Telegram 返回了无法识别的消息格式。');
+      throw const TelegramFailure('Telegram getUpdates：返回了无法识别的消息格式。');
     }
     return [
       for (final raw in items)
@@ -331,11 +390,15 @@ class TelegramProvider extends ChannelProviderBase {
         timeout: const Duration(seconds: 12),
         overrideToken: useToken,
       );
-    } on TelegramFailure {
+    } on TelegramFailure catch (error) {
+      if (!error.chatMissing) {
+        throw FormatException('Token 验证成功（$botName），但私聊检查失败：${error.message}');
+      }
       return 'Token 验证成功（$botName），但还没有与该用户的私聊。'
           '请先在 Telegram 中打开机器人私聊并发送 /start，再回来启用。';
     }
-    return 'Token 验证成功（$botName），可以与该用户私聊。';
+    return 'Token 验证成功（$botName），可以与该用户私聊。'
+        '此检查不验证消息接收，请以上方接收状态为准。';
   }
 
   /// Fetches the bot identity, caching the username for mention detection.
@@ -394,7 +457,6 @@ class TelegramProvider extends ChannelProviderBase {
   Future<Map<String, dynamic>> _request(
     String method,
     Map<String, dynamic> values, {
-    bool get = false,
     Duration timeout = const Duration(seconds: 15),
     HttpClient? client,
     String? overrideToken,
@@ -404,24 +466,21 @@ class TelegramProvider extends ChannelProviderBase {
         (HttpClient()..connectionTimeout = const Duration(seconds: 10));
     final ownsClient = client == null;
     final useToken = overrideToken ?? token;
+    HttpClientRequest? request;
+    var connected = false;
+    var readingBody = false;
     try {
-      var uri = Uri.parse('${_apiOrigin()}/bot$useToken/$method');
-      if (get) {
-        uri = uri.replace(
-          queryParameters: {
-            for (final entry in values.entries) entry.key: '${entry.value}',
-          },
-        );
-      }
-      final request = get
-          ? await http.getUrl(uri).timeout(const Duration(seconds: 12))
-          : await http.postUrl(uri).timeout(const Duration(seconds: 12));
+      final uri = Uri.parse('${_apiOrigin()}/bot$useToken/$method');
+      request = await http.postUrl(uri).timeout(const Duration(seconds: 12));
+      connected = true;
       request.followRedirects = false;
-      if (!get) {
-        request.headers.contentType = ContentType.json;
-        request.write(jsonEncode(values));
-      }
+      // Use the same non-cacheable JSON POST for verification and receiving.
+      final bytes = utf8.encode(jsonEncode(values));
+      request.headers.contentType = ContentType.json;
+      request.contentLength = bytes.length;
+      request.add(bytes);
       final httpResponse = await request.close().timeout(timeout);
+      readingBody = true;
       final body = await httpResponse
           .transform(utf8.decoder)
           .join()
@@ -434,17 +493,51 @@ class TelegramProvider extends ChannelProviderBase {
         throw const HttpException('No definitive Telegram acknowledgement');
       }
       if (httpResponse.statusCode != HttpStatus.ok || payload?['ok'] != true) {
-        throw _failure(payload, httpResponse.statusCode);
+        throw _failure(payload, httpResponse.statusCode, method);
       }
       return payload!;
     } on TelegramFailure {
       rethrow;
-    } on Object {
+    } on Object catch (error) {
+      request?.abort();
       if (method == 'sendMessage') rethrow; // The platform may already have it.
-      throw const TelegramFailure('无法连接 Telegram，请检查网络后重试。');
+      final reason = switch (error) {
+        TimeoutException() =>
+          !connected
+              ? '建立连接超时。'
+              : readingBody
+              ? '读取响应超时。'
+              : '等待响应超时。',
+        TlsException() => 'TLS 安全连接失败，请检查系统时间及代理的证书设置。',
+        SocketException() when _isDnsFailure(error) =>
+          '无法解析 api.telegram.org，请检查 DNS 或代理分流。',
+        SocketException() || HttpException() =>
+          connected ? '接收响应时连接中断。' : '无法建立连接，请检查 OpenCode Plus 的网络或代理分流。',
+        FormatException() => '响应内容无法解析。',
+        _ => '请求未能完成，请重试。',
+      };
+      throw TelegramFailure(
+        'Telegram $method：$reason',
+        canShortenPoll:
+            method == 'getUpdates' &&
+            connected &&
+            (error is TimeoutException ||
+                error is HttpException ||
+                (error is SocketException && !_isDnsFailure(error))),
+      );
     } finally {
       if (ownsClient) http.close(force: true);
     }
+  }
+
+  static bool _isDnsFailure(SocketException error) {
+    final message = '${error.message} ${error.osError?.message ?? ''}'
+        .toLowerCase();
+    return message.contains('failed host lookup') ||
+        message.contains('no address associated with hostname') ||
+        message.contains('name or service not known') ||
+        message.contains('nodename nor servname') ||
+        message.contains('temporary failure in name resolution');
   }
 
   static Map<String, dynamic>? _payload(String body) {
@@ -456,30 +549,46 @@ class TelegramProvider extends ChannelProviderBase {
     }
   }
 
-  /// Telegram's own words when it gives any, plus the failures people
-  /// actually hit: a second poller, a revoked token, a rate limit.
+  /// Expose only known reasons and numeric codes. A gateway or an error
+  /// description could include the credential-bearing request URL.
   static TelegramFailure _failure(
     Map<String, dynamic>? payload,
     int statusCode,
+    String method,
   ) {
+    final apiError = payload?['ok'] == false;
     final raw = payload?['error_code'];
-    final code = raw is int ? raw : statusCode;
-    final description = payload?['description']?.toString().trim() ?? '';
+    final code = apiError && raw is int && raw >= 400 && raw <= 599
+        ? raw
+        : statusCode;
+    final description = payload?['description'];
+    if (statusCode == HttpStatus.ok && payload?['ok'] != false) {
+      return TelegramFailure('Telegram $method：返回了无法识别的 API 响应。');
+    }
     return switch (code) {
-      401 || 404 => const TelegramFailure('Bot Token 无效或已被撤销，请重新生成。'),
-      409 => const TelegramFailure('该 Bot 已被其他程序或 Webhook 占用，无法同时接收消息。'),
-      429 => const TelegramFailure(
-        'Telegram 请求过于频繁，稍后会自动重试。',
+      401 || 404 when apiError => TelegramFailure(
+        'Telegram $method：Bot Token 无效或已被撤销。',
+      ),
+      409 when apiError && method == 'getUpdates' => const TelegramFailure(
+        'Telegram getUpdates：该 Bot 已被其他程序或 Webhook 占用，无法同时接收消息。',
+      ),
+      429 => TelegramFailure(
+        'Telegram $method：请求过于频繁（429），稍后重试。',
         retryable: true,
         retryAfter: Duration(seconds: 5),
       ),
-      _ when description.isNotEmpty => TelegramFailure(
-        'Telegram 返回错误：$description',
-        retryable: code >= 500,
+      400
+          when method == 'getChat' &&
+              description is String &&
+              description.toLowerCase().contains('chat not found') =>
+        const TelegramFailure('尚未建立机器人私聊，请先发送 /start。', chatMissing: true),
+      403 when method == 'sendMessage' => const TelegramFailure(
+        'Telegram sendMessage：无权发送到该私聊（403），请确认未屏蔽机器人。',
       ),
       _ => TelegramFailure(
-        'Telegram 请求失败（HTTP $statusCode）。',
-        retryable: statusCode >= 500,
+        'Telegram $method 请求失败（${apiError ? 'API' : 'HTTP'} $code）。',
+        retryable: code >= 500,
+        canShortenPoll: method == 'getUpdates' && (code == 502 || code == 504),
       ),
     };
   }
@@ -556,11 +665,18 @@ class TelegramFailure implements Exception {
     this.message, {
     this.retryable = false,
     this.retryAfter,
+    this.canShortenPoll = false,
+    this.chatMissing = false,
   });
 
   final String message;
   final bool retryable;
   final Duration? retryAfter;
+
+  /// Only a timed-out/interrupted receive request can adapt its polling wait.
+  /// API authentication, conflict and rate-limit failures must stay visible.
+  final bool canShortenPoll;
+  final bool chatMissing;
 
   @override
   String toString() => message;

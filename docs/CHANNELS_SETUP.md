@@ -38,6 +38,16 @@ Telegram bot entry. Both open the same page.
 The relay removes any webhook and publishes the command menu when it starts, so a
 leftover webhook cannot leave it "connected but deaf".
 
+**Token verification succeeds but receiving fails:** verification calls `getMe`
+and (for an ID binding) `getChat`; it does not test the `getUpdates` receiver.
+The receiver uses JSON POST, reuses a healthy connection, and shortens its
+server-side wait from 25 to 10, then 5 seconds when a receive connection is
+interrupted or times out, keeping the confirmed update offset across retries.
+Use **重新连接消息接收** to retry immediately with the same session. If it still
+fails, the status names the failing method and distinguishes DNS, TLS,
+connection, timeout, invalid-response and API errors. Share that status text
+when reporting the problem; it never contains the Bot Token.
+
 ## QQ official bot
 
 Settings → 消息渠道 → **QQ 官方机器人**.

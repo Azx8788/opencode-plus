@@ -922,6 +922,23 @@ class TelegramBotBridge extends ChangeNotifier {
     });
   }
 
+  /// Reopen only the receiver; keep its offset and the engine's in-flight
+  /// turns. Retrying a network connection must not rebind the user's chat.
+  Future<void> reconnect() async {
+    if (_editingConfiguration || isPairing || !_canPoll) return;
+    final provider = _provider;
+    final owner = _ownerID;
+    final generation = _loadGeneration;
+    if (provider == null || owner == null) return;
+    await provider.disconnect();
+    if (_canPoll &&
+        _isCurrentProfile(owner, generation) &&
+        identical(_provider, provider)) {
+      provider.resumeReceiving();
+      _notify();
+    }
+  }
+
   /// Verifies the credential and whether the owner can be written to.
   ///
   /// Returns a notice for the settings page. A missing private chat is not an

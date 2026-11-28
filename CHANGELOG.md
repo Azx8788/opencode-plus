@@ -4,6 +4,11 @@ This project is in public alpha. Only the newest preview is supported.
 
 ## Unreleased integration
 
+  * Telegram receiving uses JSON POST and reuses a healthy connection. A
+    dropped or timed-out long poll automatically retries with a shorter wait.
+    Errors identify the API method and DNS, TLS, timeout or response failure;
+    token verification is no longer presented as proof that receiving works.
+    The Telegram page can reconnect the receiver without resetting its session.
   * New personal QQ configurations start with SnowLuma. On Android, Message
     channels has a separate Local SnowLuma manager for verifying, importing
     and running an existing ARM64 archive in built-in Ubuntu. The initial

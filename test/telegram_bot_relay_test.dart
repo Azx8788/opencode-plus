@@ -111,7 +111,11 @@ class _FakeTelegram {
       socket.destroy();
       return;
     }
-    final response = await _respond(method, body, request.uri.queryParameters);
+    final parameters = <String, dynamic>{
+      ...request.uri.queryParameters,
+      if (body.isNotEmpty) ...jsonDecode(body) as Map<String, dynamic>,
+    };
+    final response = await _respond(method, body, parameters);
     request.response
       ..statusCode = response.status
       ..headers.contentType = ContentType.json
@@ -122,7 +126,7 @@ class _FakeTelegram {
   Future<({int status, Map<String, dynamic> payload})> _respond(
     String method,
     String body,
-    Map<String, String> query,
+    Map<String, dynamic> query,
   ) async {
     switch (method) {
       case 'getUpdates':
@@ -139,7 +143,7 @@ class _FakeTelegram {
         }
         // A real long poll blocks; answering at once would spin the loop.
         await Future<void>.delayed(const Duration(milliseconds: 25));
-        final offset = int.tryParse(query['offset'] ?? '') ?? 0;
+        final offset = int.tryParse('${query['offset'] ?? ''}') ?? 0;
         lastPolledOffset = offset;
         _pending.removeWhere((update) => (update['update_id'] as int) < offset);
         final batch = List<Map<String, dynamic>>.of(_pending);
@@ -429,6 +433,40 @@ void main() {
     );
     expect(harness.bridge.snapshot.lastError, contains('占用'));
   });
+
+  test(
+    'manual reconnect keeps the session, engine and receive offset',
+    () async {
+      final harness = await _Harness.start();
+      addTearDown(harness.stop);
+      final id = harness.telegram.enqueue('before reconnect');
+      await _waitFor(() => harness.recorder.prompts.length == 1);
+      await _waitFor(() => harness.telegram.lastPolledOffset == id + 1);
+      final engine = harness.bridge.engine;
+      harness.telegram.conflictOnce();
+      await _waitFor(
+        () => harness.bridge.snapshot.phase == TelegramBotPhase.error,
+      );
+
+      await harness.bridge.reconnect();
+      await _waitFor(
+        () => harness.bridge.snapshot.phase == TelegramBotPhase.polling,
+      );
+      expect(harness.bridge.engine, same(engine));
+      expect(harness.bridge.snapshot.sessionID, 'ses-1');
+      expect(harness.telegram.lastPolledOffset, id + 1);
+      expect(harness.recorder.prompts, ['before reconnect']);
+      expect(harness.bridge.snapshot.lastError, isNull);
+      expect(
+        harness.telegram.calls.where((name) => name == 'deleteWebhook'),
+        hasLength(1),
+      );
+      expect(
+        harness.telegram.calls.where((name) => name == 'setMyCommands'),
+        hasLength(1),
+      );
+    },
+  );
 
   test('agent progress and the finished reply come back to Telegram', () async {
     final events = StreamController<EventEnvelope>.broadcast();
