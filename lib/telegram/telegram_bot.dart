@@ -64,6 +64,8 @@ class TelegramBotSnapshot {
     this.awaitingUsername,
     this.expectedUserID = '',
     this.lastError,
+    this.botVerified = false,
+    this.verifiedBotUsername,
   });
 
   final String? profileID;
@@ -74,6 +76,8 @@ class TelegramBotSnapshot {
   final TelegramBotPhase phase;
   final String? awaitingUsername;
   final String expectedUserID;
+  final bool botVerified;
+  final String? verifiedBotUsername;
 
   /// The last transport failure in words the person can act on, cleared when
   /// polling recovers. Null while everything works.
@@ -136,6 +140,7 @@ class TelegramBotBridge extends ChangeNotifier {
   static const directoryKeyPrefix = 'oc.telegramBot.directory.';
   static const workspaceKeyPrefix = 'oc.telegramBot.workspace.';
   static const _offsetPrefix = 'oc.telegramBot.offset.';
+  static const _verifiedBotPrefix = 'oc.telegramBot.verifiedBot.';
 
   final SharedPreferences _preferences;
   final TelegramIdentityStore _identityStore;
@@ -187,17 +192,37 @@ class TelegramBotBridge extends ChangeNotifier {
   String? get pairingError => _pairingError;
   bool get pairingSucceeded => _pairingSucceeded;
 
-  TelegramBotSnapshot get snapshot => TelegramBotSnapshot(
-    profileID: _ownerID,
-    chatID: _chatID,
-    sessionID: _sessionID,
-    enabled: _enabled,
-    hasToken: _token != null,
-    phase: _phase,
-    awaitingUsername: _usernameSetup?.username,
-    expectedUserID: _usernameSetup?.expectedID ?? '',
-    lastError: _loadError ?? _provider?.status.lastError,
-  );
+  TelegramBotSnapshot get snapshot {
+    final owner = _ownerID;
+    final current =
+        owner != null &&
+        owner == _profileID() &&
+        !_editingConfiguration &&
+        _token != null &&
+        _hasIdentity;
+    final verified = current
+        ? _preferences.getString(_profileKey(_verifiedBotPrefix, owner))
+        : null;
+    return TelegramBotSnapshot(
+      profileID: owner,
+      chatID: _chatID,
+      sessionID: _sessionID,
+      enabled: _enabled,
+      hasToken: _token != null,
+      phase: _phase,
+      awaitingUsername: _usernameSetup?.username,
+      expectedUserID: _usernameSetup?.expectedID ?? '',
+      lastError: _loadError ?? _provider?.status.lastError,
+      botVerified:
+          current &&
+          (verified == '-' ||
+              (verified != null && validTelegramUsername(verified)) ||
+              _phase == TelegramBotPhase.polling),
+      verifiedBotUsername: verified != null && validTelegramUsername(verified)
+          ? verified
+          : null,
+    );
+  }
 
   /// The engine behind the facade, exposed for diagnostics and tests that need
   /// to see the shared pipeline rather than the transport.
@@ -641,6 +666,7 @@ class TelegramBotBridge extends ChangeNotifier {
             attempt,
             token,
             previousToken,
+            username,
             message.senderId,
             updates.last.$1 + 1,
           );
@@ -696,6 +722,7 @@ class TelegramBotBridge extends ChangeNotifier {
     _PairingAttempt attempt,
     String token,
     String? previousToken,
+    String botUsername,
     String chatID,
     int offset,
   ) async {
@@ -704,6 +731,7 @@ class TelegramBotBridge extends ChangeNotifier {
     if (token != previousToken || _preferences.getString(chatKey) != chatID) {
       await _clearIdentityState(owner);
     }
+    if (token != previousToken) await _forgetVerifiedBot(owner);
     if (!_isCurrentPairing(attempt)) return;
     await _secureStorage.write(
       key: _profileKey(tokenKeyPrefix, owner),
@@ -721,6 +749,24 @@ class TelegramBotBridge extends ChangeNotifier {
     }
     if (!_isCurrentPairing(attempt)) return;
     await _setRelayEnabled(owner, true);
+    if (_isCurrentPairing(attempt)) _rememberVerifiedBot(owner, botUsername);
+  }
+
+  Future<void> _forgetVerifiedBot(String owner) async {
+    final key = _profileKey(_verifiedBotPrefix, owner);
+    if (_preferences.containsKey(key) && !await _preferences.remove(key)) {
+      throw const FormatException('无法清除旧的 Telegram 认证记录。');
+    }
+  }
+
+  void _rememberVerifiedBot(String owner, [String? confirmedUsername]) {
+    final key = _profileKey(_verifiedBotPrefix, owner);
+    final username = confirmedUsername ?? _provider?.botUsername;
+    final previous = _preferences.getString(key);
+    final value = username != null && validTelegramUsername(username)
+        ? username
+        : previous ?? '-';
+    if (value != previous) _preferences.setString(key, value).ignore();
   }
 
   Future<void> _clearIdentityState(
@@ -843,6 +889,7 @@ class TelegramBotBridge extends ChangeNotifier {
       }
       _checkConfigurationOwner(owner);
       if (replacement.isNotEmpty && replacement != previousToken) {
+        await _forgetVerifiedBot(owner);
         await _secureStorage.write(key: tokenKey, value: replacement);
         KitRedact.registerKnownSecret(replacement);
       }
@@ -857,6 +904,7 @@ class TelegramBotBridge extends ChangeNotifier {
     if (_profileID() == null) return;
     await _editConfiguration((owner) async {
       await _setRelayEnabled(owner, false);
+      await _forgetVerifiedBot(owner);
       await _secureStorage.delete(key: _profileKey(tokenKeyPrefix, owner));
     });
   }
@@ -867,6 +915,7 @@ class TelegramBotBridge extends ChangeNotifier {
     if (_profileID() == null) return;
     await _editConfiguration((owner) async {
       await _setRelayEnabled(owner, false);
+      await _forgetVerifiedBot(owner);
       await _withIdentity(() => _identityStore.replace(owner));
       await _secureStorage.delete(key: _profileKey(tokenKeyPrefix, owner));
       await _clearIdentityState(owner);
@@ -924,7 +973,14 @@ class TelegramBotBridge extends ChangeNotifier {
   }
 
   void _notify() {
-    if (!_disposed) notifyListeners();
+    if (_disposed) return;
+    final owner = _ownerID;
+    if (owner != null &&
+        owner == _profileID() &&
+        _phase == TelegramBotPhase.polling) {
+      _rememberVerifiedBot(owner);
+    }
+    notifyListeners();
   }
 
   @override

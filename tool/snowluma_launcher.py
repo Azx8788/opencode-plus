@@ -3,8 +3,9 @@
 The app never downloads SnowLuma. It copies the exact file the person picked
 into ROOT/import; this helper checks its size and SHA-256 against the published
 v2.4.2 Linux ARM64 assets, extracts it under ROOT/releases and runs the
-included launcher. Vendor output (QR codes, account data, stack traces) is
-discarded, never stored or passed back to the app.
+included launcher. The only retained output is the upstream initial WebUI
+password for this run, in a private file until it is changed or the run ends.
+QR codes, account data and all other vendor output are discarded.
 
 SnowLuma's EULA section 5.4 requires prior written authorization before a
 Proprietary Component is deployed through an automated script. Running this
@@ -15,6 +16,7 @@ see docs/SNOWLUMA_SETUP.md. Only stdlib is used.
 import argparse
 import fcntl
 import hashlib
+import hmac
 import http.client
 import json
 import os
@@ -41,6 +43,10 @@ RELEASES = {
 }
 HOST = '127.0.0.1'
 WEBUI_PORT = 5099
+BOOTSTRAP_RECORD = 'webui-bootstrap.json'
+BOOTSTRAP_LINE = re.compile(
+    rb'[0-9]{2}:[0-9]{2}:[0-9]{2} INFO +\[WebUI\] '
+    rb'initial credentials: user=admin password=([0-9a-f]{16})\r?\Z')
 MAX_EXTRACTED = 400 * 1024 * 1024
 MAX_MEMBERS = 40000
 SAFE_OPEN = os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
@@ -94,18 +100,27 @@ def write_record(path, value):
     atomic_bytes(path, json.dumps(value, ensure_ascii=False).encode('utf-8'))
 
 
-def read_record(path):
+def read_small_file(path, limit=65536):
     try:
         fd = os.open(path, os.O_RDONLY | SAFE_OPEN)
     except FileNotFoundError:
         return None
     try:
         info = os.fstat(fd)
-        if not stat.S_ISREG(info.st_mode) or info.st_size > 65536:
+        if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
             raise DeploymentError('storage')
-        data = os.read(fd, 65536)
+        data = os.read(fd, limit + 1)
+        if len(data) > limit:
+            raise DeploymentError('storage')
+        return data
     finally:
         os.close(fd)
+
+
+def read_record(path):
+    data = read_small_file(path)
+    if data is None:
+        return None
     try:
         value = json.loads(data)
     except ValueError:
@@ -280,6 +295,76 @@ def webui_ready():
         connection.close()
 
 
+class BootstrapOutput:
+    """Read only an exact v2.4.2 WebUI line, without accumulating raw logs."""
+
+    def __init__(self):
+        self.tail = b''
+
+    def feed(self, chunk):
+        parts = chunk.split(b'\n')
+        for part in parts[:-1]:
+            # None means this line was too long, so don't parse its suffix.
+            if self.tail is not None and len(self.tail) + len(part) <= 256:
+                match = BOOTSTRAP_LINE.fullmatch(self.tail + part)
+                if match:
+                    return match[1]
+            self.tail = b''
+        last = parts[-1]
+        if self.tail is not None:
+            self.tail = self.tail + last if len(self.tail) + len(last) <= 256 else None
+        return None
+
+
+def webui_auth_bytes(release_dir):
+    path = release_dir / 'config' / 'webui.json'
+    if os.path.realpath(path) != str(path):
+        return None
+    return read_small_file(path, limit=8192)
+
+
+def publish_bootstrap(root, release_dir, generation, password):
+    """Bind the plaintext to SnowLuma's current initial-password state."""
+    try:
+        data = webui_auth_bytes(release_dir)
+        auth = json.loads(data) if data is not None else None
+        if not isinstance(auth, dict) or auth.get('mustChangePassword') is not True:
+            return None
+        salt = bytes.fromhex(auth['passwordSalt'])
+        expected = bytes.fromhex(auth['passwordHash'])
+        if len(salt) != 16 or len(expected) != 64:
+            return None
+        actual = hashlib.scrypt(password, salt=salt, n=16384, r=8, p=1, dklen=64)
+        if not hmac.compare_digest(actual, expected):
+            return None
+        fingerprint = hashlib.sha256(data).hexdigest()
+        write_record(root / BOOTSTRAP_RECORD, {
+            'generation': generation,
+            'auth_sha256': fingerprint,
+            'token': password.decode('ascii'),
+        })
+        return fingerprint
+    except (DeploymentError, OSError, ValueError, TypeError, KeyError):
+        # Credential publication must not break the vendor's own WebUI.
+        return None
+
+
+def forget_bootstrap(root):
+    try:
+        (root / BOOTSTRAP_RECORD).unlink(missing_ok=True)
+    except OSError:
+        # The app also checks generation and password state before every copy.
+        pass
+
+
+def bootstrap_unchanged(release_dir, fingerprint):
+    try:
+        data = webui_auth_bytes(release_dir)
+        return data is not None and hashlib.sha256(data).hexdigest() == fingerprint
+    except (DeploymentError, OSError):
+        return False
+
+
 def find_node(root):
     bundled = root / 'node'
     if bundled.is_file() and os.access(bundled, os.X_OK):
@@ -322,6 +407,7 @@ def launch_env():
         'SNOWLUMA_STREAM_DIR': str(state / 'stream'),
         'SNOWLUMA_WEBUI_HOST': HOST,
         'SNOWLUMA_WEBUI_PORT': str(WEBUI_PORT),
+        'NO_COLOR': '1',
     }
 
 
@@ -391,6 +477,7 @@ def run(root, generation):
                      {'generation': generation, 'phase': phase, 'failure': failure})
 
     with lock(root / 'run.lock'):
+        forget_bootstrap(root)
         report('starting')
         release_dir = current(root)
         if release_dir is None:
@@ -418,22 +505,49 @@ def run(root, generation):
                 start_new_session=True)
             ready = False
             deadline = time.monotonic() + 150
+            bootstrap = BootstrapOutput()
+            fingerprint = None
+            next_check = 0
             with child.stdout, selectors.DefaultSelector() as selector:
                 selector.register(child.stdout, selectors.EVENT_READ)
                 os.set_blocking(child.stdout.fileno(), False)
+
+                def drain_output(timeout):
+                    nonlocal bootstrap, fingerprint
+                    for key, _ in selector.select(timeout):
+                        # Bounded draining also catches a line written between
+                        # the last select and the HTTP readiness response.
+                        for _ in range(8):
+                            try:
+                                chunk = os.read(key.fd, 16384)
+                            except BlockingIOError:
+                                break
+                            if not chunk:
+                                selector.unregister(key.fileobj)
+                                break
+                            if bootstrap is not None:
+                                password = bootstrap.feed(chunk)
+                                if password is not None:
+                                    fingerprint = publish_bootstrap(
+                                        root, release_dir, generation, password)
+                                    bootstrap = None
+
                 while not interrupted:
                     if child.poll() is not None:
                         raise DeploymentError('runtime_exited')
-                    for key, _ in selector.select(0.25):
-                        try:
-                            if not os.read(key.fd, 65536):
-                                selector.unregister(key.fileobj)
-                        except BlockingIOError:
-                            continue
+                    drain_output(0.25)
                     if not ready and webui_ready():
+                        drain_output(0)
+                        bootstrap = None
                         ready = True
                         report('running')
-                    if not ready and time.monotonic() > deadline:
+                    now = time.monotonic()
+                    if fingerprint is not None and now >= next_check:
+                        next_check = now + 2
+                        if not bootstrap_unchanged(release_dir, fingerprint):
+                            forget_bootstrap(root)
+                            fingerprint = None
+                    if not ready and now > deadline:
                         raise DeploymentError('start_timeout')
             report('stopped')
         except Exception as error:
@@ -441,6 +555,7 @@ def run(root, generation):
             report('failed', code)
             raise DeploymentError(code) from None
         finally:
+            forget_bootstrap(root)
             stop_child(child)
             for sig, handler in handlers.items():
                 signal.signal(sig, handler)

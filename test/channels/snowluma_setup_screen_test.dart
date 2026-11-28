@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:opencode_mobile/builtin/builtin_linux.dart';
-import 'package:opencode_mobile/builtin/snowluma_release.dart';
 import 'package:opencode_mobile/channels/providers/snowluma_local_probe.dart';
 import 'package:opencode_mobile/platform/platform_capabilities.dart';
 import 'package:opencode_mobile/ui/screens/settings/snowluma_setup_screen.dart';
@@ -100,22 +99,16 @@ void main() {
     expect(returned, SnowLumaLocalProbe.defaultWebSocketUrl);
   });
 
-  testWidgets('a source archive cannot be mistaken for a verified release', (
-    tester,
-  ) async {
-    await _pump(
-      tester,
-      SnowLumaSetupScreen(
-        pickArchive: () async => SnowLumaArchive(
-          length: () async => 5,
-          read: () => throw StateError('unrecognized archive must not be read'),
-        ),
-      ),
-    );
-    await tester.tap(find.byKey(_verify));
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('does not match a supported'), findsOneWidget);
-    expect(find.textContaining('matches the published SHA-256'), findsNothing);
-  });
+  testWidgets(
+    'the guide points to the local module but has no import controls',
+    (tester) async {
+      await _pump(tester, const SnowLumaSetupScreen());
+      expect(
+        find.textContaining('Message channels → Local SnowLuma'),
+        findsOneWidget,
+      );
+      expect(find.byKey(_verify), findsNothing);
+      expect(find.byKey(const ValueKey('snowluma-import-start')), findsNothing);
+    },
+  );
 }

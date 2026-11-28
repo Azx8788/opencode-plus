@@ -23,12 +23,22 @@ enum SnowLumaDeploymentPhase {
   linuxUnavailable,
 }
 
+enum SnowLumaWebUiAccess {
+  initialToken,
+  restartRequired,
+  ownPassword,
+  unavailable,
+}
+
+typedef _WebUiAccess = ({SnowLumaWebUiAccess state, String? token});
+
 /// Imports and starts SnowLuma from an archive the person picked themselves.
 ///
 /// The app never downloads SnowLuma and never signs in to QQ. It copies only
 /// the selected file into its own Ubuntu, re-checks the published size and
 /// SHA-256, extracts it under `/root/.oc-builtin/snowluma` and runs the
-/// included launcher. Vendor output is discarded by the helper.
+/// included launcher. The helper retains only the current initial WebUI token,
+/// separately from status and logs. It is not a OneBot or QQ credential.
 ///
 /// [shared] owns the work across navigation. `running` means the SnowLuma
 /// WebUI answered on the loopback; it never means QQ is signed in or that the
@@ -64,6 +74,7 @@ class SnowLumaDeployment extends ChangeNotifier {
   static const installerServiceName = 'snowluma-install';
   static const helperAsset = 'tool/snowluma_launcher.py';
   static const webUiPort = 5099;
+  static const _bootstrapRecord = 'webui-bootstrap.json';
   static const _steps = {'verify', 'install', 'start'};
   static const _failures = {
     'unsupported',
@@ -104,11 +115,14 @@ class SnowLumaDeployment extends ChangeNotifier {
   SnowLumaDeploymentPhase _phase = SnowLumaDeploymentPhase.checking;
   String? _stage;
   String? _failure;
+  SnowLumaArm64Release? _installedRelease;
+  String? _runningGeneration;
 
   SnowLumaDeploymentPhase get phase => _phase;
   bool get busy => _operation != null;
   String? get stage => _stage;
   String? get failure => _failure;
+  SnowLumaArm64Release? get installedRelease => _installedRelease;
   Uri get webUiUri =>
       Uri(scheme: 'http', host: '127.0.0.1', port: webUiPort, path: '/');
 
@@ -122,6 +136,7 @@ class SnowLumaDeployment extends ChangeNotifier {
 
   void _set(SnowLumaDeploymentPhase value, {String? stage, String? failure}) {
     _phase = value;
+    if (value != SnowLumaDeploymentPhase.running) _runningGeneration = null;
     _stage = _steps.contains(stage) ? stage : null;
     _failure = failure == null ? null : _safeFailure(failure);
     _changed();
@@ -161,6 +176,7 @@ class SnowLumaDeployment extends ChangeNotifier {
       _linux.stopService(name).timeout(const Duration(seconds: 20));
 
   Future<BuiltinLinuxStatus?> _check() async {
+    _installedRelease = null;
     _set(SnowLumaDeploymentPhase.checking, stage: null);
     if (!(_supported ?? BuiltinLinux.supported)) {
       _set(SnowLumaDeploymentPhase.unsupported);
@@ -211,6 +227,7 @@ class SnowLumaDeployment extends ChangeNotifier {
   }
 
   Future<bool> _installed() async {
+    _installedRelease = null;
     final Map<String, dynamic>? record;
     try {
       record = await _record('current.json');
@@ -220,19 +237,88 @@ class SnowLumaDeployment extends ChangeNotifier {
       throw const _DeploymentFailure('not_installed');
     }
     if (record == null) return false;
-    final release = record['release'];
-    final digest = record['sha256'];
-    final directory = record['directory'];
-    if (record['version'] != '2.4.2' ||
-        release is! String ||
-        SnowLumaArm64Release.values.every((value) => value.key != release) ||
-        digest is! String ||
-        !RegExp(r'^[a-f0-9]{64}$').hasMatch(digest) ||
-        directory is! String ||
-        !RegExp(r'^release-[a-f0-9]{16}$').hasMatch(directory)) {
-      throw const _DeploymentFailure('not_installed');
+    for (final release in SnowLumaArm64Release.values) {
+      if (record['version'] == '2.4.2' &&
+          record['release'] == release.key &&
+          record['sha256'] == release.sha256Hex &&
+          record['directory'] == _releaseDirectory(release)) {
+        _installedRelease = release;
+        return true;
+      }
     }
-    return true;
+    throw const _DeploymentFailure('not_installed');
+  }
+
+  static String _releaseDirectory(SnowLumaArm64Release release) =>
+      'release-${release.sha256Hex.substring(0, 16)}';
+
+  /// Reports the credential state without putting the token into UI state.
+  Future<SnowLumaWebUiAccess> webUiAccess() async =>
+      (await _readWebUiAccess()).state;
+
+  /// Reads the current initial token only on an explicit action. An old run,
+  /// a changed password or a service not managed by the app never returns it.
+  Future<String?> readInitialWebUiToken() async =>
+      (await _readWebUiAccess()).token;
+
+  Future<_WebUiAccess> _readWebUiAccess() async {
+    const unavailable = (state: SnowLumaWebUiAccess.unavailable, token: null);
+    final release = _installedRelease;
+    final generation = _runningGeneration;
+    if (_disposed || busy || release == null || generation == null) {
+      return unavailable;
+    }
+    try {
+      if (!(await _status()).serviceRunning(serviceName) ||
+          busy ||
+          generation != _runningGeneration) {
+        return unavailable;
+      }
+      final run = await _record('run.json');
+      if (run?['phase'] != 'running' || run?['generation'] != generation) {
+        return unavailable;
+      }
+      final entry = await _record(_bootstrapRecord);
+      final directory = 'releases/${_releaseDirectory(release)}';
+      for (final path in ['releases', directory, '$directory/config']) {
+        if (await FileSystemEntity.type(_file(path).path, followLinks: false) !=
+            FileSystemEntityType.directory) {
+          return unavailable;
+        }
+      }
+      final file = _file('$directory/config/webui.json');
+      if (await FileSystemEntity.type(file.path, followLinks: false) !=
+          FileSystemEntityType.file) {
+        return unavailable;
+      }
+      final handle = await file.open();
+      final List<int> bytes;
+      try {
+        bytes = await handle.read(8193);
+      } finally {
+        await handle.close();
+      }
+      if (bytes.length > 8192 || busy || generation != _runningGeneration) {
+        return unavailable;
+      }
+      final auth = jsonDecode(utf8.decode(bytes));
+      if (auth is! Map || auth['mustChangePassword'] is! bool) {
+        return unavailable;
+      }
+      if (auth['mustChangePassword'] == false) {
+        return (state: SnowLumaWebUiAccess.ownPassword, token: null);
+      }
+      final token = entry?['token'];
+      if (entry?['generation'] == generation &&
+          entry?['auth_sha256'] == sha256.convert(bytes).toString() &&
+          token is String &&
+          RegExp(r'^[0-9a-f]{16}$').hasMatch(token)) {
+        return (state: SnowLumaWebUiAccess.initialToken, token: token);
+      }
+      return (state: SnowLumaWebUiAccess.restartRequired, token: null);
+    } on Object {
+      return unavailable;
+    }
   }
 
   /// Reconciles the tracked service with the records and the loopback WebUI.
@@ -494,6 +580,7 @@ class SnowLumaDeployment extends ChangeNotifier {
             onTimeout: () => false,
           ) &&
           (await _status()).serviceRunning(serviceName)) {
+        _runningGeneration = generation;
         _set(SnowLumaDeploymentPhase.running);
         return;
       }
@@ -505,16 +592,39 @@ class SnowLumaDeployment extends ChangeNotifier {
 
   Future<void> stop() => _perform(() async {
     if (await _check() == null) return;
-    await _stop(serviceName);
-    if ((await _status()).serviceRunning(serviceName)) {
-      throw const _DeploymentFailure('stop_failed');
-    }
+    await _stopRuntime();
     _set(
       await _installed()
           ? SnowLumaDeploymentPhase.stopped
           : SnowLumaDeploymentPhase.notInstalled,
     );
   }, 'stop_failed');
+
+  /// Restarts a managed installation without importing or resetting its data.
+  Future<void> restart() => _perform(() async {
+    final status = await _check();
+    if (status == null) return;
+    if (!await _installed()) {
+      _set(SnowLumaDeploymentPhase.notInstalled);
+      return;
+    }
+    final helper = await _helper();
+    if (status.serviceRunning(serviceName)) await _stopRuntime();
+    await _start(helper);
+  }, 'start_failed');
+
+  Future<void> _stopRuntime() async {
+    await _stop(serviceName);
+    if ((await _status()).serviceRunning(serviceName)) {
+      throw const _DeploymentFailure('stop_failed');
+    }
+    // Android may have killed the helper before its finalizer ran.
+    try {
+      await _file(_bootstrapRecord).delete();
+    } on FileSystemException {
+      // Missing, or inaccessible; an inactive generation cannot expose it.
+    }
+  }
 
   /// Same page check as the read-only local probe: no redirects, no bodies
   /// beyond a title, no credentials.

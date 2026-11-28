@@ -6,6 +6,7 @@ import 'manager_agent_screen.dart';
 
 import '../../../builtin/builtin_server.dart' show looksLikeInAppServer;
 import '../../../builtin/llbot_deployment.dart';
+import '../../../builtin/snowluma_deployment.dart';
 import '../../../channels/channel_capabilities.dart';
 import '../../../channels/channel_config.dart';
 import '../../../channels/channel_hub.dart';
@@ -18,18 +19,23 @@ import '../../../telegram/telegram_bot.dart';
 import '../../app_theme.dart' show AppStatusTone;
 import '../../kit/kit.dart';
 import 'local_llbot_screen.dart';
+import 'local_snowluma_screen.dart';
 import 'snowluma_setup_screen.dart';
 import 'telegram_bot_screen.dart';
 
 /// 消息渠道: the one door to every messaging channel.
 ///
-/// Each row is a channel, its state in one word, and a page that configures it.
-/// Telegram keeps its own page because it has its own product behaviour; the
-/// two QQ channels are new and share the channel engine.
+/// Channel configuration, the phone's SnowLuma service, and a roster of
+/// accounts that have actually confirmed their identity.
 class ChannelsScreen extends StatefulWidget {
-  const ChannelsScreen({super.key, required this.controller});
+  const ChannelsScreen({
+    super.key,
+    required this.controller,
+    this.snowLumaDeployment,
+  });
 
   final ConnectionController controller;
+  final SnowLumaDeployment? snowLumaDeployment;
 
   @override
   State<ChannelsScreen> createState() => _ChannelsScreenState();
@@ -78,6 +84,47 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
     final telegram = _telegram.snapshot;
     final official = _channels.snapshotFor(ChannelProviderIds.officialQq);
     final oneBot = _channels.snapshotFor(ChannelProviderIds.oneBot11);
+    final implementation = switch (_channels.oneBotConfig.backend) {
+      OneBotBackend.snowLuma => 'SnowLuma',
+      OneBotBackend.napcat => 'NapCat',
+      OneBotBackend.llbot => 'LLBot',
+    };
+    final accounts = [
+      if (telegram.botVerified)
+        _accountCard(
+          ChannelProviderIds.telegram,
+          AppIconography.chat,
+          telegram.verifiedBotUsername == null
+              ? _text('Telegram bot', 'Telegram 机器人')
+              : '@${telegram.verifiedBotUsername}',
+          _text('Telegram · Bot API', 'Telegram · Bot API'),
+          _telegramPhaseLabel(telegram.phase),
+          _telegramTone(telegram.phase),
+          () => _open(TelegramBotScreen(controller: widget.controller)),
+        ),
+      if (official.verifiedAccountId case final id?)
+        _accountCard(
+          ChannelProviderIds.officialQq,
+          AppIconography.server,
+          _text('QQ official bot', 'QQ 官方机器人'),
+          'AppID $id',
+          _stateLabel(official.state, official.enabled),
+          _stateTone(official.state),
+          () => _open(OfficialQqScreen(controller: widget.controller)),
+        ),
+      if (oneBot.verifiedAccountId case final id?)
+        _accountCard(
+          ChannelProviderIds.oneBot11,
+          AppIconography.terminal,
+          'QQ $id',
+          '$implementation · OneBot 11',
+          oneBot.online && oneBot.enabled
+              ? _text('Connected', '已连接')
+              : _stateLabel(oneBot.state, oneBot.enabled),
+          _stateTone(oneBot.state),
+          () => _open(OneBot11Screen(controller: widget.controller)),
+        ),
+    ];
 
     return KitScreen(
       topBar: KitTopBar(title: _text('Message channels', '消息渠道')),
@@ -87,8 +134,8 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
         children: [
           KitText(
             _text(
-              'Let Telegram and QQ talk to the agent running on this phone. Every channel becomes an ordinary agent prompt; replies come back through the channel the request arrived on.',
-              '让 Telegram 和 QQ 与运行在本机的 Agent 对话。所有渠道的指令都会作为普通 Agent 提示词发送，结果通过原渠道返回。',
+              'Connect Telegram and QQ to your local agent. Replies return to the original chat.',
+              '将 Telegram 和 QQ 接入本机 Agent，回复会发回原会话。',
             ),
             role: KitTextRole.body,
           ),
@@ -101,80 +148,196 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
               ),
             ),
           ],
-          SizedBox(height: tokens.space4),
-          KitRow(
-            key: const ValueKey('channel-row-telegram'),
-            title: 'Telegram',
-            supporting: TextSpan(
-              text: _text('Official Bot API, long polling', '官方 Bot API，长轮询'),
-            ),
-            leading: KitRow.icon(context, AppIconography.chat),
-            trailing: KitStatusTag(
-              label: _telegramPhaseLabel(telegram.phase),
-              tone: _telegramTone(telegram.phase),
-            ),
-            onTap: () =>
-                _open(TelegramBotScreen(controller: widget.controller)),
-          ),
-          KitRow(
-            key: const ValueKey('channel-row-qq-official'),
-            title: _text('QQ official bot', 'QQ 官方机器人'),
-            supporting: TextSpan(
-              text: _text(
-                'Tencent Open Platform, gateway + OpenAPI',
-                '腾讯开放平台，Gateway + OpenAPI',
+          if (platformCapabilities.isAndroid) ...[
+            SizedBox(height: tokens.space4),
+            KitSurface.panel(
+              padding: KitSurfacePadding.none,
+              child: KitRow(
+                key: const ValueKey('channel-local-snowluma'),
+                title: _text('Local SnowLuma', '本机 SnowLuma'),
+                supporting: TextSpan(
+                  text: _text(
+                    'Import, run and manage WebUI access',
+                    '导入、启停与管理页令牌',
+                  ),
+                ),
+                supportingMaxLines: 2,
+                leading: const KitSurface.tile(
+                  AppIconography.terminal,
+                  tone: KitTextTone.accent,
+                ),
+                trailing: KitStatusTag(
+                  label: _text('Experimental', '实验性'),
+                  tone: KitStatusTagTone.needsYou,
+                ),
+                onTap: () => _open(
+                  LocalSnowLumaScreen(deployment: widget.snowLumaDeployment),
+                ),
               ),
             ),
-            leading: KitRow.icon(context, AppIconography.server),
-            trailing: KitStatusTag(
-              label: _stateLabel(official.state, official.enabled),
-              tone: _stateTone(official.state),
-            ),
-            onTap: () => _open(OfficialQqScreen(controller: widget.controller)),
-          ),
-          KitRow(
-            key: const ValueKey('channel-row-qq-onebot'),
-            title: _text('QQ personal account', 'QQ 普通账号'),
-            supporting: TextSpan(
-              text: _text(
-                'Connect your own SnowLuma, NapCat or LLBot service',
-                '连接你自行运行的 SnowLuma、NapCat 或 LLBot 服务',
+          ],
+          KitRowGroup(
+            label: _text('Channel settings', '渠道设置'),
+            margin: EdgeInsets.zero,
+            children: [
+              KitRow(
+                key: const ValueKey('channel-row-telegram'),
+                title: 'Telegram',
+                supporting: TextSpan(
+                  text: _text(
+                    'Official Bot API, long polling',
+                    '官方 Bot API，长轮询',
+                  ),
+                ),
+                leading: KitRow.icon(context, AppIconography.chat),
+                trailing: KitStatusTag(
+                  label: _telegramPhaseLabel(telegram.phase),
+                  tone: _telegramTone(telegram.phase),
+                ),
+                onTap: () =>
+                    _open(TelegramBotScreen(controller: widget.controller)),
               ),
-            ),
-            leading: KitRow.icon(context, AppIconography.terminal),
-            trailing: KitStatusTag(
-              label: _stateLabel(oneBot.state, oneBot.enabled),
-              tone: _stateTone(oneBot.state),
-            ),
-            onTap: () => _open(OneBot11Screen(controller: widget.controller)),
-          ),
-          KitRow(
-            key: const ValueKey('channel-row-manager'),
-            title: _text('Manager agent', '管理代理'),
-            supporting: TextSpan(
-              text: _text(
-                'A separate model decides what the person reads',
-                '独立模型决定用户看到什么',
+              KitRow(
+                key: const ValueKey('channel-row-qq-official'),
+                title: _text('QQ official bot', 'QQ 官方机器人'),
+                supporting: TextSpan(
+                  text: _text(
+                    'Tencent Open Platform, gateway + OpenAPI',
+                    '腾讯开放平台，Gateway + OpenAPI',
+                  ),
+                ),
+                leading: KitRow.icon(context, AppIconography.server),
+                trailing: KitStatusTag(
+                  label: _stateLabel(official.state, official.enabled),
+                  tone: _stateTone(official.state),
+                ),
+                onTap: () =>
+                    _open(OfficialQqScreen(controller: widget.controller)),
               ),
-            ),
-            leading: KitRow.icon(context, AppIconography.sparkle),
-            trailing: KitStatusTag(
-              label: _channels.managerReady
-                  ? _text('on', '已启用')
-                  : _text('off', '未启用'),
-              tone: _channels.managerReady
-                  ? KitStatusTagTone.done
-                  : KitStatusTagTone.failed,
-            ),
-            onTap: () =>
-                _open(ManagerAgentScreen(controller: widget.controller)),
+              KitRow(
+                key: const ValueKey('channel-row-qq-onebot'),
+                title: _text('QQ personal account', 'QQ 普通账号'),
+                supporting: TextSpan(
+                  text: _text(
+                    'SnowLuma, NapCat or LLBot · OneBot 11',
+                    'SnowLuma、NapCat 或 LLBot · OneBot 11',
+                  ),
+                ),
+                leading: KitRow.icon(context, AppIconography.terminal),
+                trailing: KitStatusTag(
+                  label: _stateLabel(oneBot.state, oneBot.enabled),
+                  tone: _stateTone(oneBot.state),
+                ),
+                onTap: () =>
+                    _open(OneBot11Screen(controller: widget.controller)),
+              ),
+              KitRow(
+                key: const ValueKey('channel-row-manager'),
+                title: _text('Manager agent', '管理代理'),
+                supporting: TextSpan(
+                  text: _text(
+                    'A separate model decides what the person reads',
+                    '独立模型决定用户看到什么',
+                  ),
+                ),
+                leading: KitRow.icon(context, AppIconography.sparkle),
+                trailing: KitStatusTag(
+                  label: _channels.managerReady
+                      ? _text('on', '已启用')
+                      : _text('off', '未启用'),
+                  tone: _channels.managerReady
+                      ? KitStatusTagTone.done
+                      : KitStatusTagTone.failed,
+                ),
+                onTap: () =>
+                    _open(ManagerAgentScreen(controller: widget.controller)),
+              ),
+            ],
           ),
+          SizedBox(height: tokens.space5),
+          Semantics(
+            header: true,
+            child: KitText(
+              _text('Verified accounts', '已验证账号'),
+              role: KitTextRole.headline,
+            ),
+          ),
+          SizedBox(height: tokens.space2),
+          if (accounts.isEmpty)
+            KitSurface.panel(
+              key: const ValueKey('channel-accounts-empty'),
+              title: _text('No verified accounts yet', '暂无已验证账号'),
+              icon: AppIconography.person,
+              child: KitText(
+                _text(
+                  'Accounts appear here after a channel connects successfully or you save a verified connection.',
+                  '渠道连接成功，或测试通过并保存后，账号会显示在这里。',
+                ),
+                role: KitTextRole.secondary,
+              ),
+            )
+          else
+            for (final (index, account) in accounts.indexed) ...[
+              if (index > 0) SizedBox(height: tokens.space2),
+              account,
+            ],
           SizedBox(height: tokens.space4),
           KitGroupNote(
             message: _text(
-              'Telegram and the official QQ bot are platform-authorised. A QQ personal account uses a third-party implementation: local LLBot is downloaded on demand into built-in Ubuntu; remote services can also be configured. The QQ platform does not authorise this route.',
-              'Telegram 与 QQ 官方机器人是平台授权渠道。QQ 普通账号使用第三方实现：本机 LLBot 按需下载到内置 Ubuntu，也可配置远程服务。腾讯平台未授权该接入方式。',
+              'QQ personal accounts use third-party OneBot services, not a Tencent-authorised connection.',
+              'QQ 普通账号通过第三方 OneBot 服务接入，并非腾讯授权渠道。',
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _accountCard(
+    String id,
+    IconData icon,
+    String title,
+    String detail,
+    String status,
+    KitStatusTagTone tone,
+    VoidCallback edit,
+  ) {
+    final tokens = KitTokens.of(context);
+    return KitSurface.panel(
+      key: ValueKey('channel-account-$id'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              KitSurface.tile(icon, tone: KitTextTone.accent),
+              SizedBox(width: tokens.space3),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    KitText(title, role: KitTextRole.headline),
+                    KitText(detail, role: KitTextRole.caption),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: tokens.space2),
+          Wrap(
+            spacing: tokens.space2,
+            runSpacing: tokens.space1,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              KitStatusTag(label: status, tone: tone),
+              KitButton.secondary(
+                key: ValueKey('channel-edit-$id'),
+                label: _text('Edit', '编辑'),
+                icon: AppIconography.edit,
+                onPressed: edit,
+                expand: false,
+              ),
+            ],
           ),
         ],
       ),
@@ -194,7 +357,7 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
     TelegramBotPhase.error => KitStatusTagTone.failed,
     TelegramBotPhase.starting => KitStatusTagTone.running,
     TelegramBotPhase.disabled ||
-    TelegramBotPhase.needsSetup => KitStatusTagTone.done,
+    TelegramBotPhase.needsSetup => KitStatusTagTone.failed,
   };
 
   String _stateLabel(ProviderState state, bool enabled) {
@@ -215,7 +378,7 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
     ProviderState.error ||
     ProviderState.reconnecting => KitStatusTagTone.failed,
     ProviderState.connecting => KitStatusTagTone.running,
-    _ => KitStatusTagTone.done,
+    _ => KitStatusTagTone.failed,
   };
 }
 
@@ -243,6 +406,8 @@ class _OfficialQqScreenState extends State<OfficialQqScreen> {
   bool _requireMention = true;
   bool _replacingSecret = false;
   bool _hasSecret = false;
+  int _secretRevision = 0;
+  (String, bool, int)? _verifiedDraft;
   bool _busy = false;
   String? _notice;
   String? _error;
@@ -320,12 +485,18 @@ class _OfficialQqScreenState extends State<OfficialQqScreen> {
       _notice = null;
     });
     try {
+      final candidate = _candidate();
       await _hub.saveOfficialQq(
-        _candidate(),
+        candidate,
         clientSecret: _replacingSecret ? _secret.text : null,
+        verifiedByTest:
+            _verifiedDraft ==
+            (candidate.appId, candidate.sandbox, _secretRevision),
       );
+      if (!mounted) return;
       _secret.clear();
       _replacingSecret = false;
+      _verifiedDraft = null;
       if (mounted) {
         setState(() {
           _notice = _text('QQ official bot settings saved.', 'QQ 官方机器人设置已保存。');
@@ -350,13 +521,21 @@ class _OfficialQqScreenState extends State<OfficialQqScreen> {
       _busy = true;
       _error = null;
       _notice = null;
+      _verifiedDraft = null;
     });
     try {
+      final candidate = _candidate();
+      final revision = _secretRevision;
       final notice = await _hub.testOfficialQq(
-        candidate: _candidate(),
+        candidate: candidate,
         clientSecret: _replacingSecret ? _secret.text : null,
       );
-      if (mounted) setState(() => _notice = notice);
+      if (mounted) {
+        setState(() {
+          _notice = notice;
+          _verifiedDraft = (candidate.appId, candidate.sandbox, revision);
+        });
+      }
     } on FormatException catch (error) {
       if (mounted) setState(() => _error = error.message);
     } on Object {
@@ -389,6 +568,7 @@ class _OfficialQqScreenState extends State<OfficialQqScreen> {
       _enabled = false;
       _hasSecret = false;
       _replacingSecret = false;
+      _verifiedDraft = null;
       _loadedFor = null;
       if (mounted) {
         setState(() {
@@ -465,7 +645,14 @@ class _OfficialQqScreenState extends State<OfficialQqScreen> {
             label: _text('ClientSecret', 'ClientSecret'),
             controller: _secret,
             saved: _hasSecret && !_replacingSecret,
-            onReplace: () => setState(() => _replacingSecret = true),
+            onReplace: () => setState(() {
+              _replacingSecret = true;
+              _secretRevision++;
+            }),
+            onChanged: (_) {
+              _replacingSecret = true;
+              _secretRevision++;
+            },
             enabled: !_busy,
             disabledReason: _busy ? _text('Saving', '正在保存') : null,
             helper: _text(
@@ -674,6 +861,7 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
   bool _savedTokenLoaded = false;
   bool _mustReplaceToken = false;
   int _tokenRevision = 0;
+  (_OneBotCredentialTarget, String, int, String)? _verifiedDraft;
   String? _notice;
   String? _error;
   String? _loadedFor;
@@ -994,7 +1182,19 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
     });
     try {
       final accessToken = _candidateAccessToken();
-      await _hub.saveOneBot11(_candidate(), accessToken: accessToken);
+      final candidate = _candidate();
+      final tested = _verifiedDraft;
+      await _hub.saveOneBot11(
+        candidate,
+        accessToken: accessToken,
+        verifiedAccountId:
+            tested != null &&
+                tested.$1 == _credentialTarget &&
+                tested.$2 == candidate.expectedSelfId &&
+                tested.$3 == _tokenRevision
+            ? tested.$4
+            : null,
+      );
       if (mounted) {
         setState(() {
           _tokenRevision++;
@@ -1007,6 +1207,7 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
           _mustReplaceToken = false;
           _token.clear();
           _replacingToken = false;
+          _verifiedDraft = null;
           _notice = _text('OneBot 11 settings saved.', 'OneBot 11 设置已保存。');
         });
       }
@@ -1032,21 +1233,26 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
       _busy = true;
       _error = null;
       _notice = null;
+      _verifiedDraft = null;
     });
     try {
       final candidate = _candidate();
+      final target = _credentialTarget;
+      final revision = _tokenRevision;
       final result = await _hub.testOneBot11(
         candidate: candidate,
         accessToken: _candidateAccessToken(),
       );
       if (!mounted) return;
       setState(() {
+        if (candidate.backend == OneBotBackend.snowLuma &&
+            candidate.expectedSelfId.isEmpty) {
+          _selfId.text = result.selfId;
+        }
+        _verifiedDraft = (target, _selfId.text.trim(), revision, result.selfId);
         if (candidate.backend != OneBotBackend.snowLuma) {
           _notice = result.notice;
           return;
-        }
-        if (candidate.expectedSelfId.isEmpty) {
-          _selfId.text = result.selfId;
         }
         _notice = _text(
           'SnowLuma reports QQ ${result.selfId} online and the connection healthy. No message was sent. Review the account and allowlists before saving.',

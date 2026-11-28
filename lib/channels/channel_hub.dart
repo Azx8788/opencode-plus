@@ -36,6 +36,7 @@ class ChannelAccountSnapshot {
     this.boundSessionID,
     this.queuedCount = 0,
     this.running = false,
+    this.verifiedAccountId,
   });
 
   final String providerId;
@@ -48,6 +49,10 @@ class ChannelAccountSnapshot {
   final String? boundSessionID;
   final int queuedCount;
   final bool running;
+
+  /// Display identity confirmed on a connection or a saved connection test.
+  /// It says nothing about the channel still being enabled or online.
+  final String? verifiedAccountId;
 
   bool get online => state == ProviderState.online;
 
@@ -124,6 +129,10 @@ class ChannelHub extends ChangeNotifier {
   OneBot11Config _oneBotConfig = const OneBot11Config();
   OfficialQqProvider? _officialProvider;
   OneBot11Provider? _oneBotProvider;
+  OfficialQqConfig? _officialRuntimeConfig;
+  OneBot11Config? _oneBotRuntimeConfig;
+  int _officialSaves = 0;
+  int _oneBotSaves = 0;
   ChannelConversationEngine? _officialEngine;
   ChannelConversationEngine? _oneBotEngine;
   String? _ownerProfile;
@@ -228,6 +237,9 @@ class ChannelHub extends ChangeNotifier {
           boundSessionID: _officialEngine?.boundSessionID,
           queuedCount: _officialEngine?.queuedCount ?? 0,
           running: _officialEngine?.isRunning ?? false,
+          verifiedAccountId: _officialSaves == 0
+              ? config.verifiedOfficialAccount(_officialConfig)
+              : null,
         );
       case ChannelProviderIds.oneBot11:
         final provider = _oneBotProvider;
@@ -248,6 +260,9 @@ class ChannelHub extends ChangeNotifier {
           boundSessionID: _oneBotEngine?.boundSessionID,
           queuedCount: _oneBotEngine?.queuedCount ?? 0,
           running: _oneBotEngine?.isRunning ?? false,
+          verifiedAccountId: _oneBotSaves == 0
+              ? config.verifiedOneBotAccount(_oneBotConfig)
+              : null,
         );
       default:
         throw ArgumentError.value(providerId, 'providerId', 'not a QQ channel');
@@ -266,6 +281,7 @@ class ChannelHub extends ChangeNotifier {
     final provider = _officialProvider;
     _officialEngine = null;
     _officialProvider = null;
+    _officialRuntimeConfig = null;
     await engine?.stop();
     await provider?.dispose();
     if (_disposed || !_initialized) return;
@@ -273,6 +289,7 @@ class ChannelHub extends ChangeNotifier {
       _notify();
       return;
     }
+    final target = _officialConfig;
     final String? secret;
     try {
       secret = await config.readOfficialQqSecret();
@@ -282,22 +299,21 @@ class ChannelHub extends ChangeNotifier {
       _notify();
       return;
     }
+    if (_disposed || !identical(target, _officialConfig)) return;
     if (secret == null || secret.isEmpty) {
       _notify();
       return;
     }
     final created = OfficialQqProvider(
-      accountId: _officialConfig.appId,
-      appId: _officialConfig.appId,
+      accountId: target.appId,
+      appId: target.appId,
       clientSecret: secret,
-      sandbox: _officialConfig.sandbox,
-      intents: _officialConfig.intents,
+      sandbox: target.sandbox,
+      intents: target.intents,
     );
-    final built = _buildEngine(
-      provider: created,
-      policy: _officialConfig.policy,
-    );
+    final built = _buildEngine(provider: created, policy: target.policy);
     _officialProvider = created;
+    _officialRuntimeConfig = target;
     _officialEngine = built;
     await built.start();
     if (_disposed) {
@@ -313,6 +329,7 @@ class ChannelHub extends ChangeNotifier {
     final provider = _oneBotProvider;
     _oneBotEngine = null;
     _oneBotProvider = null;
+    _oneBotRuntimeConfig = null;
     await engine?.stop();
     await provider?.dispose();
     if (_disposed || !_initialized) return;
@@ -320,6 +337,7 @@ class ChannelHub extends ChangeNotifier {
       _notify();
       return;
     }
+    final target = _oneBotConfig;
     String token;
     try {
       token = await config.readOneBot11Token() ?? '';
@@ -327,20 +345,22 @@ class ChannelHub extends ChangeNotifier {
       _notify();
       return;
     }
+    if (_disposed || !identical(target, _oneBotConfig)) return;
     final created = OneBot11Provider(
-      accountId: _oneBotConfig.expectedSelfId.isEmpty
-          ? _oneBotConfig.webSocketUrl
-          : _oneBotConfig.expectedSelfId,
-      webSocketUrl: _oneBotConfig.webSocketUrl,
+      accountId: target.expectedSelfId.isEmpty
+          ? target.webSocketUrl
+          : target.expectedSelfId,
+      webSocketUrl: target.webSocketUrl,
       accessToken: token,
-      expectedSelfId: _oneBotConfig.expectedSelfId,
-      transport: _oneBotConfig.transport == OneBotTransport.reverse
+      expectedSelfId: target.expectedSelfId,
+      transport: target.transport == OneBotTransport.reverse
           ? OneBot11Transport.reverse
           : OneBot11Transport.forward,
-      listenPort: _oneBotConfig.listenPort,
+      listenPort: target.listenPort,
     );
-    final built = _buildEngine(provider: created, policy: _oneBotConfig.policy);
+    final built = _buildEngine(provider: created, policy: target.policy);
     _oneBotProvider = created;
+    _oneBotRuntimeConfig = target;
     _oneBotEngine = built;
     await built.start();
     if (_disposed) {
@@ -429,22 +449,42 @@ class ChannelHub extends ChangeNotifier {
     OfficialQqConfig next, {
     String? clientSecret,
     bool restart = true,
+    bool verifiedByTest = false,
   }) async {
-    await config.saveOfficialQq(next, clientSecret: clientSecret);
-    _officialConfig = config.loadOfficialQq();
-    if (restart) await _applyOfficial();
-    _notify();
+    _officialSaves++;
+    _officialRuntimeConfig = null;
+    try {
+      await config.saveOfficialQq(next, clientSecret: clientSecret);
+      _officialConfig = config.loadOfficialQq();
+      if (verifiedByTest) {
+        config.rememberOfficialAccount(_officialConfig).ignore();
+      }
+      if (restart) await _applyOfficial();
+    } finally {
+      _officialSaves--;
+      _notify();
+    }
   }
 
   Future<void> saveOneBot11(
     OneBot11Config next, {
     String? accessToken,
     bool restart = true,
+    String? verifiedAccountId,
   }) async {
-    await config.saveOneBot11(next, accessToken: accessToken);
-    _oneBotConfig = config.loadOneBot11();
-    if (restart) await _applyOneBot();
-    _notify();
+    _oneBotSaves++;
+    _oneBotRuntimeConfig = null;
+    try {
+      await config.saveOneBot11(next, accessToken: accessToken);
+      _oneBotConfig = config.loadOneBot11();
+      if (verifiedAccountId != null) {
+        config.rememberOneBotAccount(_oneBotConfig, verifiedAccountId).ignore();
+      }
+      if (restart) await _applyOneBot();
+    } finally {
+      _oneBotSaves--;
+      _notify();
+    }
   }
 
   Future<void> setOfficialEnabled(bool enabled) async {
@@ -584,7 +624,21 @@ class ChannelHub extends ChangeNotifier {
   }
 
   void _notify() {
-    if (!_disposed) notifyListeners();
+    if (_disposed) return;
+    if (_officialSaves == 0 &&
+        identical(_officialRuntimeConfig, _officialConfig) &&
+        _officialProvider?.status.isOnline == true) {
+      config.rememberOfficialAccount(_officialConfig).ignore();
+    }
+    final oneBot = _oneBotProvider;
+    final selfId = oneBot?.selfId;
+    if (_oneBotSaves == 0 &&
+        identical(_oneBotRuntimeConfig, _oneBotConfig) &&
+        oneBot?.status.isOnline == true &&
+        selfId != null) {
+      config.rememberOneBotAccount(_oneBotConfig, selfId).ignore();
+    }
+    notifyListeners();
   }
 
   @override

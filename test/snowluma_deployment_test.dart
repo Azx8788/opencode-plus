@@ -28,6 +28,21 @@ class _Linux extends BuiltinLinux {
   File file(String name) =>
       File('${rootfs.path}${SnowLumaDeployment.root}/$name');
 
+  static final authPath =
+      'releases/release-${SnowLumaArm64Release.lite.sha256Hex.substring(0, 16)}/config/webui.json';
+  static const initialToken = '0123456789abcdef';
+
+  Future<void> bootstrap({String? generation}) async {
+    await write(authPath, {'mustChangePassword': true});
+    await write('webui-bootstrap.json', {
+      'generation': generation ?? _runGeneration,
+      'auth_sha256': sha256
+          .convert(await file(authPath).readAsBytes())
+          .toString(),
+      'token': initialToken,
+    });
+  }
+
   Future<void> write(String name, Object value) async {
     final target = file(name);
     await target.parent.create(recursive: true);
@@ -294,6 +309,67 @@ void main() {
     expect(deployment.phase, SnowLumaDeploymentPhase.failed);
     expect(deployment.failure, 'start_timeout');
     expect(linux.services, isEmpty);
+  });
+
+  test('reads only the active managed WebUI initial token', () async {
+    final deployment = build();
+    await linux.installed();
+    await deployment.start();
+    await linux.bootstrap();
+
+    expect(await deployment.webUiAccess(), SnowLumaWebUiAccess.initialToken);
+    expect(await deployment.readInitialWebUiToken(), _Linux.initialToken);
+
+    linux.services.clear();
+    expect(await deployment.webUiAccess(), SnowLumaWebUiAccess.unavailable);
+    expect(await deployment.readInitialWebUiToken(), isNull);
+  });
+
+  test('stale, lost and rotated tokens are never copied', () async {
+    final deployment = build();
+    await linux.installed();
+    await deployment.start();
+    await linux.bootstrap(generation: '0' * 32);
+    expect(await deployment.webUiAccess(), SnowLumaWebUiAccess.restartRequired);
+    expect(await deployment.readInitialWebUiToken(), isNull);
+
+    await linux.bootstrap();
+    await linux.write(_Linux.authPath, {
+      'mustChangePassword': true,
+      'new': true,
+    });
+    expect(await deployment.webUiAccess(), SnowLumaWebUiAccess.restartRequired);
+    expect(await deployment.readInitialWebUiToken(), isNull);
+
+    await linux.file('webui-bootstrap.json').delete();
+    expect(await deployment.webUiAccess(), SnowLumaWebUiAccess.restartRequired);
+
+    await linux.bootstrap();
+    await linux.write(_Linux.authPath, {'mustChangePassword': false});
+    expect(await deployment.webUiAccess(), SnowLumaWebUiAccess.ownPassword);
+    expect(await deployment.readInitialWebUiToken(), isNull);
+  });
+
+  test('restart does not reimport the release or reset its password', () async {
+    final deployment = build();
+    await linux.installed();
+    await deployment.start();
+    final before = linux._runGeneration;
+    await linux.bootstrap();
+    await deployment.restart();
+
+    expect(deployment.phase, SnowLumaDeploymentPhase.running);
+    expect(deployment.installedRelease, SnowLumaArm64Release.lite);
+    expect(linux._runGeneration, isNot(before));
+    expect(linux.installJob, isNull);
+    expect(await linux.file('webui-bootstrap.json').exists(), isFalse);
+    expect(await linux.file(_Linux.authPath).exists(), isTrue);
+    expect(await deployment.webUiAccess(), SnowLumaWebUiAccess.restartRequired);
+    await linux.bootstrap();
+    expect(await deployment.readInitialWebUiToken(), _Linux.initialToken);
+    await deployment.stop();
+    expect(await deployment.readInitialWebUiToken(), isNull);
+    expect(await linux.file('webui-bootstrap.json').exists(), isFalse);
   });
 
   group('archive copy', () {

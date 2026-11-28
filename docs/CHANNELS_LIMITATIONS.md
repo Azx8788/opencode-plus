@@ -27,7 +27,7 @@ credentials and approvals this repository does not have.
 | OneBot 11: send with echo correlation and retcode checks | Yes | Yes | **Not verified** |
 | OneBot 11: heartbeat watchdog and reconnect | Yes | Yes | **Not verified** |
 | Built-in Ubuntu LLBot deployment: download, verify, install, configure, start/stop and embedded WebUI | Yes, official v8.3.2 Linux ARM64 runtime downloaded on demand | UI regressions use an injected controller | **Not verified** against a real QQ account; upstream authorisation and QQ sign-in still required |
-| SnowLuma package verification, Android import/start and test | SHA-256 check, safe extraction, launcher service, loopback services and OneBot status | Tests use local fixtures and an injected controller | ARM64 Lite WebUI reached after import; QQ attachment/login and real delivery not verified |
+| SnowLuma package verification, Android import/start and test | SHA-256 check, safe extraction, launcher service, loopback services and OneBot status | Tests use local fixtures and an injected controller | ARM64 Lite WebUI reached and accepted its initial token; QQ attachment/login and real delivery not verified |
 
 ## Platform limits the app cannot lift
 
@@ -57,9 +57,10 @@ credentials and approvals this repository does not have.
   The person must already have a valid LLBot Auth Token (registrations are closed),
   enter it in the local WebUI and scan QQ's QR code. The OneBot listener starts
   after login at `ws://127.0.0.1:3001/`.
-* SnowLuma is never downloaded or bundled by this app. On Android the app can
-  import and start the exact archive the person selected after matching its
-  published SHA-256; QQ sign-in, EULA acceptance and OneBot setup stay manual.
+* SnowLuma is never downloaded or bundled by this app. The separate Android
+  module can import and start the exact archive the person selected after
+  matching its published SHA-256, and copy its initial WebUI access token.
+  QQ sign-in, EULA acceptance and OneBot setup stay manual.
   See the [setup guide](SNOWLUMA_SETUP.md) for licensing and Android limits.
 * Generated WebUI and OneBot credentials are separate from upstream authorisation.
   Deploying does not enable the relay. Importing a local connection edits only

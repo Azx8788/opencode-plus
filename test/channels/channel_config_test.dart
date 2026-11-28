@@ -63,6 +63,50 @@ void main() {
     expect(await store.readOfficialQqSecret(), isNull);
   });
 
+  test(
+    'official QQ card identity survives disabling but not a new secret',
+    () async {
+      final store = await _store();
+      const account = OfficialQqConfig(appId: '102000001', enabled: true);
+      await store.saveOfficialQq(account, clientSecret: 'first-fixture-secret');
+      expect(store.verifiedOfficialAccount(account), isNull);
+      await store.rememberOfficialAccount(account);
+
+      await store.saveOfficialQq(account.copyWith(enabled: false));
+      expect(
+        store.verifiedOfficialAccount(store.loadOfficialQq()),
+        account.appId,
+      );
+      await store.saveOfficialQq(
+        account,
+        clientSecret: 'second-fixture-secret',
+      );
+      expect(store.verifiedOfficialAccount(store.loadOfficialQq()), isNull);
+    },
+  );
+
+  test('OneBot card uses verification, not a typed account id', () async {
+    final store = await _store();
+    const config = OneBot11Config(
+      expectedSelfId: '12345',
+      webSocketUrl: 'ws://127.0.0.1:3001/',
+    );
+    await store.saveOneBot11(config, accessToken: 'fixture-token');
+    expect(store.verifiedOneBotAccount(config), isNull);
+    await store.rememberOneBotAccount(config, '54321');
+    expect(store.verifiedOneBotAccount(config), isNull);
+    await store.rememberOneBotAccount(config, '12345');
+    await store.saveOneBot11(config.copyWith(allowedUsers: {'12345'}));
+    expect(store.verifiedOneBotAccount(store.loadOneBot11()), '12345');
+
+    await store.saveOneBot11(
+      config.copyWith(webSocketUrl: 'ws://127.0.0.1:3002/'),
+    );
+    expect(store.verifiedOneBotAccount(store.loadOneBot11()), isNull);
+    await store.clearOneBot11();
+    expect(store.verifiedOneBotAccount(store.loadOneBot11()), isNull);
+  });
+
   test('a WebSocket address must be ws or wss with a host', () async {
     final store = await _store();
     for (final bad in ['', 'http://host:3001', 'ws://', 'host:3001']) {

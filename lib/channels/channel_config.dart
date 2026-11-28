@@ -339,9 +339,50 @@ class ChannelConfigStore {
   static const _oneBotPrefix = 'oc.channels.onebot11.';
   static const qqSecretKey = '${_qqPrefix}clientSecret';
   static const oneBotTokenKey = '${_oneBotPrefix}accessToken';
+  static const _qqVerifiedKey = '${_qqPrefix}verifiedAccount';
+  static const _oneBotVerifiedKey = '${_oneBotPrefix}verifiedAccount';
 
   final SharedPreferences _preferences;
   final FlutterSecureStorage _secureStorage;
+
+  /// Display-only metadata, never a source of authentication or permissions.
+  /// A manually entered account number or a saved token is not verification.
+  String? verifiedOfficialAccount(OfficialQqConfig config) {
+    final id = _preferences.getString(_qqVerifiedKey);
+    return id == config.appId && _validAppId(config.appId) ? id : null;
+  }
+
+  String? verifiedOneBotAccount(OneBot11Config config) {
+    final id = _preferences.getString(_oneBotVerifiedKey);
+    return id != null && _matchesOneBot(config, id) ? id : null;
+  }
+
+  Future<void> rememberOfficialAccount(OfficialQqConfig config) async {
+    final id = config.appId;
+    if (_validAppId(id) && _preferences.getString(_qqVerifiedKey) != id) {
+      await _preferences.setString(_qqVerifiedKey, id);
+    }
+  }
+
+  Future<void> rememberOneBotAccount(OneBot11Config config, String id) async {
+    if (_matchesOneBot(config, id) &&
+        _preferences.getString(_oneBotVerifiedKey) != id) {
+      await _preferences.setString(_oneBotVerifiedKey, id);
+    }
+  }
+
+  static bool _validAppId(String id) => RegExp(r'^[0-9]{5,20}$').hasMatch(id);
+
+  static bool _matchesOneBot(OneBot11Config config, String id) =>
+      config.configured &&
+      RegExp(r'^[0-9]{5,12}$').hasMatch(id) &&
+      (config.expectedSelfId.isEmpty || config.expectedSelfId == id);
+
+  Future<void> _forgetAccount(String key) async {
+    if (_preferences.containsKey(key) && !await _preferences.remove(key)) {
+      throw const FormatException('无法清除旧的账号验证记录。');
+    }
+  }
 
   // ------------------------------------------------------------ official QQ
 
@@ -373,14 +414,21 @@ class ChannelConfigStore {
     String? clientSecret,
   }) async {
     final appId = config.appId.trim();
-    if (config.enabled && !RegExp(r'^[0-9]{5,20}$').hasMatch(appId)) {
+    if (config.enabled && !_validAppId(appId)) {
       throw const FormatException('AppID 需要是 5 到 20 位数字。');
     }
     final secret = clientSecret?.trim();
+    if (secret?.isNotEmpty == true &&
+        !RegExp(r'^[A-Za-z0-9_-]{8,128}$').hasMatch(secret!)) {
+      throw const FormatException('ClientSecret 格式不正确。');
+    }
+    final previous = loadOfficialQq();
+    if (secret?.isNotEmpty == true ||
+        previous.appId != appId ||
+        previous.sandbox != config.sandbox) {
+      await _forgetAccount(_qqVerifiedKey);
+    }
     if (secret != null && secret.isNotEmpty) {
-      if (!RegExp(r'^[A-Za-z0-9_-]{8,128}$').hasMatch(secret)) {
-        throw const FormatException('ClientSecret 格式不正确。');
-      }
       await _secureStorage.write(key: qqSecretKey, value: secret);
       KitRedact.registerKnownSecret(secret);
     }
@@ -400,6 +448,7 @@ class ChannelConfigStore {
   }
 
   Future<void> clearOfficialQq() async {
+    await _forgetAccount(_qqVerifiedKey);
     await _preferences.remove('${_qqPrefix}config');
     await _secureStorage.delete(key: qqSecretKey);
   }
@@ -446,8 +495,17 @@ class ChannelConfigStore {
         token?.isNotEmpty == true ? token : (await readOneBot11Token())?.trim(),
       );
     }
+    if (token?.isNotEmpty == true) config.validateAccessToken(token);
+    final previous = loadOneBot11();
+    if (token?.isNotEmpty == true ||
+        previous.backend != config.backend ||
+        previous.transport != config.transport ||
+        previous.webSocketUrl != url ||
+        previous.listenPort != config.listenPort ||
+        previous.expectedSelfId != selfId) {
+      await _forgetAccount(_oneBotVerifiedKey);
+    }
     if (token != null && token.isNotEmpty) {
-      config.validateAccessToken(token);
       await _secureStorage.write(key: oneBotTokenKey, value: token);
       KitRedact.registerKnownSecret(token);
     }
@@ -463,6 +521,7 @@ class ChannelConfigStore {
   }
 
   Future<void> clearOneBot11() async {
+    await _forgetAccount(_oneBotVerifiedKey);
     await _preferences.remove('${_oneBotPrefix}config');
     await _secureStorage.delete(key: oneBotTokenKey);
   }

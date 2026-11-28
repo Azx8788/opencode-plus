@@ -4,12 +4,14 @@ This project is in public alpha. Only the newest preview is supported.
 
 ## Unreleased integration
 
-  * New personal QQ configurations start with SnowLuma. The setup guide verifies
-    manually downloaded ARM64 bundles, checks default local ports and tests the
-    QQ account through OneBot. On Android, after a confirmation, it can copy the
-    verified file into the built-in Ubuntu, extract it and start its launcher;
-    the app never downloads SnowLuma or signs in to QQ. Existing LLBot and NapCat
-    configurations are preserved.
+  * New personal QQ configurations start with SnowLuma. On Android, Message
+    channels has a separate Local SnowLuma manager for verifying, importing
+    and running an existing ARM64 archive in built-in Ubuntu. The initial
+    WebUI token can be copied from the manager or from above the WebUI. The
+    guide stays focused on connecting and testing OneBot. The app never downloads
+    SnowLuma or signs in to QQ, and existing LLBot and NapCat configs are preserved.
+  * Message channels shows verified account cards with connection state and an
+    edit shortcut. Unverified drafts and a running SnowLuma WebUI are not accounts.
   * The subagent draft catalogue accepts OpenCode V2's bare project arrays as
     well as data envelopes. A read/parse failure no longer tells the person
     that an otherwise working server must be connected first.

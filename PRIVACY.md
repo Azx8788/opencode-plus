@@ -100,21 +100,27 @@ LLBot and Tencent receive the prompts and replies carried by this channel;
 their retention policies apply. The runtime is downloaded on demand, not
 included in the APK.
 
-For a user-managed SnowLuma service, OpenCode Plus never downloads SnowLuma and
-never reads desktop QQ session files or SnowLuma credentials. Optional archive
+For a user-managed SnowLuma service, OpenCode Plus never downloads SnowLuma or
+reads desktop QQ session files. Optional archive
 verification reads only the file you select and does not transmit it. If you
 confirm an import on Android, the app copies that file into its own Ubuntu,
 re-checks the published SHA-256, extracts it and starts the included launcher as
-a local service; vendor output (including initial WebUI credentials or QR codes)
-is discarded and never stored by the app. Local discovery checks the default
+a local service. The only retained vendor output is the initial WebUI access
+token for this managed run. It is kept in a private Ubuntu file, is not part of
+logs or status records, and can be copied to the system clipboard on request.
+The helper removes it when the password changes or the run ends normally;
+the app refuses to copy it from a previous run. QR codes, logs and all other
+runtime output are discarded by the helper. Local discovery checks the default
 loopback ports without credentials. A OneBot test sends the configured access
 token to the selected service and uses read-only account/status actions; it does
 not send QQ messages. After enabling the relay, prompts and replies are carried
 by the OneBot service you configured and by QQ.
 
-Disabling a channel stops its connection. Removing its configuration deletes
-the stored credentials together with the de-duplication and delivery records
-for that account. None of this deletes anything already sent to Telegram,
+The channel overview keeps a display-only account ID or bot name for a
+previously verified connection. It is not used for authorization. Disabling
+a channel stops its connection. Removing its configuration deletes the stored
+credentials and display verification together with the de-duplication and
+delivery records for that account. None of this deletes anything already sent to Telegram,
 Tencent or your OneBot service.
 Stopping the managed LLBot process preserves its local login state. Removing
 the channel configuration does not uninstall LLBot or erase that login state.

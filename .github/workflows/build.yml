@@ -107,8 +107,8 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
-      - name: Local LLBot deployment tests
-        run: python3 -m unittest tool.tests.test_llbot_local tool.tests.test_llbot_deploy -v
+      - name: Local QQ deployment tests
+        run: python3 -m unittest tool.tests.test_llbot_local tool.tests.test_llbot_deploy tool.tests.test_snowluma_launcher -v
 
       - name: Smoke and sanity tests
         # The whole suite: it takes well under a minute and the hand-picked

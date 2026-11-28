@@ -942,6 +942,8 @@ void main() {
         expect(harness.bridge.pairingSucceeded, isTrue);
         expect(harness.bridge.snapshot.chatID, _owner);
         expect(harness.bridge.snapshot.enabled, isTrue);
+        expect(harness.bridge.snapshot.botVerified, isTrue);
+        expect(harness.bridge.snapshot.verifiedBotUsername, 'demo_bot');
         expect(harness.bridge.pairingLink, isNull);
         final prefs = await SharedPreferences.getInstance();
         expect(
@@ -960,6 +962,12 @@ void main() {
         await _waitFor(() => harness.recorder.prompts.isNotEmpty);
         expect(harness.recorder.prompts, ['开始第一个任务']);
         expect(harness.bridge.snapshot.chatID, _owner);
+
+        await harness.bridge.saveConfiguration(chatID: _owner, enabled: false);
+        expect(harness.bridge.snapshot.botVerified, isTrue);
+        await harness.bridge.clearToken();
+        expect(harness.bridge.snapshot.botVerified, isFalse);
+        expect(harness.bridge.snapshot.verifiedBotUsername, isNull);
       },
     );
 

@@ -8,10 +8,13 @@ This page is the user-facing walkthrough. For the design behind it, read
 1. Connect OpenCode Plus to the OpenCode server on this phone.
 2. Open a project folder. A channel message with no project open is refused with
    an explanation instead of being silently dropped.
-3. Settings → 消息渠道 lists the three channels and their state.
+3. Settings → 消息渠道 lists the three channels and their state. The **已验证账号**
+   cards show verified accounts and link back to their settings. A saved credential
+   alone does not make an account verified.
 
 ```
 消息渠道
+  ├── 本机 SnowLuma               (Android; runtime and WebUI access)
   ├── Telegram                    (official Bot API, long polling)
   ├── QQ 官方机器人                (Tencent Open Platform)
   └── QQ 普通账号（OneBot 11）      (self-managed SnowLuma, NapCat or LLBot)
@@ -55,11 +58,11 @@ permission shows as unavailable rather than failing quietly.
 
 Settings → 消息渠道 → **QQ 普通账号（OneBot 11）**.
 
-For a new connection, use **SnowLuma → SnowLuma 配置指南**. Run your own
-SnowLuma with desktop QQ, then connect the account's OneBot WebSocket. The app can
-verify manually downloaded ARM64 archives and, on Android after your confirmation,
-import one into the built-in Ubuntu, extract it and start its launcher; it never
-downloads SnowLuma or signs in to QQ. See [SnowLuma setup](SNOWLUMA_SETUP.md).
+For a new connection, use **SnowLuma → SnowLuma 配置指南** for OneBot settings.
+On Android, **消息渠道 → 本机 SnowLuma** separately manages import, start/stop,
+and the initial management page access token. The app verifies the ARM64 archive
+you selected before importing into built-in Ubuntu; it never downloads SnowLuma
+or signs in to QQ. See [SnowLuma setup and upstream policy](SNOWLUMA_SETUP.md).
 
 **Legacy LLBot** is still available when selected, or from the Linux manager.
 The upstream site has closed new registrations. This path requires an existing
