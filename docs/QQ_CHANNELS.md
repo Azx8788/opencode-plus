@@ -105,9 +105,10 @@ authorised; only a real message can.
 
 All three implementations speak OneBot 11. For a new configuration, see the
 [SnowLuma setup guide](SNOWLUMA_SETUP.md). SnowLuma is user-managed; the app can
-match a downloaded ARM64 archive to a pinned release and detect default local
-ports, but it does not start the runtime. Existing settings stay on their saved
-implementation. See [`CHANNELS_PRIOR_ART.md`](CHANNELS_PRIOR_ART.md) for sources.
+match a downloaded ARM64 archive to a pinned release, detect default local ports
+and, on Android after your confirmation, import it into the built-in Ubuntu and
+start its launcher. It never downloads SnowLuma or signs in to QQ. Existing
+settings stay on their saved implementation. See [`CHANNELS_PRIOR_ART.md`](CHANNELS_PRIOR_ART.md) for sources.
 
 | Implementation | Where it runs | Console | OneBot 11 |
 | --- | --- | --- | --- |

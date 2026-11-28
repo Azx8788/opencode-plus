@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:opencode_mobile/channels/providers/snowluma_release.dart';
+import 'package:opencode_mobile/builtin/snowluma_release.dart';
 
 void main() {
   test('unknown archive size is rejected without reading the file', () async {

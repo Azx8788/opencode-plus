@@ -22,6 +22,9 @@ enum SnowLumaArm64Release {
   final int size;
   final String sha256Hex;
 
+  /// The key tool/snowluma_launcher.py uses for the same published asset.
+  String get key => name;
+
   /// Reads only the selected bytes. The filename is not trusted, and a file
   /// that grows or shrinks after its size check must still fail validation.
   static Future<SnowLumaArm64Release?> verify({
@@ -55,4 +58,16 @@ enum SnowLumaArm64Release {
 
 class _FileGrew implements Exception {
   const _FileGrew();
+}
+
+/// A file the person picked. Nothing here is read until [verify] or an import
+/// asks for it, and no path is kept.
+class SnowLumaArchive {
+  const SnowLumaArchive({required this.length, required this.read});
+
+  final Future<int> Function() length;
+  final Stream<List<int>> Function() read;
+
+  Future<SnowLumaArm64Release?> verify() async =>
+      SnowLumaArm64Release.verify(length: await length(), read: read);
 }

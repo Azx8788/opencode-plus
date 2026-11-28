@@ -303,8 +303,9 @@ iOS 与桌面工程、多语言（仅中英）、Shorebird 热更新、文档站
 消息渠道在「设置 → 对话 → 消息渠道」统一管理：Telegram、QQ 官方机器人、
 QQ 普通账号（OneBot 11）共用同一套指令、白名单、会话隔离与投递规则，
 各自保留独立配置、能力声明和平台限制。
-新配置优先连接自行运行的 [SnowLuma](docs/SNOWLUMA_SETUP.md)。App 可只读校验
-手动下载的 ARM64 发行包、探测默认本机端口，并验证 QQ 账号，不代替用户安装或登录。
+新配置优先连接自行运行的 [SnowLuma](docs/SNOWLUMA_SETUP.md)。App 可校验手动
+下载的 ARM64 发行包，并在 Android 内置 Ubuntu 中按你的确认解压、启动，也探测
+默认本机端口并验证 QQ 账号；App 不下载 SnowLuma，不代替用户登录 QQ。
 已有 NapCat、LLBot 配置不会自动切换；本机 LLBot 为已有有效 Auth Token 的用户保留。
 详见
 [docs/CHANNELS.md](docs/CHANNELS.md)、[docs/QQ_CHANNELS.md](docs/QQ_CHANNELS.md)

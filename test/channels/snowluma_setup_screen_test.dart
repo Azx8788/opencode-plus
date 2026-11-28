@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:opencode_mobile/builtin/builtin_linux.dart';
+import 'package:opencode_mobile/builtin/snowluma_release.dart';
 import 'package:opencode_mobile/channels/providers/snowluma_local_probe.dart';
 import 'package:opencode_mobile/platform/platform_capabilities.dart';
 import 'package:opencode_mobile/ui/screens/settings/snowluma_setup_screen.dart';
@@ -105,7 +106,7 @@ void main() {
     await _pump(
       tester,
       SnowLumaSetupScreen(
-        pickArchive: () async => (
+        pickArchive: () async => SnowLumaArchive(
           length: () async => 5,
           read: () => throw StateError('unrecognized archive must not be read'),
         ),

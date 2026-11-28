@@ -100,9 +100,13 @@ LLBot and Tencent receive the prompts and replies carried by this channel;
 their retention policies apply. The runtime is downloaded on demand, not
 included in the APK.
 
-For a user-managed SnowLuma service, OpenCode Plus does not install the runtime
-or read desktop QQ session files. Optional archive verification reads only the
-file you select and does not transmit it. Local discovery checks the default
+For a user-managed SnowLuma service, OpenCode Plus never downloads SnowLuma and
+never reads desktop QQ session files or SnowLuma credentials. Optional archive
+verification reads only the file you select and does not transmit it. If you
+confirm an import on Android, the app copies that file into its own Ubuntu,
+re-checks the published SHA-256, extracts it and starts the included launcher as
+a local service; vendor output (including initial WebUI credentials or QR codes)
+is discarded and never stored by the app. Local discovery checks the default
 loopback ports without credentials. A OneBot test sends the configured access
 token to the selected service and uses read-only account/status actions; it does
 not send QQ messages. After enabling the relay, prompts and replies are carried

@@ -57,8 +57,9 @@ Settings → 消息渠道 → **QQ 普通账号（OneBot 11）**.
 
 For a new connection, use **SnowLuma → SnowLuma 配置指南**. Run your own
 SnowLuma with desktop QQ, then connect the account's OneBot WebSocket. The app can
-verify manually downloaded ARM64 archives and check the default local ports,
-but it does not install or start SnowLuma. See [SnowLuma setup](SNOWLUMA_SETUP.md).
+verify manually downloaded ARM64 archives and, on Android after your confirmation,
+import one into the built-in Ubuntu, extract it and start its launcher; it never
+downloads SnowLuma or signs in to QQ. See [SnowLuma setup](SNOWLUMA_SETUP.md).
 
 **Legacy LLBot** is still available when selected, or from the Linux manager.
 The upstream site has closed new registrations. This path requires an existing
