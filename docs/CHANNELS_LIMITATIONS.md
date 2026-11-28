@@ -22,11 +22,12 @@ credentials and approvals this repository does not have.
 | Official QQ: C2C / group / channel message parsing | Yes | Yes | **Not verified** — needs a real bot |
 | Official QQ: passive reply window and 5-reply budget | Yes | Yes (fake clock) | **Not verified** |
 | Official QQ: active messages, images, files | Declared, not sent | Capability table only | **Blocked** — platform approval required |
-| OneBot 11: connect, auth header, lifecycle, self_id check | Yes | Yes, against a local fake server | **Not verified** — needs LLBot + QQ account |
+| OneBot 11: connect, auth header, lifecycle, self_id check | Yes | Yes, against a local fake server | **Not verified** — needs a running OneBot service and QQ account |
 | OneBot 11: private/group events, at/reply segments | Yes | Yes | **Not verified** |
 | OneBot 11: send with echo correlation and retcode checks | Yes | Yes | **Not verified** |
 | OneBot 11: heartbeat watchdog and reconnect | Yes | Yes | **Not verified** |
 | Built-in Ubuntu LLBot deployment: download, verify, install, configure, start/stop and embedded WebUI | Yes, official v8.3.2 Linux ARM64 runtime downloaded on demand | UI regressions use an injected controller | **Not verified** against a real QQ account; upstream authorisation and QQ sign-in still required |
+| SnowLuma package verification, readiness and test | Read-only: SHA-256 check, loopback services and OneBot status | Tests use local fixtures | ARM64 Lite WebUI reached; QQ attachment/login and real delivery not verified |
 
 ## Platform limits the app cannot lift
 
@@ -53,9 +54,11 @@ credentials and approvals this repository does not have.
 * Managed Android/PRoot deployment is available for the official LLBot v8.3.2
   Linux ARM64 ZIP, with bundled Node. It remains experimental: installation and
   WebUI readiness do not verify QQ login, OneBot readiness or end-to-end replies.
-  The person must obtain an LLBot Auth Token at <https://auth.luckylillia.com>,
+  The person must already have a valid LLBot Auth Token (registrations are closed),
   enter it in the local WebUI and scan QQ's QR code. The OneBot listener starts
   after login at `ws://127.0.0.1:3001/`.
+* SnowLuma is run manually by the user, not installed by this app. See the
+  [setup guide](SNOWLUMA_SETUP.md) for licensing and Android limitations.
 * Generated WebUI and OneBot credentials are separate from upstream authorisation.
   Deploying does not enable the relay. Importing a local connection edits only
   the QQ form draft; its saved external configuration changes only on Save.

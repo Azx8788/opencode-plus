@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:opencode_mobile/background/live_background.dart';
+import 'package:opencode_mobile/channels/channel_config.dart';
 import 'package:opencode_mobile/state/connection.dart';
 import 'package:opencode_mobile/state/profiles.dart';
+import 'package:opencode_mobile/ui/kit/kit.dart';
 import 'package:opencode_mobile/ui/screens/settings/channels_screen.dart';
 import 'package:opencode_mobile/ui/screens/settings/manager_agent_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -77,11 +79,11 @@ void main() {
     expect(find.byKey(const ValueKey('onebot-self-id')), findsOneWidget);
 
     await tester.scrollUntilVisible(
-      find.textContaining('GPL-2.0'),
+      find.textContaining('third-party QQ connection'),
       300,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.textContaining('GPL-2.0'), findsOneWidget);
+    expect(find.textContaining('third-party QQ connection'), findsOneWidget);
   });
 
   testWidgets('saving an invalid AppID reports the field, not a crash', (
@@ -102,21 +104,37 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('the OneBot page offers NapCat and SnowLuma', (tester) async {
-    final controller = await _controller();
-    addTearDown(controller.dispose);
-    await _pump(tester, OneBot11Screen(controller: controller));
+  testWidgets(
+    'the OneBot page opens a SnowLuma guide and still offers NapCat',
+    (tester) async {
+      final controller = await _controller();
+      addTearDown(controller.dispose);
+      await _pump(tester, OneBot11Screen(controller: controller));
 
-    expect(find.text('NapCat'), findsOneWidget);
-    expect(find.text('SnowLuma'), findsOneWidget);
-    // LLBot is the default backend, so its hint is the one on screen.
-    expect(find.textContaining('3001'), findsWidgets);
+      expect(find.text('NapCat'), findsOneWidget);
+      expect(find.text('SnowLuma'), findsOneWidget);
+      expect(
+        tester
+            .widget<KitSegmented<OneBotBackend>>(
+              find.byKey(const ValueKey('onebot-backend')),
+            )
+            .selected,
+        OneBotBackend.snowLuma,
+      );
+      await tester.tap(find.byKey(const ValueKey('onebot-snowluma-guide')));
+      await tester.pumpAndSettle();
+      expect(find.text('Set up SnowLuma'), findsOneWidget);
+      expect(find.textContaining('Universal role'), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('NapCat'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('NapCat'));
+      await tester.pumpAndSettle();
 
-    expect(find.textContaining('6099'), findsOneWidget);
-  });
+      expect(find.textContaining('6099'), findsOneWidget);
+      expect(find.byKey(const ValueKey('onebot-snowluma-guide')), findsNothing);
+    },
+  );
 
   testWidgets('choosing the reverse direction swaps the address for a port', (
     tester,

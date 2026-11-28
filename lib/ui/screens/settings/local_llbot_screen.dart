@@ -292,8 +292,8 @@ class _LocalLlbotScreenState extends State<LocalLlbotScreen> {
         children: [
           KitText(
             _text(
-              'One tap downloads, verifies, installs, configures and starts LLBot in this app’s Ubuntu. Then finish LLBot authorisation and QQ sign-in in the embedded WebUI.',
-              '一键在本 App 的内置 Ubuntu 中下载、校验、安装、配置并启动 LLBot，然后在内嵌 WebUI 中完成 LLBot 授权和 QQ 扫码登录。',
+              'For existing LLBot users with a valid Auth Token. The upstream site has closed new registrations. If you do not have a token, use the SnowLuma setup guide instead.',
+              '仅适用于已有有效 Auth Token 的 LLBot 用户。上游已关闭新用户注册；没有 Token 请改用 SnowLuma 配置指南。',
             ),
           ),
           SizedBox(height: tokens.space2),
@@ -378,8 +378,8 @@ class _LocalLlbotScreenState extends State<LocalLlbotScreen> {
             SizedBox(height: tokens.space3),
             KitGroupNote(
               message: _text(
-                'Console readiness does not mean QQ is online. Obtain an LLBot Auth Token from the upstream authorisation site, enter it in the WebUI, then scan the QQ QR code. The OneBot listener becomes available after QQ sign-in.',
-                '管理页就绪不代表 QQ 在线。请先从上游授权网站获取 LLBot Auth Token，在 WebUI 中填写，再扫描 QQ 二维码。QQ 登录后才会启动 OneBot 监听。',
+                'Console readiness does not mean QQ is online. Enter your existing LLBot Auth Token in the WebUI, then scan the QQ QR code. The OneBot listener becomes available after QQ sign-in.',
+                '管理页就绪不代表 QQ 在线。在 WebUI 中填写已有的 LLBot Auth Token，再扫描 QQ 二维码。QQ 登录后才会启动 OneBot 监听。',
               ),
             ),
             const KitText.mono(
@@ -557,8 +557,8 @@ class _LocalLlbotConsoleScreenState extends State<_LocalLlbotConsoleScreen> {
             padding: EdgeInsets.all(tokens.space2),
             child: KitGroupNote(
               message: zh
-                  ? '使用本机 WebUI 密码登录，然后填写从 auth.luckylillia.com 获取的 LLBot Auth Token，再扫码登录 QQ。管理页就绪不代表 QQ 在线。'
-                  : 'Log in with the local WebUI password, enter the LLBot Auth Token obtained from auth.luckylillia.com, then scan the QQ QR code. Console readiness does not mean QQ is online.',
+                  ? '使用本机 WebUI 密码登录，然后填写已有的 LLBot Auth Token，再扫码登录 QQ。管理页就绪不代表 QQ 在线。'
+                  : 'Log in with the local WebUI password, enter your existing LLBot Auth Token, then scan the QQ QR code. Console readiness does not mean QQ is online.',
             ),
           ),
           if (_blockedLink)

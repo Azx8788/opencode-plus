@@ -103,10 +103,11 @@ authorised; only a real message can.
 
 ## 2. Personal QQ account: LLBot, NapCat or SnowLuma + OneBot 11
 
-Three implementations are known to work; all three speak OneBot 11, so the app
-speaks the same protocol to each and only the defaults and the words on the page
-change. See [`CHANNELS_PRIOR_ART.md`](CHANNELS_PRIOR_ART.md) for what was read
-from each project.
+All three implementations speak OneBot 11. For a new configuration, see the
+[SnowLuma setup guide](SNOWLUMA_SETUP.md). SnowLuma is user-managed; the app can
+match a downloaded ARM64 archive to a pinned release and detect default local
+ports, but it does not start the runtime. Existing settings stay on their saved
+implementation. See [`CHANNELS_PRIOR_ART.md`](CHANNELS_PRIOR_ART.md) for sources.
 
 | Implementation | Where it runs | Console | OneBot 11 |
 | --- | --- | --- | --- |
@@ -125,16 +126,18 @@ bundled with the app**. You run it; you own the consequences.
 
 ### 2.1 One-tap local LLBot deployment (Android ARM64)
 
+This legacy route requires an existing valid LLBot Auth Token, because the
+upstream authorisation site has closed new-user registrations.
+
 1. Complete the app's built-in Ubuntu setup.
-2. Settings → 消息渠道 → QQ 普通账号 → **本机 LLBot 一键部署** →
+2. Settings → 消息渠道 → QQ 普通账号 → LLBot → **管理本机 LLBot** →
    **一键部署并启动**. The app downloads, verifies, installs, configures and
    starts LLBot. Progress and failures are visible, with retry, status refresh,
    stop and start controls. Opening the page alone only checks status.
 3. When **本机管理页已就绪** appears, copy the generated **WebUI password**
    and open the embedded WebUI at `http://127.0.0.1:3080/`.
-4. Obtain an **LLBot Auth Token** yourself from
-   <https://auth.luckylillia.com>, enter it in the local WebUI, then scan the QQ
-   QR code. The upstream Auth Token is distinct from the generated WebUI
+4. Enter your existing **LLBot Auth Token** in the local WebUI, then scan the
+   QQ QR code. The upstream Auth Token is distinct from the generated WebUI
    password and OneBot access token. The app does not obtain authorisation or
    sign in to QQ on your behalf.
 5. Return and choose **使用本机连接** to fill the QQ form with the generated
@@ -180,12 +183,11 @@ Notes:
 
 Settings → 消息渠道 → **QQ 普通账号（OneBot 11）**:
 
-On Android, **本机 LLBot 一键部署** is the managed local workflow above.
+On Android, **管理本机 LLBot** is the managed local workflow above.
 The embedded WebUI is offered after the managed console is ready and restricts
 navigation to `http://127.0.0.1:3080/`; it does not open external links. Obtain
-the upstream Auth Token separately using the authorisation-site address shown
-on the deployment page. Manual LLBot, NapCat and SnowLuma remain available in
-the form below.
+the upstream Auth Token only if you already have an upstream account. Manual
+LLBot, NapCat and SnowLuma remain available in the form below.
 
 | Field | Meaning |
 | --- | --- |
@@ -193,8 +195,8 @@ the form below.
 | Direction | *App connects out* (forward) or *Bot connects in* (reverse) |
 | WebSocket address | Forward only: `ws://host:port` or `wss://host/path` |
 | Listening port | Reverse only: the phone listens, the bot dials `ws://<phone>:port`. 8082 is NapCat's own default |
-| Access token | Sent as a Bearer header; required in reverse mode |
-| Expected QQ account | `self_id` the implementation must report |
+| Access token | Sent as a Bearer header; required for SnowLuma and in reverse mode |
+| Expected QQ account | `self_id` the implementation must report; required to enable SnowLuma |
 | Allowed QQ numbers | Who may drive the agent; empty means nobody |
 | Allowed group numbers | Which groups the bot may answer in |
 | Allow private / group chat | Scene switches |
@@ -202,7 +204,9 @@ the form below.
 
 "Test connection" opens the socket — or starts the listener and waits for the
 bot to dial in — then waits for the lifecycle event, checks `self_id`, calls
-`get_version_info` and disconnects. It sends no message.
+`get_version_info` and disconnects. SnowLuma additionally checks the protocol,
+`get_login_info` and `get_status`; it can fill the QQ account into a draft when
+the field is blank. It sends no message.
 
 "Choose from the bot's groups" calls `get_group_list` and writes the chosen
 groups into the allowlist, so a group number never has to be typed by hand.

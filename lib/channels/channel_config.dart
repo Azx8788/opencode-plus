@@ -122,6 +122,7 @@ enum OneBotBackend {
 
   static OneBotBackend fromId(String? id) => values.firstWhere(
     (value) => value.id == id,
+    // The first stored OneBot configs had no backend field and meant LLBot.
     orElse: () => OneBotBackend.llbot,
   );
 }
@@ -145,7 +146,7 @@ enum OneBotTransport {
 @immutable
 class OneBot11Config {
   const OneBot11Config({
-    this.backend = OneBotBackend.llbot,
+    this.backend = defaultBackend,
     this.transport = OneBotTransport.forward,
     this.webSocketUrl = '',
     this.listenPort = defaultListenPort,
@@ -157,6 +158,8 @@ class OneBot11Config {
     this.allowGroup = true,
     this.requireMentionInGroups = true,
   });
+
+  static const defaultBackend = OneBotBackend.snowLuma;
 
   /// The port a reverse connection listens on. 8082 is what NapCat's WebSocket
   /// client ships with, so the default needs only the phone's address.
@@ -186,6 +189,53 @@ class OneBot11Config {
   bool get configured => transport == OneBotTransport.forward
       ? webSocketUrl.isNotEmpty
       : listenPort > 0 && listenPort <= 65535;
+
+  bool get requiresAccessToken =>
+      transport == OneBotTransport.reverse || backend == OneBotBackend.snowLuma;
+
+  void validateConnection({required bool requireEndpoint}) {
+    final url = webSocketUrl.trim();
+    if (transport == OneBotTransport.forward &&
+        (requireEndpoint || url.isNotEmpty)) {
+      if (url.isEmpty) {
+        throw const FormatException('请先填写 OneBot 11 的 WebSocket 地址。');
+      }
+      final uri = Uri.tryParse(url);
+      if (uri == null ||
+          (uri.scheme != 'ws' && uri.scheme != 'wss') ||
+          uri.host.isEmpty) {
+        throw const FormatException('WebSocket 地址需要以 ws:// 或 wss:// 开头，并包含主机。');
+      }
+      if (backend == OneBotBackend.snowLuma &&
+          (uri.authority.contains('@') || uri.hasQuery || uri.hasFragment)) {
+        throw const FormatException(
+          '请填写不带凭据或参数的 SnowLuma WebSocket 地址，Token 单独填写。',
+        );
+      }
+    }
+    if (transport == OneBotTransport.reverse &&
+        (listenPort < 1 || listenPort > 65535)) {
+      throw const FormatException('监听端口需要在 1 到 65535 之间。');
+    }
+    final selfId = expectedSelfId.trim();
+    if (selfId.isNotEmpty && !RegExp(r'^[0-9]{5,12}$').hasMatch(selfId)) {
+      throw const FormatException('预期 QQ 账号需要是 5 到 12 位数字。');
+    }
+  }
+
+  void validateAccessToken(String? token) {
+    if (token == null || token.isEmpty) {
+      if (!requiresAccessToken) return;
+      throw FormatException(
+        backend == OneBotBackend.snowLuma
+            ? '请填写 SnowLuma 的 OneBot Access Token（不是 WebUI 密码）。'
+            : '反向连接启用前需要设置 Access Token。',
+      );
+    }
+    if (token.length < 4 || token.contains(RegExp(r'\s'))) {
+      throw const FormatException('Access Token 至少需要 4 个字符，且不能包含空白。');
+    }
+  }
 
   /// Plain `ws://` to a non-loopback host sends the access token in clear
   /// text. Allowed (home LANs are common) but always reported in the UI.
@@ -382,41 +432,24 @@ class ChannelConfigStore {
     OneBot11Config config, {
     String? accessToken,
   }) async {
+    config.validateConnection(requireEndpoint: config.enabled);
     final url = config.webSocketUrl.trim();
-    final reverse = config.transport == OneBotTransport.reverse;
-    if (!reverse && (config.enabled || url.isNotEmpty)) {
-      final uri = Uri.tryParse(url);
-      if (uri == null ||
-          (uri.scheme != 'ws' && uri.scheme != 'wss') ||
-          uri.host.isEmpty) {
-        throw const FormatException(
-          'WebSocket 地址需要以 ws:// 或 wss:// 开头，并包含主机和端口。',
-        );
-      }
-    }
-    if (reverse && (config.listenPort < 1 || config.listenPort > 65535)) {
-      throw const FormatException('监听端口需要在 1 到 65535 之间。');
-    }
     final selfId = config.expectedSelfId.trim();
-    if (selfId.isNotEmpty && !RegExp(r'^[0-9]{5,12}$').hasMatch(selfId)) {
-      throw const FormatException('预期 QQ 账号需要是 5 到 12 位数字。');
+    if (config.enabled &&
+        config.backend == OneBotBackend.snowLuma &&
+        selfId.isEmpty) {
+      throw const FormatException('启用 SnowLuma 前，请填写预期 QQ 账号，或先测试连接识别账号。');
     }
     final token = accessToken?.trim();
+    if (config.enabled && config.requiresAccessToken) {
+      config.validateAccessToken(
+        token?.isNotEmpty == true ? token : (await readOneBot11Token())?.trim(),
+      );
+    }
     if (token != null && token.isNotEmpty) {
-      if (token.length < 4 || token.contains(RegExp(r'\s'))) {
-        throw const FormatException('Access Token 不能包含空白字符。');
-      }
+      config.validateAccessToken(token);
       await _secureStorage.write(key: oneBotTokenKey, value: token);
       KitRedact.registerKnownSecret(token);
-    }
-    if (config.enabled && !reverse && url.isEmpty) {
-      throw const FormatException('启用前需要填写 OneBot 11 的 WebSocket 地址。');
-    }
-    if (config.enabled && reverse) {
-      final stored = await _secureStorage.read(key: oneBotTokenKey);
-      if (stored == null || stored.trim().isEmpty) {
-        throw const FormatException('反向连接启用前需要设置 Access Token。');
-      }
     }
     final saved = await _preferences.setString(
       '${_oneBotPrefix}config',

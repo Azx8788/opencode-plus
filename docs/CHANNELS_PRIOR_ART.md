@@ -10,7 +10,7 @@ repositories are gone.
 | Project | Official repository | State (November 2026) | Where the source was read |
 | --- | --- | --- | --- |
 | NapCat | `NapNeko/NapCatQQ` | Emptied. The README is one line: “到这里告一段落” (this is where it ends), commit `105f38e`, 2026-11-12 | Fork `MingTianSang/NapCatQQ`, which still carries `packages/napcat-onebot` and the network config schema |
-| SnowLuma | `SnowLuma/SnowLuma` | Made private by its author after a lawyer's letter; the docs site is a 404 | Archive `XingYunStar/snowluma` (full history, v2.4.2 release artefacts, Docker image) and `venti1112/snowluma` |
+| SnowLuma | `SnowLuma/SnowLuma` | Original repository is private; use the maintained fork's published assets | [`TomyJan/SnowLuma`](https://github.com/TomyJan/SnowLuma/tree/v2.4.2) for the release, OneBot schema and license |
 | AstrBot | `AstrBotDevs/AstrBot` | Alive and active | `README.md`, `LICENSE` |
 
 Neither the licence of NapCat nor that of SnowLuma is a standard one:

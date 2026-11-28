@@ -9,7 +9,7 @@ import 'package:opencode_mobile/channels/providers/onebot11_provider.dart';
 const _selfQq = '10001';
 const _accessToken = 'test-token-value';
 
-/// A stand-in for LLBot's OneBot 11 forward WebSocket server: it upgrades the
+/// A stand-in for a OneBot 11 forward WebSocket server: it upgrades the
 /// connection, sends the lifecycle event, records actions and answers them with
 /// the echo the client sent.
 class _FakeOneBot {
@@ -102,6 +102,133 @@ class _FakeOneBot {
 }
 
 void main() {
+  group('SnowLuma connection test', () {
+    Map<String, Object?> validData(String action) => switch (action) {
+      'get_version_info' => {
+        'app_name': 'SnowLuma',
+        'app_version': '2.4.2-node',
+        'protocol_version': 'v11',
+      },
+      'get_login_info' => {'user_id': 10001, 'nickname': 'fixture'},
+      'get_status' => {'online': true, 'good': true, 'time': 12},
+      _ => throw StateError('Unexpected action: $action'),
+    };
+
+    Future<(OneBot11Provider, _FakeOneBot)> prepare({
+      String? overrideAction,
+      Map<String, Object?>? overrideData,
+    }) async {
+      final server = await _FakeOneBot.start();
+      addTearDown(server.close);
+      server.actionResult = (action, _) => {
+        'status': 'ok',
+        'retcode': 0,
+        'data': action == overrideAction ? overrideData : validData(action),
+      };
+      final provider = OneBot11Provider(
+        accountId: 'fixture',
+        webSocketUrl: server.url,
+        accessToken: _accessToken,
+      );
+      addTearDown(provider.dispose);
+      return (provider, server);
+    }
+
+    test(
+      'checks implementation, account and health without sending a message',
+      () async {
+        final (provider, server) = await prepare();
+        final result = await provider.probe(verifySnowLuma: true);
+
+        expect(result.selfId, _selfQq);
+        expect(result.implementation, 'SnowLuma');
+        expect(server.authHeaders.single, 'Bearer $_accessToken');
+        expect(server.actions.map((entry) => entry['action']), [
+          'get_version_info',
+          'get_login_info',
+          'get_status',
+        ]);
+        expect(provider.status.state, ProviderState.disabled);
+      },
+    );
+
+    for (final (action, data, message) in [
+      (
+        'get_version_info',
+        {'app_name': 'LLBot', 'protocol_version': 'v11'},
+        '不是 SnowLuma',
+      ),
+      ('get_login_info', {'user_id': 54321}, '无法确认 SnowLuma 当前登录'),
+      ('get_login_info', {'nickname': 'fixture'}, '无法确认 SnowLuma 当前登录'),
+      ('get_status', {'online': false, 'good': false}, 'QQ 未在线'),
+      ('get_status', {'online': true, 'good': false}, '尚未报告收发链路正常'),
+      ('get_status', <String, Object?>{}, '无法读取 SnowLuma 的 QQ 在线状态'),
+    ]) {
+      test('rejects $action data $data', () async {
+        final (provider, _) = await prepare(
+          overrideAction: action,
+          overrideData: data,
+        );
+        await expectLater(
+          provider.probe(verifySnowLuma: true),
+          throwsA(
+            isA<OneBotFailure>().having(
+              (error) => error.message,
+              'message',
+              contains(message),
+            ),
+          ),
+        );
+        expect(provider.status.state, ProviderState.disabled);
+      });
+    }
+  });
+
+  test(
+    'does not dispatch messages before identity or from another account',
+    () async {
+      final server = await _FakeOneBot.start();
+      addTearDown(server.close);
+      server.sendLifecycle = false;
+      final provider = OneBot11Provider(
+        accountId: _selfQq,
+        webSocketUrl: server.url,
+        expectedSelfId: _selfQq,
+      );
+      addTearDown(provider.dispose);
+      final inbound = <ChannelMessage>[];
+      provider.events.listen((event) {
+        if (event is InboundChannelMessage) inbound.add(event.message);
+      });
+      await provider.connect();
+      await _waitFor(() => server.connections == 1);
+
+      Map<String, Object?> message(int id) => {
+        'post_type': 'message',
+        'message_type': 'private',
+        'message_id': id,
+        'user_id': 20002,
+        'message': [
+          {
+            'type': 'text',
+            'data': {'text': 'fixture'},
+          },
+        ],
+      };
+      server.push(message(1));
+      server.push({
+        'post_type': 'meta_event',
+        'meta_event_type': 'lifecycle',
+        'sub_type': 'connect',
+      });
+      server.push({...message(2), 'self_id': 54321});
+      server.push(message(3));
+
+      await _waitFor(() => inbound.any((item) => item.messageId == '3'));
+      expect(inbound.map((item) => item.messageId), ['3']);
+    },
+  );
+
   test(
     'connects, reports the account and normalises a private message',
     () async {

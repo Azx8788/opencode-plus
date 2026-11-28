@@ -100,10 +100,18 @@ LLBot and Tencent receive the prompts and replies carried by this channel;
 their retention policies apply. The runtime is downloaded on demand, not
 included in the APK.
 
+For a user-managed SnowLuma service, OpenCode Plus does not install the runtime
+or read desktop QQ session files. Optional archive verification reads only the
+file you select and does not transmit it. Local discovery checks the default
+loopback ports without credentials. A OneBot test sends the configured access
+token to the selected service and uses read-only account/status actions; it does
+not send QQ messages. After enabling the relay, prompts and replies are carried
+by the OneBot service you configured and by QQ.
+
 Disabling a channel stops its connection. Removing its configuration deletes
 the stored credentials together with the de-duplication and delivery records
 for that account. None of this deletes anything already sent to Telegram,
-Tencent or your LLBot.
+Tencent or your OneBot service.
 Stopping the managed LLBot process preserves its local login state. Removing
 the channel configuration does not uninstall LLBot or erase that login state.
 

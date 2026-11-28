@@ -76,11 +76,60 @@ void main() {
       );
     }
     await store.saveOneBot11(
-      const OneBot11Config(webSocketUrl: 'ws://127.0.0.1:3001', enabled: true),
+      const OneBot11Config(
+        webSocketUrl: 'ws://127.0.0.1:3001',
+        expectedSelfId: '10001',
+        enabled: true,
+      ),
       accessToken: 'token-1',
     );
     expect(store.loadOneBot11().webSocketUrl, 'ws://127.0.0.1:3001');
     expect(await store.readOneBot11Token(), 'token-1');
+  });
+
+  test(
+    'fresh OneBot settings recommend SnowLuma without enabling it',
+    () async {
+      final store = await _store();
+      expect(store.loadOneBot11().backend, OneBotBackend.snowLuma);
+      expect(store.loadOneBot11().enabled, isFalse);
+      expect(store.loadOneBot11().webSocketUrl, isEmpty);
+      expect(await store.readOneBot11Token(), isNull);
+    },
+  );
+
+  test('SnowLuma activation needs an account and a OneBot token', () async {
+    final store = await _store();
+    const draft = OneBot11Config(
+      webSocketUrl: 'ws://127.0.0.1:3001/',
+      enabled: true,
+    );
+
+    await expectLater(
+      store.saveOneBot11(draft, accessToken: 'test-token'),
+      throwsFormatException,
+    );
+    await expectLater(
+      store.saveOneBot11(draft.copyWith(expectedSelfId: '10001')),
+      throwsFormatException,
+    );
+    expect(store.loadOneBot11().enabled, isFalse);
+    expect(await store.readOneBot11Token(), isNull);
+  });
+
+  test('a SnowLuma address cannot store a credential in the URL', () async {
+    final store = await _store();
+    for (final url in [
+      'wss://test-user:password@qq.invalid/onebot',
+      'wss://qq.invalid/onebot?access_token=test-token',
+      'wss://qq.invalid/onebot#token',
+    ]) {
+      await expectLater(
+        store.saveOneBot11(OneBot11Config(webSocketUrl: url)),
+        throwsFormatException,
+      );
+    }
+    expect(store.loadOneBot11().webSocketUrl, isEmpty);
   });
 
   test('an expected account must look like a QQ number', () async {
@@ -193,7 +242,11 @@ void main() {
     final store = await _store();
     await expectLater(
       store.saveOneBot11(
-        const OneBot11Config(transport: OneBotTransport.reverse, enabled: true),
+        const OneBot11Config(
+          backend: OneBotBackend.napcat,
+          transport: OneBotTransport.reverse,
+          enabled: true,
+        ),
       ),
       throwsFormatException,
     );
@@ -203,6 +256,7 @@ void main() {
     final store = await _store();
     await store.saveOneBot11(
       const OneBot11Config(
+        backend: OneBotBackend.napcat,
         transport: OneBotTransport.reverse,
         enabled: true,
         listenPort: 9000,

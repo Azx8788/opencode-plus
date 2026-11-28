@@ -47,12 +47,24 @@ class OneBotLogin {
   final String nickname;
 }
 
+/// The identity confirmed by a read-only connection test.
+class OneBotProbeResult {
+  const OneBotProbeResult({required this.selfId, required this.implementation});
+
+  final String selfId;
+  final String implementation;
+
+  String get notice =>
+      '已连接 QQ $selfId'
+      '${implementation.isEmpty ? '' : '（$implementation）'}。'
+      '发送权限取决于该账号本身。';
+}
+
 /// The ordinary-QQ channel, as a OneBot 11 client connected to a protocol
 /// implementation the person runs themselves — LLBot, NapCat or SnowLuma.
 ///
-/// This is not an official Tencent interface and the code does not pretend
-/// otherwise: LLBot logs a real QQ account in and exposes OneBot 11, which is
-/// why the settings page says so and why nothing here is bundled into the APK.
+/// The service handles QQ sign-in and exposes OneBot 11. It is not an official
+/// Tencent interface or bundled into the APK.
 ///
 /// The client speaks OneBot 11 over a WebSocket, in whichever direction the
 /// deployment needs: [OneBot11Transport.forward] dials the protocol
@@ -344,7 +356,9 @@ class OneBot11Provider extends ChannelProviderBase {
 
   void _attachSocket(WebSocket socket, int generation) {
     _socket = socket;
+    _selfId = null;
     _lastHeartbeat = DateTime.now();
+    _heartbeatInterval = null;
     _subscription = socket.listen(
       (frame) => _onFrame(frame, generation),
       onError: (Object error) => _onSocketGone(generation, '与 OneBot 的连接中断。'),
@@ -403,7 +417,7 @@ class OneBot11Provider extends ChannelProviderBase {
           ? heartbeatTimeout
           : (interval * 3 > heartbeatTimeout ? interval * 3 : heartbeatTimeout);
       if (DateTime.now().difference(last) > deadline) {
-        _scheduleReconnect(generation, '心跳超时，LLBot 可能已离线。');
+        _scheduleReconnect(generation, '心跳超时，QQ 协议端可能已离线。');
       }
     });
   }
@@ -466,10 +480,11 @@ class OneBot11Provider extends ChannelProviderBase {
       unawaited(_stopForIdentityFailure(generation));
       return;
     }
-    if (expectedSelfId.isNotEmpty && reported != expectedSelfId) {
+    final expected = expectedSelfId.isEmpty ? _selfId : expectedSelfId;
+    if (expected != null && reported != expected) {
       publishStatus(
         ProviderState.error,
-        lastError: 'self_id 不匹配：配置为 $expectedSelfId，实际为 $reported。',
+        lastError: 'self_id 不匹配。请核对 OneBot 端点和预期 QQ 账号。',
       );
       emitNotice('协议端报告的账号与配置不一致，已断开以避免用错账号回复。', isError: true);
       unawaited(_stopForIdentityFailure(generation));
@@ -492,18 +507,14 @@ class OneBot11Provider extends ChannelProviderBase {
   }
 
   void _onMessage(Map<String, dynamic> payload) {
+    final selfId = _selfId;
     final reported = payload['self_id']?.toString() ?? '';
-    if (expectedSelfId.isNotEmpty &&
-        reported.isNotEmpty &&
-        reported != expectedSelfId) {
-      // Defence in depth: even if the lifecycle check was skipped, an event
-      // from another account is not ours to answer.
-      return;
-    }
+    // No prompt can reach the agent before the socket confirms its identity.
+    if (selfId == null || reported != selfId) return;
     final message = normalizeEvent(
       payload,
       accountId: accountId,
-      selfId: _selfId ?? expectedSelfId,
+      selfId: selfId,
     );
     if (message != null) emitMessage(message);
   }
@@ -531,6 +542,7 @@ class OneBot11Provider extends ChannelProviderBase {
   }
 
   Future<void> _closeSocket() async {
+    _selfId = null;
     _heartbeatWatchdog?.cancel();
     _heartbeatWatchdog = null;
     final subscription = _subscription;
@@ -560,8 +572,11 @@ class OneBot11Provider extends ChannelProviderBase {
     Map<String, Object?> params,
   ) async {
     final socket = _socket;
-    if (socket == null || socket.readyState != WebSocket.open) {
-      throw const OneBotFailure('OneBot 连接未建立。');
+    if (!_running ||
+        socket == null ||
+        socket.readyState != WebSocket.open ||
+        _selfId == null) {
+      throw const OneBotFailure('OneBot 未连接或尚未确认 QQ 账号。');
     }
     final echo =
         'oc-${DateTime.now().microsecondsSinceEpoch}-${_echoSequence++}';
@@ -663,7 +678,7 @@ class OneBot11Provider extends ChannelProviderBase {
 
   /// Verifies the socket, the token and the reported account without sending a
   /// message to anybody.
-  Future<String> probe() async {
+  Future<OneBotProbeResult> probe({bool verifySnowLuma = false}) async {
     final previous = _running;
     if (!previous) {
       await connect();
@@ -671,29 +686,83 @@ class OneBot11Provider extends ChannelProviderBase {
     try {
       final deadline = DateTime.now().add(const Duration(seconds: 12));
       while (_selfId == null && DateTime.now().isBefore(deadline)) {
-        if (status.state == ProviderState.error) break;
+        if (!_running || status.state == ProviderState.error) break;
         await Future<void>.delayed(const Duration(milliseconds: 100));
       }
       final selfId = _selfId;
-      if (selfId == null) {
-        final error = status.lastError ?? '未收到生命周期事件';
+      final socket = _socket;
+      if (selfId == null || socket == null) {
+        final error =
+            status.lastError ??
+            (verifySnowLuma
+                ? '未收到账号上线事件。请确认 QQ 已登录，且 OneBot WebSocket 角色为 Universal。'
+                : '未收到生命周期事件');
         throw OneBotFailure('连接失败：$error');
       }
+      void requireSameSocket() {
+        if (!identical(_socket, socket) || _selfId != selfId) {
+          throw const OneBotFailure('测试期间 OneBot 连接已变化，请重试。');
+        }
+      }
+
       final version = await call('get_version_info', const {});
+      requireSameSocket();
+      if (!_probeSucceeded(version)) {
+        throw const OneBotFailure('无法读取 OneBot 的版本信息。');
+      }
       final data = version['data'];
+      if (verifySnowLuma) {
+        if (data is! Map ||
+            data['app_name']?.toString().toLowerCase() != 'snowluma' ||
+            !const {
+              '11',
+              'v11',
+            }.contains(data['protocol_version']?.toString())) {
+          throw const OneBotFailure(
+            '这个端点不是 SnowLuma 的 OneBot 11。请核对协议端和 WebSocket 地址。',
+          );
+        }
+        final login = await call('get_login_info', const {});
+        requireSameSocket();
+        final account = login['data'];
+        if (!_probeSucceeded(login) ||
+            account is! Map ||
+            account['user_id']?.toString() != selfId ||
+            !RegExp(r'^[0-9]{5,12}$').hasMatch(selfId)) {
+          throw const OneBotFailure('无法确认 SnowLuma 当前登录的 QQ 账号。请核对账号后重试。');
+        }
+        final status = await call('get_status', const {});
+        requireSameSocket();
+        final health = status['data'];
+        if (!_probeSucceeded(status) ||
+            health is! Map ||
+            health['online'] is! bool) {
+          throw const OneBotFailure('无法读取 SnowLuma 的 QQ 在线状态。');
+        }
+        if (health['online'] != true) {
+          throw const OneBotFailure(
+            '已连到 SnowLuma，但 QQ 未在线。请在 SnowLuma 管理页检查登录。',
+          );
+        }
+        if (health['good'] != true) {
+          throw const OneBotFailure('QQ 已在线，但 SnowLuma 尚未报告收发链路正常。请在管理页检查后重试。');
+        }
+        return OneBotProbeResult(selfId: selfId, implementation: 'SnowLuma');
+      }
       final appName = data is Map ? data['app_name']?.toString() : null;
       final appVersion = data is Map ? data['app_version']?.toString() : null;
       final implementation = [
         if (appName != null && appName.isNotEmpty) appName,
         if (appVersion != null && appVersion.isNotEmpty) appVersion,
       ].join(' ');
-      return '已连接 QQ $selfId'
-          '${implementation.isEmpty ? '' : '（$implementation）'}。'
-          '发送权限取决于该账号本身。';
+      return OneBotProbeResult(selfId: selfId, implementation: implementation);
     } finally {
       if (!previous) await disconnect();
     }
   }
+
+  static bool _probeSucceeded(Map<String, dynamic> reply) =>
+      reply['status'] == 'ok' && reply['retcode'] == 0;
 
   /// Asks the implementation which account is really logged in.
   ///

@@ -212,6 +212,13 @@ Future<void> _tap(WidgetTester tester, Key key) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _openLlbot(WidgetTester tester) async {
+  await tester.ensureVisible(find.text('LLBot'));
+  await tester.tap(find.text('LLBot'));
+  await tester.pumpAndSettle();
+  await _tap(tester, _entry);
+}
+
 Future<void> _expectSavedUnchanged(ConnectionController controller) async {
   expect(
     controller.channels.config.loadOneBot11().toJson(),
@@ -224,7 +231,7 @@ Future<void> _returnLocalConnection(
   WidgetTester tester,
   _FakeDeployment deployment,
 ) async {
-  await _tap(tester, _entry);
+  await _openLlbot(tester);
   // Exercise the handoff independently of the deployment page's secret reads.
   Navigator.of(
     tester.element(find.byType(LocalLlbotScreen)),
@@ -309,7 +316,7 @@ void main() {
       final deployment = _FakeDeployment();
       addTearDown(deployment.dispose);
       final controller = await _pumpSettings(tester, deployment);
-      await _tap(tester, _entry);
+      await _openLlbot(tester);
 
       expect(deployment.refreshCalls, 1);
       expect(deployment.deployCalls, 0);
@@ -340,7 +347,7 @@ void main() {
       final deployment = _FakeDeployment()..deployGate = gate;
       addTearDown(deployment.dispose);
       await _pumpSettings(tester, deployment);
-      await _tap(tester, _entry);
+      await _openLlbot(tester);
       await tester.tap(find.byKey(const ValueKey('llbot-deploy')));
       await tester.pump();
 
@@ -395,7 +402,7 @@ void main() {
       final deployment = _FakeDeployment(phase: LlbotDeploymentPhase.running);
       addTearDown(deployment.dispose);
       final controller = await _pumpSettings(tester, deployment);
-      await _tap(tester, _entry);
+      await _openLlbot(tester);
       expect(find.byType(KitWebPreview), findsNothing);
       await _tap(tester, const ValueKey('llbot-open-console'));
 
@@ -442,7 +449,7 @@ void main() {
       final deployment = _FakeDeployment(phase: LlbotDeploymentPhase.running);
       addTearDown(deployment.dispose);
       final controller = await _pumpSettings(tester, deployment);
-      await _tap(tester, _entry);
+      await _openLlbot(tester);
       await _expectSavedUnchanged(controller);
       await _tap(tester, const ValueKey('llbot-use-connection'));
 
@@ -567,8 +574,12 @@ void main() {
             );
             tester.testTextInput.hide();
           case 'backend':
-            await _show(tester, const ValueKey('onebot-backend'));
-            await tester.tap(find.text('NapCat'));
+            final scroll = tester.state<ScrollableState>(
+              find.byType(Scrollable).first,
+            );
+            scroll.position.jumpTo(scroll.position.minScrollExtent);
+            await tester.pumpAndSettle();
+            await tester.tap(find.text('NapCat').hitTestable());
           case 'direction':
             await _show(tester, const ValueKey('onebot-transport'));
             await tester.tap(find.text('Bot connects in'));

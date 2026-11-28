@@ -18,6 +18,7 @@ import '../../../telegram/telegram_bot.dart';
 import '../../app_theme.dart' show AppStatusTone;
 import '../../kit/kit.dart';
 import 'local_llbot_screen.dart';
+import 'snowluma_setup_screen.dart';
 import 'telegram_bot_screen.dart';
 
 /// 消息渠道: the one door to every messaging channel.
@@ -136,8 +137,8 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
             title: _text('QQ personal account', 'QQ 普通账号'),
             supporting: TextSpan(
               text: _text(
-                'One-tap local LLBot, or an existing OneBot 11 service',
-                '本机 LLBot 一键部署，或连接已有 OneBot 11 服务',
+                'Connect your own SnowLuma, NapCat or LLBot service',
+                '连接你自行运行的 SnowLuma、NapCat 或 LLBot 服务',
               ),
             ),
             leading: KitRow.icon(context, AppIconography.terminal),
@@ -629,7 +630,7 @@ class _OfficialQqScreenState extends State<OfficialQqScreen> {
   };
 }
 
-/// The personal-QQ channel: managed local LLBot or an existing OneBot service.
+/// The personal-QQ channel: an existing OneBot service or legacy local LLBot.
 class OneBot11Screen extends StatefulWidget {
   const OneBot11Screen({
     super.key,
@@ -652,7 +653,7 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
   late final TextEditingController _port = TextEditingController(
     text: '${OneBot11Config.defaultListenPort}',
   );
-  OneBotBackend _backend = OneBotBackend.llbot;
+  OneBotBackend _backend = OneBot11Config.defaultBackend;
   OneBotTransport _transport = OneBotTransport.forward;
   late final TextEditingController _token = TextEditingController();
   late final TextEditingController _selfId = TextEditingController();
@@ -679,6 +680,7 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
 
   bool get _zh => Localizations.localeOf(context).languageCode == 'zh';
   String _text(String en, String zh) => _zh ? zh : en;
+  bool get _isSnowLuma => _backend == OneBotBackend.snowLuma;
 
   @override
   void initState() {
@@ -815,6 +817,27 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
     return null;
   }
 
+  Future<void> _openSnowLumaSetup() async {
+    if (_busy || !_loaded) return;
+    final url = await Navigator.of(context).push<String>(
+      KitPageRoute<String>(builder: (_) => const SnowLumaSetupScreen()),
+    );
+    if (!mounted || url == null) return;
+    setState(() {
+      final previousTarget = _credentialTarget;
+      _transport = OneBotTransport.forward;
+      _url.text = url;
+      if (_credentialTarget != previousTarget) _selfId.clear();
+      _enabled = false;
+      _error = null;
+      _invalidateChangedCredentials();
+      _notice = _text(
+        'Local address filled in, not saved. Enter its OneBot token and test to verify the QQ account.',
+        '本机地址已填入，尚未保存。请填写该连接的 OneBot Token，再测试确认 QQ 账号。',
+      );
+    });
+  }
+
   Future<void> _openLocalLlbot() async {
     if (_busy || !_loaded) return;
     final connection = await Navigator.of(context).push<LlbotLocalConnection>(
@@ -853,16 +876,16 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
 
   String _backendHint(OneBotBackend backend) => switch (backend) {
     OneBotBackend.llbot => _text(
-      'Deploy LLBot in built-in Ubuntu above, then use its local connection. For a manually managed Linux host, enter its OneBot 11 address (usually port 3001).',
-      '可在上方一键部署到内置 Ubuntu，再使用本机连接；也可手动填写其他 Linux 主机的 OneBot 11 地址（通常为 3001 端口）。',
+      'Legacy option for people who already have a valid LLBot Auth Token. New registrations are closed. Existing connections are not migrated automatically.',
+      '仅推荐已有有效 LLBot Auth Token 的用户继续使用。新用户注册已关闭，已有连接不会自动迁移。',
     ),
     OneBotBackend.napcat => _text(
       'NapCat logs in the QQ NT client. Its WebUI is on port 6099; add a WebSocket client there that points at this phone.',
       'NapCat 登录 QQ NT 客户端。WebUI 在 6099 端口；在它的网络配置里加一个 WebSocket 客户端，指向这台手机。',
     ),
     OneBotBackend.snowLuma => _text(
-      'SnowLuma bridges the desktop QQ client. Its console is on port 5099 and its OneBot gateway on 3000/3001.',
-      'SnowLuma 在桌面上桥接 QQ 客户端。控制台在 5099 端口，OneBot 网关在 3000/3001。',
+      'Run SnowLuma with desktop QQ on a separate host. Connect to its OneBot WebSocket (usually port 3001), not its WebUI (5099). No LLBot Auth Token is needed.',
+      '在你管理的电脑或服务器上运行 SnowLuma 和桌面 QQ。请连接 OneBot WebSocket（通常是 3001），不是 WebUI（5099）。无需 LLBot Auth Token。',
     ),
   };
 
@@ -963,7 +986,7 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
   };
 
   Future<void> _save() async {
-    if (_busy) return;
+    if (_busy || !_loaded) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -1004,26 +1027,40 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
   }
 
   Future<void> _test() async {
-    if (_busy) return;
+    if (_busy || !_loaded) return;
     setState(() {
       _busy = true;
       _error = null;
       _notice = null;
     });
     try {
-      final notice = await _hub.testOneBot11(
-        candidate: _candidate(),
+      final candidate = _candidate();
+      final result = await _hub.testOneBot11(
+        candidate: candidate,
         accessToken: _candidateAccessToken(),
       );
-      if (mounted) setState(() => _notice = notice);
+      if (!mounted) return;
+      setState(() {
+        if (candidate.backend != OneBotBackend.snowLuma) {
+          _notice = result.notice;
+          return;
+        }
+        if (candidate.expectedSelfId.isEmpty) {
+          _selfId.text = result.selfId;
+        }
+        _notice = _text(
+          'SnowLuma reports QQ ${result.selfId} online and the connection healthy. No message was sent. Review the account and allowlists before saving.',
+          'SnowLuma 报告 QQ ${result.selfId} 在线，收发链路正常。测试没有发送消息，请核对账号和允许列表后再保存。',
+        );
+      });
     } on FormatException catch (error) {
       if (mounted) setState(() => _error = error.message);
     } on Object {
       if (mounted) {
         setState(() {
           _error = _text(
-            'The connection test failed. Check the address, token and that LLBot is running.',
-            '连接测试失败，请检查地址、Token，以及 LLBot 是否在运行。',
+            'The connection test failed. Check the address, token and whether the QQ service is running.',
+            '连接测试失败，请检查地址、Token 和 QQ 协议端的运行状态。',
           );
         });
       }
@@ -1042,6 +1079,9 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
     try {
       await _hub.clearOneBot11();
       if (!mounted) return;
+      _backend = OneBot11Config.defaultBackend;
+      _transport = OneBotTransport.forward;
+      _port.text = '${OneBot11Config.defaultListenPort}';
       _url.clear();
       _token.clear();
       _selfId.clear();
@@ -1091,19 +1131,11 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
         children: [
           KitText(
             _text(
-              'Start with one-tap LLBot deployment in this phone’s built-in Ubuntu, then sign in to QQ in the embedded WebUI. You can also connect an existing LLBot, NapCat or SnowLuma service below.',
-              '推荐先在本机内置 Ubuntu 一键部署 LLBot，再到内嵌 WebUI 登录 QQ。也可在下方连接已有的 LLBot、NapCat 或 SnowLuma 服务。',
+              'Connect a QQ account through a OneBot 11 service you manage. For a new connection, start with the SnowLuma setup guide.',
+              '通过你自行管理的 OneBot 11 服务连接普通 QQ 账号。首次接入可先查看 SnowLuma 配置指南。',
             ),
             role: KitTextRole.body,
           ),
-          if (platformCapabilities.isAndroid) ...[
-            SizedBox(height: tokens.space3),
-            KitButton.secondary(
-              key: const ValueKey('onebot-local-llbot'),
-              label: _text('One-tap local LLBot deployment', '本机 LLBot 一键部署'),
-              onPressed: _busy || !_loaded ? null : _openLocalLlbot,
-            ),
-          ],
           SizedBox(height: tokens.space3),
           KitText(
             '${_text('Status', '状态')}：${_stateText(snapshot.state, snapshot.enabled)}',
@@ -1126,9 +1158,9 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
           KitSegmented<OneBotBackend>(
             key: const ValueKey('onebot-backend'),
             segments: const [
-              KitSegment(value: OneBotBackend.llbot, label: 'LLBot'),
-              KitSegment(value: OneBotBackend.napcat, label: 'NapCat'),
               KitSegment(value: OneBotBackend.snowLuma, label: 'SnowLuma'),
+              KitSegment(value: OneBotBackend.napcat, label: 'NapCat'),
+              KitSegment(value: OneBotBackend.llbot, label: 'LLBot'),
             ],
             selected: _backend,
             onChanged: _busy
@@ -1142,6 +1174,23 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
           ),
           SizedBox(height: tokens.space2),
           KitText(_backendHint(_backend), role: KitTextRole.caption),
+          if (_isSnowLuma) ...[
+            SizedBox(height: tokens.space2),
+            KitButton.secondary(
+              key: const ValueKey('onebot-snowluma-guide'),
+              label: _text('SnowLuma setup guide', 'SnowLuma 配置指南'),
+              onPressed: _busy || !_loaded ? null : _openSnowLumaSetup,
+            ),
+          ],
+          if (_backend == OneBotBackend.llbot &&
+              platformCapabilities.isAndroid) ...[
+            SizedBox(height: tokens.space2),
+            KitButton.secondary(
+              key: const ValueKey('onebot-local-llbot'),
+              label: _text('Manage local LLBot', '管理本机 LLBot'),
+              onPressed: _busy || !_loaded ? null : _openLocalLlbot,
+            ),
+          ],
           SizedBox(height: tokens.space4),
           KitSegmented<OneBotTransport>(
             key: const ValueKey('onebot-transport'),
@@ -1178,11 +1227,16 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
                   _backend == OneBotBackend.llbot &&
                       platformCapabilities.isAndroid
                   ? 'ws://127.0.0.1:3001/'
-                  : 'ws://192.168.1.10:3001',
-              helper: _text(
-                'For local deployment, choose “Use local connection” on the deployment page. For a remote service, enter its forward WebSocket address.',
-                '本机部署请在部署页选择「使用本机连接」；远程服务请填写它提供的正向 WebSocket 地址。',
-              ),
+                  : 'wss://qq.example.com/onebot',
+              helper: _isSnowLuma
+                  ? _text(
+                      'Use the account’s OneBot WebSocket server address (Universal). Enter the token separately.',
+                      '填写该账号的 OneBot WebSocket 服务端地址（Universal），Token 单独填写。',
+                    )
+                  : _text(
+                      'Enter the service’s forward WebSocket address. For managed local LLBot, use the deployment page to import it.',
+                      '填写协议端的正向 WebSocket 地址。本机 LLBot 可在部署页导入。',
+                    ),
             ),
             if (insecure) ...[
               SizedBox(height: tokens.space2),
@@ -1251,6 +1305,11 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
               disabledReason: _busy ? _text('Saving', '正在保存') : null,
               helper: _needsReplacementToken
                   ? _replacementTokenHint
+                  : _isSnowLuma
+                  ? _text(
+                      'Use the OneBot network access token, not the WebUI password or a QQ password.',
+                      '填写 OneBot 网络连接的 Access Token，不是 WebUI 密码或 QQ 密码。',
+                    )
                   : _text(
                       'Sent as an Authorization: Bearer header, never in the URL.',
                       '通过 Authorization: Bearer 请求头发送，不放在 URL 中。',
@@ -1265,10 +1324,15 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
             enabled: !_busy,
             disabledReason: _busy ? _text('Saving', '正在保存') : null,
             hint: '10001',
-            helper: _text(
-              'Checked against the self_id LLBot reports; a mismatch disconnects instead of answering as the wrong account.',
-              '与 LLBot 上报的 self_id 校验；不一致会断开，避免用错账号回复。',
-            ),
+            helper: _isSnowLuma
+                ? _text(
+                    'The test can fill this in if blank. Check the QQ number before enabling the relay.',
+                    '可留空并通过测试连接自动填入。启用前请核对 QQ 号。',
+                  )
+                : _text(
+                    'Checked against the OneBot account. A mismatch disconnects instead of answering as the wrong account.',
+                    '与 OneBot 上报的账号核对；不一致会断开，避免用错账号回复。',
+                  ),
           ),
           SizedBox(height: tokens.space3),
           KitField(
@@ -1360,14 +1424,16 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
             label: _enabled
                 ? _text('Save and enable', '保存并启用')
                 : _text('Save settings', '保存设置'),
-            onPressed: _busy ? null : _save,
+            onPressed: _busy || !_loaded ? null : _save,
             working: _busy,
           ),
           SizedBox(height: tokens.space2),
           KitButton.secondary(
             key: const ValueKey('onebot-test'),
-            label: _text('Test connection', '测试连接'),
-            onPressed: _busy ? null : _test,
+            label: _isSnowLuma
+                ? _text('Test connection and QQ account', '测试连接与 QQ 账号')
+                : _text('Test connection', '测试连接'),
+            onPressed: _busy || !_loaded ? null : _test,
             working: _busy,
           ),
           if (snapshot.configured) ...[
@@ -1388,8 +1454,8 @@ class _OneBot11ScreenState extends State<OneBot11Screen> {
           SizedBox(height: tokens.space3),
           KitGroupNote(
             message: _text(
-              'Local deployment downloads LLBot (GPL-2.0) on demand and configures a loopback-only, token-protected OneBot connection. For manual LLBot, NapCat or SnowLuma, enable OneBot 11 and set an access token yourself; choose forward when the service listens or reverse when it dials this phone. Android may stop the local process; a ready WebUI is not proof that QQ is online.',
-              '本机部署按需下载 LLBot（GPL-2.0），并配置仅监听回环地址、带 Token 的 OneBot 连接。手动部署的 LLBot、NapCat 或 SnowLuma 仍需自行开启 OneBot 11 并设置 Token；协议端监听时选正向，主动连入时选反向。Android 可能停止本机进程，WebUI 就绪不代表 QQ 在线。',
+              'This is a third-party QQ connection. Use a trusted host; messages sent through it leave the app. A ready WebUI is not proof that QQ is online. Permission requests still have to be handled in OpenCode Plus.',
+              '这是第三方 QQ 接入。请使用可信主机，通过此渠道收发的消息会离开 App。WebUI 就绪并不代表 QQ 在线；Agent 权限确认仍需在 OpenCode Plus 中处理。',
             ),
           ),
         ],

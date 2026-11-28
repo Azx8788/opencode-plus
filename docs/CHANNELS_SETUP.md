@@ -14,7 +14,7 @@ This page is the user-facing walkthrough. For the design behind it, read
 消息渠道
   ├── Telegram                    (official Bot API, long polling)
   ├── QQ 官方机器人                (Tencent Open Platform)
-  └── QQ 普通账号（OneBot 11）      (one-tap local LLBot or a manual service)
+  └── QQ 普通账号（OneBot 11）      (self-managed SnowLuma, NapCat or LLBot)
 ```
 
 ## Telegram
@@ -55,13 +55,22 @@ permission shows as unavailable rather than failing quietly.
 
 Settings → 消息渠道 → **QQ 普通账号（OneBot 11）**.
 
-1. On Android ARM64 with built-in Ubuntu installed, choose **本机 LLBot 一键部署**
+For a new connection, use **SnowLuma → SnowLuma 配置指南**. Run your own
+SnowLuma with desktop QQ, then connect the account's OneBot WebSocket. The app can
+verify manually downloaded ARM64 archives and check the default local ports,
+but it does not install or start SnowLuma. See [SnowLuma setup](SNOWLUMA_SETUP.md).
+
+**Legacy LLBot** is still available when selected, or from the Linux manager.
+The upstream site has closed new registrations. This path requires an existing
+valid LLBot Auth Token and does not migrate any saved connection.
+
+1. On Android ARM64 with built-in Ubuntu installed, choose **管理本机 LLBot**
    and press **一键部署并启动**. The app downloads the official LLBot v8.3.2
    ARM64 runtime (about 89 MB, Node included), verifies it, installs it (about
    172 MB), prepares random local credentials and starts the console.
 2. Copy the generated WebUI password on that page and open the embedded WebUI.
-   Obtain the separate upstream **LLBot Auth Token** from
-   <https://auth.luckylillia.com>, enter it in the WebUI, then scan the QQ QR code.
+   Enter your existing upstream **LLBot Auth Token** in the WebUI, then scan
+   the QQ QR code.
 3. Choose **使用本机连接** to return `ws://127.0.0.1:3001/` and the generated
    OneBot access token to the form. The listener starts after QQ login; a ready
    WebUI alone does not mean QQ is online. Confirm the QQ account number.
@@ -115,7 +124,7 @@ Rules that hold on every channel:
 3. Press "Test" — it verifies credentials and reachability without sending a
    message.
 4. Remember the boundaries: a passive QQ reply expires after 5 minutes; Android
-   may suspend the app in the background; LLBot must be running.
+    may suspend the app in the background; your OneBot service must be running.
 
 Messages that could not be sent are kept in the outbox and retried a few times.
 They are never used as a reason to run the agent again — a delivery failure is

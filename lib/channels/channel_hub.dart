@@ -526,32 +526,33 @@ class ChannelHub extends ChangeNotifier {
     }
   }
 
-  Future<String> testOneBot11({
+  /// Test only the draft connection. This opens no agent session and sends
+  /// no chat message; the caller can show the verified QQ number for review.
+  Future<OneBotProbeResult> testOneBot11({
     OneBot11Config? candidate,
     String? accessToken,
   }) async {
     final target = candidate ?? _oneBotConfig;
-    if (target.transport == OneBotTransport.forward &&
-        target.webSocketUrl.isEmpty) {
-      throw const FormatException('请先填写 OneBot 11 的 WebSocket 地址。');
-    }
-    final token = accessToken?.trim().isNotEmpty == true
-        ? accessToken!.trim()
-        : await config.readOneBot11Token() ?? '';
+    target.validateConnection(requireEndpoint: true);
+    final token = (accessToken ?? await config.readOneBot11Token() ?? '')
+        .trim();
+    target.validateAccessToken(token);
     final provider = OneBot11Provider(
       accountId: target.expectedSelfId.isEmpty
           ? target.webSocketUrl
           : target.expectedSelfId,
-      webSocketUrl: target.webSocketUrl,
+      webSocketUrl: target.webSocketUrl.trim(),
       accessToken: token,
-      expectedSelfId: target.expectedSelfId,
+      expectedSelfId: target.expectedSelfId.trim(),
       transport: target.transport == OneBotTransport.reverse
           ? OneBot11Transport.reverse
           : OneBot11Transport.forward,
       listenPort: target.listenPort,
     );
     try {
-      return await provider.probe();
+      return await provider.probe(
+        verifySnowLuma: target.backend == OneBotBackend.snowLuma,
+      );
     } on Object catch (error) {
       throw FormatException(_messageOf(error));
     } finally {

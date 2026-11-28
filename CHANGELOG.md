@@ -4,6 +4,10 @@ This project is in public alpha. Only the newest preview is supported.
 
 ## Unreleased integration
 
+  * New personal QQ configurations start with SnowLuma. The setup guide verifies
+    manually downloaded ARM64 bundles, checks default local ports and tests the
+    QQ account through OneBot. It does not install or start SnowLuma; existing
+    LLBot and NapCat configurations are preserved.
   * The subagent draft catalogue accepts OpenCode V2's bare project arrays as
     well as data envelopes. A read/parse failure no longer tells the person
     that an otherwise working server must be connected first.
